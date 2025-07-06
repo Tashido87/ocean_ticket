@@ -291,6 +291,7 @@ async function handleSellTicket(e) {
 
     // Get form data using proper field names
     const ticketData = {
+        issued_date: form.querySelector('#issued_date')?.value || '',
         name: form.querySelector('#name')?.value || '',
         nrc_no: form.querySelector('#nrc_no')?.value || '',
         phone: form.querySelector('#phone')?.value || '',
@@ -313,10 +314,10 @@ async function handleSellTicket(e) {
     
     console.log('Form data collected:', ticketData);
     
-    // Set additional fields
-    ticketData.issued_date = getCurrentDateDDMMYYYY();
-    
     // Format dates
+    if (ticketData.issued_date) {
+        ticketData.issued_date = formatDateToDDMMYYYY(ticketData.issued_date);
+    }
     if (ticketData.departing_on) {
         ticketData.departing_on = formatDateToDDMMYYYY(ticketData.departing_on);
     }
@@ -349,7 +350,7 @@ async function handleSellTicket(e) {
 async function saveTicket(ticketData) {
     console.log('Saving ticket:', ticketData);
     
-    const requiredFields = ['name', 'nrc_no', 'phone', 'account_name', 'account_type', 'departure', 'destination', 'departing_on', 'airline', 'base_fare', 'booking_reference', 'net_amount'];
+    const requiredFields = ['issued_date', 'name', 'nrc_no', 'phone', 'account_name', 'account_type', 'departure', 'destination', 'departing_on', 'airline', 'base_fare', 'booking_reference', 'net_amount'];
     for (const field of requiredFields) {
         if (!ticketData[field]) {
             throw new Error(`Missing required field: ${field}`);
@@ -413,6 +414,14 @@ function showView(viewName) {
         view.classList.toggle('active', view.id === `${viewName}-view`);
     });
     currentView = viewName;
+
+    if (viewName === 'sell') {
+        const issuedDateInput = document.getElementById('issued_date');
+        if (issuedDateInput) {
+            // Set the default value to today's date
+            issuedDateInput.valueAsDate = new Date();
+        }
+    }
 }
 
 function displayAllTickets() {
@@ -495,11 +504,13 @@ function formatDateToDDMMYYYY(date) {
     if (!date) return '';
     const d = new Date(date);
     if (isNaN(d.getTime())) return '';
-    const day = String(d.getDate()).padStart(2, '0');
-    const month = String(d.getMonth() + 1).padStart(2, '0');
-    const year = d.getFullYear();
+    // Adjust for timezone offset by working with UTC dates
+    const day = String(d.getUTCDate()).padStart(2, '0');
+    const month = String(d.getUTCMonth() + 1).padStart(2, '0');
+    const year = d.getUTCFullYear();
     return `${day}-${month}-${year}`;
 }
+
 
 function parseDateFromDDMMYYYY(dateString) {
     if (!dateString) return null;

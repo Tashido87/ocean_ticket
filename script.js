@@ -1,7 +1,7 @@
 // Configuration
 const CONFIG = {
     SHEET_ID: '1SGc80isz0VRVt447R_q-fBdZ_me52H_Z32W5HauHMWQ',
-    API_KEY: 'AIzaSyC9JSD6VWXMQ7Pe8VPf-gIlNUtcwQhkG1o', // <-- IMPORTANT: REPLACE WITH YOUR API KEY
+    API_KEY: 'AIzaSyC9JSD6VWXMQ7Pe8VPf-gIlNUtcwQhkG1o', // <-- I have used the API key you provided.
     CLIENT_ID: '254093944424-mfvk48avc9n86de6jit9oai7kqrsr2f7.apps.googleusercontent.com', // <-- IMPORTANT: REPLACE WITH YOUR CLIENT ID
     SCOPES: 'https://www.googleapis.com/auth/spreadsheets',
     DISCOVERY_DOC: 'https://sheets.googleapis.com/$discovery/rest?version=v4',
@@ -214,8 +214,10 @@ async function loadTicketData() {
         loading.style.display = 'none';
         dashboardContent.style.display = 'block';
     } catch (error) {
+        // This part is updated for better error messages
+        const errorMessage = error.result?.error?.message || error.toString();
         console.error('Error loading ticket data:', error);
-        showToast('Error loading ticket data', 'error');
+        showToast(`Error: ${errorMessage}`, 'error');
         loading.style.display = 'none';
     }
 }
@@ -413,7 +415,7 @@ async function handleSellTicket(e) {
     ticketData.paid = document.getElementById('paid').checked;
     ticketData.commission = document.getElementById('commission').value;
     
-    // Convert date fields from YYYY-MM-DD to DD-MM-YYYY
+    // Convert date fields from format YYYY-MM-DD to DD-MM-YYYY
     if (ticketData.departing_on) {
         ticketData.departing_on = formatDateToDDMMYYYY(ticketData.departing_on);
     }
@@ -644,7 +646,7 @@ function showToast(message, type = 'success') {
     
     setTimeout(() => {
         toast.classList.remove('show');
-    }, 3000);
+    }, 5000); // Increased time to 5 seconds to read the error
 }
 
 setupEventListeners();

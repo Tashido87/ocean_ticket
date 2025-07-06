@@ -15,6 +15,7 @@ let charts = {};
 let tokenClient;
 let gapiInited = false;
 let gisInited = false;
+let isSubmitting = false; // Add submission flag
 
 // DOM Elements
 const navBtns = document.querySelectorAll('.nav-btn');
@@ -232,9 +233,13 @@ async function loadTicketData() {
         if (dashboardContent) dashboardContent.style.display = 'none';
         
         console.log('Loading ticket data...');
-        const response = await gapi.client.sheets.spreadsheets.values.get({
-            spreadsheetId: CONFIG.SHEET_ID,
-            range: `${CONFIG.SHEET_NAME}!A:S`,
+        
+        // Add retry logic for API calls
+        const response = await retryApiCall(async () => {
+            return await gapi.client.sheets.spreadsheets.values.get({
+                spreadsheetId: CONFIG.SHEET_ID,
+                range: `${CONFIG.SHEET_NAME}!A:S`,
+            });
         });
         
         const data = response.result;
@@ -257,10 +262,35 @@ async function loadTicketData() {
     }
 }
 
+// Add retry logic for API calls
+async function retryApiCall(apiCall, maxRetries = 3, delay = 1000) {
+    for (let i = 0; i < maxRetries; i++) {
+        try {
+            return await apiCall();
+        } catch (error) {
+            console.warn(`API call failed, attempt ${i + 1}/${maxRetries}:`, error);
+            
+            if (i === maxRetries - 1) {
+                throw error;
+            }
+            
+            // Exponential backoff
+            await new Promise(resolve => setTimeout(resolve, delay * Math.pow(2, i)));
+        }
+    }
+}
+
 async function handleSellTicket(e) {
     e.preventDefault();
     console.log('Sell ticket form submitted');
     
+    // Prevent multiple submissions
+    if (isSubmitting) {
+        console.log('Already submitting, ignoring duplicate submission');
+        return;
+    }
+    
+    isSubmitting = true;
     const form = e.target;
     const submitButton = form.querySelector('button[type="submit"]');
 
@@ -269,65 +299,37 @@ async function handleSellTicket(e) {
         submitButton.textContent = 'Submitting...';
     }
     
-    if (!gapiInited || !gisInited) {
-        showToast('Google API not initialized. Please try signing in again.', 'error');
-        if (submitButton) {
-            submitButton.disabled = false;
-            submitButton.textContent = 'Submit Ticket';
-        }
-        return;
-    }
-
-    // Check if user is authenticated
-    const token = gapi.client.getToken();
-    if (!token || !token.access_token) {
-        showToast('Please sign in to Google Sheets first.', 'error');
-        if (submitButton) {
-            submitButton.disabled = false;
-            submitButton.textContent = 'Submit Ticket';
-        }
-        return;
-    }
-
-    // Get form data using proper field names
-    const ticketData = {
-        issued_date: form.querySelector('#issued_date')?.value || '',
-        name: form.querySelector('#name')?.value || '',
-        nrc_no: form.querySelector('#nrc_no')?.value || '',
-        phone: form.querySelector('#phone')?.value || '',
-        account_name: form.querySelector('#account_name')?.value || '',
-        account_type: form.querySelector('#account_type')?.value || '',
-        account_link: form.querySelector('#account_link')?.value || '',
-        departure: form.querySelector('#departure')?.value || '',
-        destination: form.querySelector('#destination')?.value || '',
-        departing_on: form.querySelector('#departing_on')?.value || '',
-        airline: form.querySelector('#airline')?.value || '',
-        base_fare: form.querySelector('#base_fare')?.value || '',
-        booking_reference: form.querySelector('#booking_reference')?.value || '',
-        net_amount: form.querySelector('#net_amount')?.value || '',
-        paid: form.querySelector('#paid')?.checked || false,
-        payment_method: form.querySelector('#payment_method')?.value || '',
-        paid_date: form.querySelector('#paid_date')?.value || '',
-        commission: form.querySelector('#commission')?.value || '',
-        remark: form.querySelector('#remark')?.value || ''
-    };
-    
-    console.log('Form data collected:', ticketData);
-    
-    // Format dates
-    if (ticketData.issued_date) {
-        ticketData.issued_date = formatDateToDDMMYYYY(ticketData.issued_date);
-    }
-    if (ticketData.departing_on) {
-        ticketData.departing_on = formatDateToDDMMYYYY(ticketData.departing_on);
-    }
-    if (ticketData.paid_date) {
-        ticketData.paid_date = formatDateToDDMMYYYY(ticketData.paid_date);
-    }
-    
-    console.log('Ticket data to save:', ticketData);
-    
     try {
+        if (!gapiInited || !gisInited) {
+            throw new Error('Google API not initialized. Please try signing in again.');
+        }
+
+        // Check if user is authenticated
+        const token = gapi.client.getToken();
+        if (!token || !token.access_token) {
+            throw new Error('Please sign in to Google Sheets first.');
+        }
+
+        // Enhanced form data collection with better error handling
+        const ticketData = collectFormData(form);
+        console.log('Form data collected:', ticketData);
+        
+        // Validate required fields
+        validateTicketData(ticketData);
+        
+        // Format dates
+        if (ticketData.issued_date) {
+            ticketData.issued_date = formatDateToDDMMYYYY(ticketData.issued_date);
+        }
+        if (ticketData.departing_on) {
+            ticketData.departing_on = formatDateToDDMMYYYY(ticketData.departing_on);
+        }
+        if (ticketData.paid_date) {
+            ticketData.paid_date = formatDateToDDMMYYYY(ticketData.paid_date);
+        }
+        
+        console.log('Ticket data to save:', ticketData);
+        
         await saveTicket(ticketData);
         showToast('Ticket saved successfully!', 'success');
         form.reset();
@@ -335,11 +337,13 @@ async function handleSellTicket(e) {
         if (commissionField) commissionField.value = '';
         await loadTicketData(); 
         showView('home');
+        
     } catch (error) {
         console.error('Error in handleSellTicket:', error);
         const errorMessage = error.result?.error?.message || error.message || 'Could not save the ticket. Check console for details.';
         showToast(`Error: ${errorMessage}`, 'error');
     } finally {
+        isSubmitting = false;
         if (submitButton) {
             submitButton.disabled = false;
             submitButton.textContent = 'Submit Ticket';
@@ -347,16 +351,68 @@ async function handleSellTicket(e) {
     }
 }
 
+// Enhanced form data collection
+function collectFormData(form) {
+    const formData = new FormData(form);
+    const ticketData = {};
+    
+    // List of expected fields - make sure these match your HTML form IDs
+    const expectedFields = [
+        'issued_date', 'name', 'nrc_no', 'phone', 'account_name', 'account_type', 
+        'account_link', 'departure', 'destination', 'departing_on', 'airline', 
+        'base_fare', 'booking_reference', 'net_amount', 'paid', 'payment_method', 
+        'paid_date', 'commission', 'remark'
+    ];
+    
+    expectedFields.forEach(field => {
+        const element = form.querySelector(`#${field}`);
+        if (element) {
+            if (element.type === 'checkbox') {
+                ticketData[field] = element.checked;
+            } else {
+                ticketData[field] = element.value || '';
+            }
+        } else {
+            console.warn(`Form field not found: ${field}`);
+            ticketData[field] = '';
+        }
+    });
+    
+    return ticketData;
+}
+
+// Enhanced validation
+function validateTicketData(ticketData) {
+    const requiredFields = [
+        'issued_date', 'name', 'nrc_no', 'phone', 'account_name', 'account_type', 
+        'departure', 'destination', 'departing_on', 'airline', 'base_fare', 
+        'booking_reference', 'net_amount'
+    ];
+    
+    const missingFields = [];
+    
+    for (const field of requiredFields) {
+        if (!ticketData[field] || ticketData[field].toString().trim() === '') {
+            missingFields.push(field.replace('_', ' '));
+        }
+    }
+    
+    if (missingFields.length > 0) {
+        throw new Error(`Missing required fields: ${missingFields.join(', ')}`);
+    }
+    
+    // Validate numeric fields
+    const numericFields = ['base_fare', 'net_amount', 'commission'];
+    for (const field of numericFields) {
+        if (ticketData[field] && isNaN(parseFloat(ticketData[field]))) {
+            throw new Error(`Invalid number format for field: ${field.replace('_', ' ')}`);
+        }
+    }
+}
+
 async function saveTicket(ticketData) {
     console.log('Saving ticket:', ticketData);
     
-    const requiredFields = ['issued_date', 'name', 'nrc_no', 'phone', 'account_name', 'account_type', 'departure', 'destination', 'departing_on', 'airline', 'base_fare', 'booking_reference', 'net_amount'];
-    for (const field of requiredFields) {
-        if (!ticketData[field]) {
-            throw new Error(`Missing required field: ${field}`);
-        }
-    }
-
     const token = gapi.client.getToken();
     if (!token || !token.access_token) {
         throw new Error('No valid access token');
@@ -390,12 +446,15 @@ async function saveTicket(ticketData) {
     console.log('Values to append:', values);
 
     try {
-        const response = await gapi.client.sheets.spreadsheets.values.append({
-            spreadsheetId: CONFIG.SHEET_ID,
-            range: `${CONFIG.SHEET_NAME}!A:S`,
-            valueInputOption: 'USER_ENTERED',
-            resource: { values: values },
+        const response = await retryApiCall(async () => {
+            return await gapi.client.sheets.spreadsheets.values.append({
+                spreadsheetId: CONFIG.SHEET_ID,
+                range: `${CONFIG.SHEET_NAME}!A:S`,
+                valueInputOption: 'USER_ENTERED',
+                resource: { values: values },
+            });
         });
+        
         console.log('API Response:', response);
         return response;
     } catch (err) {
@@ -510,7 +569,6 @@ function formatDateToDDMMYYYY(date) {
     const year = d.getUTCFullYear();
     return `${day}-${month}-${year}`;
 }
-
 
 function parseDateFromDDMMYYYY(dateString) {
     if (!dateString) return null;
@@ -693,3 +751,36 @@ function closeModal() {
         modal.style.display = 'none';
     }
 }
+
+// Add debugging function to check form elements
+function debugForm() {
+    console.log('=== FORM DEBUG ===');
+    const form = document.getElementById('sellForm');
+    if (!form) {
+        console.error('Form with id="sellForm" not found!');
+        return;
+    }
+    
+    console.log('Form found:', form);
+    
+    const expectedFields = [
+        'issued_date', 'name', 'nrc_no', 'phone', 'account_name', 'account_type', 
+        'account_link', 'departure', 'destination', 'departing_on', 'airline', 
+        'base_fare', 'booking_reference', 'net_amount', 'paid', 'payment_method', 
+        'paid_date', 'commission', 'remark'
+    ];
+    
+    expectedFields.forEach(field => {
+        const element = form.querySelector(`#${field}`);
+        if (element) {
+            console.log(`✓ Found field: ${field}`, element);
+        } else {
+            console.error(`✗ Missing field: ${field}`);
+        }
+    });
+    
+    console.log('=== END DEBUG ===');
+}
+
+// Call this function from browser console to debug form issues
+window.debugForm = debugForm;

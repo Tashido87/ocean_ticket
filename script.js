@@ -363,25 +363,27 @@ async function saveTicket(ticketData) {
 
     // The order of values matches your Google Sheet columns exactly
     const values = [
-        ticketData.issued_date || '',
-        ticketData.name || '',
-        ticketData.nrc_no || '',
-        ticketData.phone || '',
-        ticketData.account_name || '',
-        ticketData.account_type || '',
-        ticketData.account_link || '',
-        ticketData.departure || '',
-        ticketData.destination || '',
-        ticketData.departing_on || '',
-        ticketData.airline || '',
-        parseFloat(ticketData.base_fare) || 0,
-        ticketData.booking_reference || '',
-        parseFloat(ticketData.net_amount) || 0,
-        ticketData.paid || false,
-        ticketData.payment_method || '',
-        ticketData.paid_date || '',
-        parseFloat(ticketData.commission) || 0,
-        ticketData.remark || ''
+        [
+            ticketData.issued_date || '',
+            ticketData.name || '',
+            ticketData.nrc_no || '',
+            ticketData.phone || '',
+            ticketData.account_name || '',
+            ticketData.account_type || '',
+            ticketData.account_link || '',
+            ticketData.departure || '',
+            ticketData.destination || '',
+            ticketData.departing_on || '',
+            ticketData.airline || '',
+            parseFloat(ticketData.base_fare) || 0,
+            ticketData.booking_reference || '',
+            parseFloat(ticketData.net_amount) || 0,
+            ticketData.paid || false,
+            ticketData.payment_method || '',
+            ticketData.paid_date || '',
+            parseFloat(ticketData.commission) || 0,
+            ticketData.remark || ''
+        ]
     ];
 
     console.log('Values to append:', values);
@@ -391,7 +393,7 @@ async function saveTicket(ticketData) {
             spreadsheetId: CONFIG.SHEET_ID,
             range: `${CONFIG.SHEET_NAME}!A:S`,
             valueInputOption: 'USER_ENTERED',
-            resource: { values: [values] },
+            resource: { values: values },
         });
         console.log('API Response:', response);
         return response;

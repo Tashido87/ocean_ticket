@@ -76,6 +76,10 @@ function handleAuthClick() {
         if (resp.error !== undefined) {
             throw (resp);
         }
+        
+        // This sets the token for the API client, allowing it to be remembered.
+        gapi.client.setToken(resp); 
+
         // User has authorized, now fully initialize the app
         authorizeButton.style.display = 'none';
         signoutButton.style.display = 'block';
@@ -83,8 +87,10 @@ function handleAuthClick() {
     };
 
     if (gapi.client.getToken() === null) {
+        // Prompt the user to select a Google Account and ask for consent to share their data
         tokenClient.requestAccessToken({ prompt: 'consent' });
     } else {
+        // Skip display of account chooser and consent dialog for an existing session.
         tokenClient.requestAccessToken({ prompt: '' });
     }
 }

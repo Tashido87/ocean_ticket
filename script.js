@@ -29,34 +29,42 @@ const signoutButton = document.getElementById('signout_button');
 
 // --- INITIALIZATION ---
 
-window.onload = () => {
-    gapiLoaded();
-    gisLoaded();
+window.onload = async () => {
     setupEventListeners();
+    // Improved async loading of Google APIs
+    await Promise.all([
+        loadGapiClient(),
+        loadGisClient()
+    ]);
 };
 
-function gapiLoaded() {
-    gapi.load('client', initializeGapiClient);
+async function loadGapiClient() {
+    return new Promise((resolve) => {
+        gapi.load('client', async () => {
+            await gapi.client.init({
+                apiKey: CONFIG.API_KEY,
+                discoveryDocs: [CONFIG.DISCOVERY_DOC],
+            });
+            gapiInited = true;
+            maybeEnableButtons();
+            resolve();
+        });
+    });
 }
 
-async function initializeGapiClient() {
-    await gapi.client.init({
-        apiKey: CONFIG.API_KEY,
-        discoveryDocs: [CONFIG.DISCOVERY_DOC],
+async function loadGisClient() {
+    return new Promise((resolve) => {
+        tokenClient = google.accounts.oauth2.initTokenClient({
+            client_id: CONFIG.CLIENT_ID,
+            scope: CONFIG.SCOPES,
+            callback: '', // Will be defined in handleAuthClick
+        });
+        gisInited = true;
+        maybeEnableButtons();
+        resolve();
     });
-    gapiInited = true;
-    maybeEnableButtons();
 }
 
-function gisLoaded() {
-    tokenClient = google.accounts.oauth2.initTokenClient({
-        client_id: CONFIG.CLIENT_ID,
-        scope: CONFIG.SCOPES,
-        callback: '', // Will be defined in handleAuthClick
-    });
-    gisInited = true;
-    maybeEnableButtons();
-}
 
 function maybeEnableButtons() {
     if (gapiInited && gisInited) {
@@ -77,20 +85,16 @@ function handleAuthClick() {
             throw (resp);
         }
         
-        // This sets the token for the API client, allowing it to be remembered.
         gapi.client.setToken(resp); 
 
-        // User has authorized, now fully initialize the app
         authorizeButton.style.display = 'none';
         signoutButton.style.display = 'block';
         await initializeApp();
     };
 
     if (gapi.client.getToken() === null) {
-        // Prompt the user to select a Google Account and ask for consent to share their data
         tokenClient.requestAccessToken({ prompt: 'consent' });
     } else {
-        // Skip display of account chooser and consent dialog for an existing session.
         tokenClient.requestAccessToken({ prompt: '' });
     }
 }
@@ -147,7 +151,7 @@ async function loadTicketData() {
         
         if (data.values && data.values.length > 1) {
             allTickets = parseTicketData(data.values);
-            updateCharts(); // This will now process all data for the year
+            updateCharts();
             displayAllTickets();
         }
         
@@ -166,11 +170,9 @@ async function handleSellTicket(e) {
     const form = e.target;
     const submitButton = form.querySelector('button[type="submit"]');
 
-    // Disable button and show loading text to prevent multiple submissions
     submitButton.disabled = true;
     submitButton.textContent = 'Submitting...';
     
-    // ADDED: Check if API is initialized
     if (!gapiInited || !gisInited) {
         showToast('Google API not initialized. Please try signing in again.', 'error');
         submitButton.disabled = false;
@@ -197,26 +199,23 @@ async function handleSellTicket(e) {
     }
     
     try {
-        // MODIFIED: Only show success toast after successful save
         await saveTicket(ticketData);
         showToast('Ticket saved successfully!', 'success');
         form.reset();
         document.getElementById('commission').value = '';
-        await loadTicketData(); // Refresh data after saving
-        showView('home'); // Go back to home view after successful submission
+        await loadTicketData(); 
+        showView('home');
     } catch (error) {
         console.error('Error in handleSellTicket:', error);
         const errorMessage = error.result?.error?.message || 'Could not save the ticket. Check console for details.';
         showToast(`Error: ${errorMessage}`, 'error');
     } finally {
-        // Re-enable button and restore original text
         submitButton.disabled = false;
         submitButton.textContent = 'Submit Ticket';
     }
 }
 
 async function saveTicket(ticketData) {
-    // ADDED: Validate required fields
     const requiredFields = ['name', 'nrc_no', 'phone', 'account_name', 'account_type', 'departure', 'destination', 'departing_on', 'airline', 'base_fare', 'booking_reference', 'net_amount'];
     for (const field of requiredFields) {
         if (!ticketData[field]) {
@@ -224,7 +223,6 @@ async function saveTicket(ticketData) {
         }
     }
 
-    // ADDED: Check for valid token
     const token = gapi.client.getToken();
     if (!token || !token.access_token) {
         showToast('Authentication required. Please sign in again.', 'error');
@@ -232,16 +230,26 @@ async function saveTicket(ticketData) {
         throw new Error('No valid access token');
     }
 
+    // **FIXED**: The order of values now matches your Google Sheet columns.
     const values = [
-        ticketData.issued_date || '', ticketData.name || '',
-        ticketData.nrc_no || '', ticketData.phone || '',
-        ticketData.account_name || '', ticketData.account_type || '',
-        ticketData.account_link || '', ticketData.departure || '',
-        ticketData.destination || '', ticketData.departing_on || '',
-        ticketData.airline || '', ticketData.base_fare || 0,
-        ticketData.booking_reference || '', ticketData.net_amount || 0,
-        ticketData.paid, ticketData.payment_method || '',
-        ticketData.paid_date || '', ticketData.commission || 0,
+        ticketData.issued_date || '',
+        ticketData.name || '',
+        ticketData.nrc_no || '',
+        ticketData.phone || '',
+        ticketData.account_name || '',
+        ticketData.account_type || '',
+        ticketData.account_link || '',
+        ticketData.departure || '',
+        ticketData.destination || '',
+        ticketData.departing_on || '',
+        ticketData.airline || '',
+        ticketData.base_fare || 0,
+        ticketData.booking_reference || '', // Corrected position
+        ticketData.net_amount || 0,        // Corrected position
+        ticketData.paid,
+        ticketData.payment_method || '',
+        ticketData.paid_date || '',
+        ticketData.commission || 0,
         ticketData.remark || ''
     ];
 
@@ -258,6 +266,7 @@ async function saveTicket(ticketData) {
         throw err;
     }
 }
+
 
 // --- UI & DISPLAY ---
 
@@ -306,39 +315,12 @@ function displayTickets(tickets) {
 
 function showToast(message, type = 'success') {
     toastMessage.textContent = message;
-    
-    // The CSS in styles.css uses '.notification', but the HTML has class="toast".
-    // This mismatch is why notifications were not showing.
-    // This corrected function directly manipulates the style to ensure it's visible.
-    toast.style.position = 'fixed';
-    toast.style.top = '100px';
-    toast.style.right = '2rem';
-    toast.style.padding = '1rem 1.5rem';
-    toast.style.borderRadius = '10px';
-    toast.style.fontWeight = '500';
-    toast.style.zIndex = '1001';
-    toast.style.color = 'white';
-    toast.style.transition = 'transform 0.5s ease-in-out';
-    toast.style.transform = 'translateX(120%)'; // Start off-screen
-    
-    if (type === 'success') {
-        toast.style.backgroundColor = 'rgba(72, 187, 120, 0.9)';
-    } else if (type === 'error') {
-        toast.style.backgroundColor = 'rgba(229, 62, 62, 0.9)';
-    } else {
-        toast.style.backgroundColor = 'rgba(74, 144, 226, 0.9)';
-    }
-
-    // Slide in
+    toast.className = `notification ${type} show`;
     setTimeout(() => {
-        toast.style.transform = 'translateX(0)';
-    }, 100);
-
-    // Slide out
-    setTimeout(() => {
-        toast.style.transform = 'translateX(120%)';
+        toast.className = toast.className.replace('show', '');
     }, 5000);
 }
+
 
 // --- UTILITY & HELPER FUNCTIONS ---
 
@@ -414,7 +396,6 @@ function setupCharts() {
         }
     };
 
-    // Destroy existing charts if they exist
     if (charts.commission) charts.commission.destroy();
     if (charts.netAmount) charts.netAmount.destroy();
 
@@ -458,7 +439,6 @@ function setupCharts() {
 function updateCharts() {
     const currentYear = 2025;
     
-    // Initialize monthly totals
     const monthlyCommissions = Array(12).fill(0);
     const monthlyNetAmounts = Array(12).fill(0);
     
@@ -469,19 +449,17 @@ function updateCharts() {
 
     yearlyData.forEach(ticket => {
         const ticketDate = parseDateFromDDMMYYYY(ticket.issued_date);
-        const monthIndex = ticketDate.getMonth(); // 0 = January, 11 = December
+        const monthIndex = ticketDate.getMonth();
         
         monthlyCommissions[monthIndex] += ticket.commission;
         monthlyNetAmounts[monthIndex] += ticket.net_amount;
     });
 
-    // Update Commission Chart
     if (charts.commission) {
         charts.commission.data.datasets[0].data = monthlyCommissions;
         charts.commission.update();
     }
 
-    // Update Net Amount Chart
     if (charts.netAmount) {
         charts.netAmount.data.datasets[0].data = monthlyNetAmounts;
         charts.netAmount.update();
@@ -501,7 +479,6 @@ function performSearch() {
         
         let dateMatch = true;
         if (searchDateInput) {
-            // Convert HTML date input (YYYY-MM-DD) to DD-MM-YYYY for comparison
             const searchDateFormatted = formatDateToDDMMYYYY(new Date(searchDateInput));
             dateMatch = ticket.issued_date === searchDateFormatted;
         }
@@ -526,7 +503,6 @@ function findTicket(action) {
         showToast('Please enter a PNR code.', 'error');
         return;
     }
-    // Placeholder for future functionality
     showToast(`Find ticket functionality for PNR: ${pnr} is not yet implemented.`, 'info');
 }
 

@@ -32,6 +32,7 @@ const signoutButton = document.getElementById('signout_button');
 window.onload = () => {
     gapiLoaded();
     gisLoaded();
+    setupEventListeners();
 };
 
 function gapiLoaded() {
@@ -64,8 +65,8 @@ function maybeEnableButtons() {
 }
 
 async function initializeApp() {
-    await loadTicketData();
-    setupCharts();
+    setupCharts(); // Setup charts before loading data
+    await loadTicketData(); // Load data which will then update the charts
 }
 
 // --- AUTHENTICATION ---
@@ -82,10 +83,8 @@ function handleAuthClick() {
     };
 
     if (gapi.client.getToken() === null) {
-        // Prompt the user to select a Google Account and ask for consent to share their data
         tokenClient.requestAccessToken({ prompt: 'consent' });
     } else {
-        // Skip display of account chooser and consent dialog for an existing session.
         tokenClient.requestAccessToken({ prompt: '' });
     }
 }
@@ -133,6 +132,8 @@ function setupEventListeners() {
 
 async function loadTicketData() {
     try {
+        loading.style.display = 'block';
+        dashboardContent.style.display = 'none';
         const response = await gapi.client.sheets.spreadsheets.values.get({
             spreadsheetId: CONFIG.SHEET_ID,
             range: `${CONFIG.SHEET_NAME}!A:S`,
@@ -142,7 +143,7 @@ async function loadTicketData() {
         
         if (data.values && data.values.length > 1) {
             allTickets = parseTicketData(data.values);
-            updateCharts();
+            updateCharts(); // This will now process all data for the year
             displayAllTickets();
         }
         
@@ -192,24 +193,15 @@ async function handleSellTicket(e) {
 
 async function saveTicket(ticketData) {
     const values = [
-        ticketData.issued_date || '',
-        ticketData.name || '',
-        ticketData.nrc_no || '',
-        ticketData.phone || '',
-        ticketData.account_name || '',
-        ticketData.account_type || '',
-        ticketData.account_link || '',
-        ticketData.departure || '',
-        ticketData.destination || '',
-        ticketData.departing_on || '',
-        ticketData.airline || '',
-        ticketData.base_fare || 0,
-        ticketData.booking_reference || '',
-        ticketData.net_amount || 0,
-        ticketData.paid,
-        ticketData.payment_method || '',
-        ticketData.paid_date || '',
-        ticketData.commission || 0,
+        ticketData.issued_date || '', ticketData.name || '',
+        ticketData.nrc_no || '', ticketData.phone || '',
+        ticketData.account_name || '', ticketData.account_type || '',
+        ticketData.account_link || '', ticketData.departure || '',
+        ticketData.destination || '', ticketData.departing_on || '',
+        ticketData.airline || '', ticketData.base_fare || 0,
+        ticketData.booking_reference || '', ticketData.net_amount || 0,
+        ticketData.paid, ticketData.payment_method || '',
+        ticketData.paid_date || '', ticketData.commission || 0,
         ticketData.remark || ''
     ];
 
@@ -217,15 +209,12 @@ async function saveTicket(ticketData) {
         const response = await gapi.client.sheets.spreadsheets.values.append({
             spreadsheetId: CONFIG.SHEET_ID,
             range: `${CONFIG.SHEET_NAME}!A:S`,
-            valueInputOption: 'USER_ENTERED', // Correctly parse data types
-            resource: {
-                values: [values],
-            },
+            valueInputOption: 'USER_ENTERED',
+            resource: { values: [values] },
         });
         console.log('API Response:', response);
     } catch (err) {
         console.error("API Error saving ticket:", err);
-        // Re-throw the error so it can be caught by the calling function
         throw err;
     }
 }
@@ -278,8 +267,8 @@ function displayTickets(tickets) {
 
 function showToast(message, type = 'success') {
     toastMessage.textContent = message;
-    toast.className = 'toast show'; // Always add show
-    toast.classList.add(type); // Add type class
+    toast.className = 'toast show';
+    toast.classList.add(type);
     
     setTimeout(() => {
         toast.classList.remove('show', 'success', 'error', 'info');
@@ -322,20 +311,11 @@ function formatDateToDDMMYYYY(date) {
     return `${day}-${month}-${year}`;
 }
 
-function formatDateToYYYYMMDD(dateString) {
-    if (!dateString) return '';
-    const parts = dateString.split('-');
-    if (parts.length === 3) {
-        return `${parts[2]}-${parts[1]}-${parts[0]}`;
-    }
-    return dateString;
-}
-
 function parseDateFromDDMMYYYY(dateString) {
     if (!dateString) return null;
     const parts = dateString.split('-');
     if (parts.length === 3) {
-        return new Date(parts[2], parts[1] - 1, parts[0]);
+        return new Date(parts[2], parseInt(parts[1], 10) - 1, parts[0]);
     }
     return new Date(dateString);
 }
@@ -354,7 +334,9 @@ function calculateCommission() {
 // --- CHARTS ---
 
 function setupCharts() {
-    // Chart options can be defined once
+    const monthLabels = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const initialData = Array(12).fill(0);
+
     const chartOptions = {
         responsive: true,
         maintainAspectRatio: false,
@@ -362,20 +344,30 @@ function setupCharts() {
         scales: {
             y: { beginAtZero: true, grid: { color: 'rgba(74, 144, 226, 0.1)' } },
             x: { grid: { color: 'rgba(74, 144, 226, 0.1)' } }
+        },
+        interaction: {
+            intersect: false,
+            mode: 'index',
         }
     };
 
+    // Destroy existing charts if they exist
+    if (charts.commission) charts.commission.destroy();
+    if (charts.netAmount) charts.netAmount.destroy();
+
     const commissionCtx = document.getElementById('commissionChart').getContext('2d');
     charts.commission = new Chart(commissionCtx, {
-        type: 'bar',
+        type: 'line', // Changed to line chart
         data: {
-            labels: ['This Month'],
+            labels: monthLabels,
             datasets: [{
-                data: [0],
-                backgroundColor: 'rgba(74, 144, 226, 0.8)',
+                label: 'Commission',
+                data: [...initialData],
+                backgroundColor: 'rgba(74, 144, 226, 0.2)',
                 borderColor: 'rgba(74, 144, 226, 1)',
-                borderWidth: 2,
-                borderRadius: 8
+                borderWidth: 3,
+                fill: true,
+                tension: 0.4
             }]
         },
         options: chartOptions
@@ -385,9 +377,10 @@ function setupCharts() {
     charts.netAmount = new Chart(netAmountCtx, {
         type: 'line',
         data: {
-            labels: ['This Month'],
+            labels: monthLabels,
             datasets: [{
-                data: [0],
+                label: 'Net Amount',
+                data: [...initialData],
                 backgroundColor: 'rgba(106, 183, 255, 0.2)',
                 borderColor: 'rgba(106, 183, 255, 1)',
                 borderWidth: 3,
@@ -400,42 +393,54 @@ function setupCharts() {
 }
 
 function updateCharts() {
-    const currentMonth = new Date().getMonth();
-    const currentYear = new Date().getFullYear();
-
-    const monthlyData = allTickets.filter(ticket => {
-        const ticketDate = parseDateFromDDMMYYYY(ticket.issued_date);
-        return ticketDate && ticketDate.getMonth() === currentMonth && ticketDate.getFullYear() === currentYear && !ticket.canceled;
-    });
+    const currentYear = 2025;
     
-    const totalCommission = monthlyData.reduce((sum, ticket) => sum + ticket.commission, 0);
-    const totalNetAmount = monthlyData.reduce((sum, ticket) => sum + ticket.net_amount, 0);
+    // Initialize monthly totals
+    const monthlyCommissions = Array(12).fill(0);
+    const monthlyNetAmounts = Array(12).fill(0);
+    
+    const yearlyData = allTickets.filter(ticket => {
+        const ticketDate = parseDateFromDDMMYYYY(ticket.issued_date);
+        return ticketDate && ticketDate.getFullYear() === currentYear && !ticket.canceled;
+    });
 
+    yearlyData.forEach(ticket => {
+        const ticketDate = parseDateFromDDMMYYYY(ticket.issued_date);
+        const monthIndex = ticketDate.getMonth(); // 0 = January, 11 = December
+        
+        monthlyCommissions[monthIndex] += ticket.commission;
+        monthlyNetAmounts[monthIndex] += ticket.net_amount;
+    });
+
+    // Update Commission Chart
     if (charts.commission) {
-        charts.commission.data.datasets[0].data = [totalCommission];
+        charts.commission.data.datasets[0].data = monthlyCommissions;
         charts.commission.update();
     }
+
+    // Update Net Amount Chart
     if (charts.netAmount) {
-        charts.netAmount.data.datasets[0].data = [totalNetAmount];
+        charts.netAmount.data.datasets[0].data = monthlyNetAmounts;
         charts.netAmount.update();
     }
 }
 
 
-// --- MODAL & SEARCH (Placeholder functions, can be expanded) ---
+// --- MODAL & SEARCH ---
 
 function performSearch() {
     const searchName = document.getElementById('searchName').value.toLowerCase();
     const searchBooking = document.getElementById('searchBooking').value.toLowerCase();
-    const searchDate = document.getElementById('searchDate').value;
+    const searchDateInput = document.getElementById('searchDate').value;
     
     const filteredTickets = allTickets.filter(ticket => {
         const nameMatch = !searchName || (ticket.name && ticket.name.toLowerCase().includes(searchName));
         const bookingMatch = !searchBooking || (ticket.booking_reference && ticket.booking_reference.toLowerCase().includes(searchBooking));
         
         let dateMatch = true;
-        if (searchDate) {
-            const searchDateFormatted = formatDateToDDMMYYYY(searchDate);
+        if (searchDateInput) {
+            // Convert HTML date input (YYYY-MM-DD) to DD-MM-YYYY for comparison
+            const searchDateFormatted = formatDateToDDMMYYYY(new Date(searchDateInput));
             dateMatch = ticket.issued_date === searchDateFormatted;
         }
         
@@ -453,13 +458,17 @@ function clearSearch() {
 }
 
 function findTicket(action) {
-    // Implementation for finding a ticket can be added here
-    console.log(`Finding ticket for action: ${action}`);
+    // This is a placeholder. A full implementation would involve
+    // finding the ticket and showing a modal for modification or cancellation.
+    const pnrInputId = action === 'modify' ? 'modifyPnr' : 'cancelPnr';
+    const pnr = document.getElementById(pnrInputId).value;
+    if (!pnr) {
+        showToast('Please enter a PNR code.', 'error');
+        return;
+    }
+    showToast(`Find ticket functionality for PNR: ${pnr} is not yet implemented.`, 'info');
 }
 
 function closeModal() {
     modal.style.display = 'none';
 }
-
-// Initialize the app
-setupEventListeners();

@@ -1,8 +1,8 @@
 // Configuration
 const CONFIG = {
     SHEET_ID: '1SGc80isz0VRVt447R_q-fBdZ_me52H_Z32W5HauHMWQ',
-    API_KEY: 'AIzaSyDp7usMq_6sQ9kjVLGpA_wuTSeJkGYKbaY', // <-- IMPORTANT: REPLACE WITH YOUR API KEY
-    CLIENT_ID: '609536649533-ta5o3b6d1dgess21sedlr2arsr8ms1h6.apps.googleusercontent.com', // <-- IMPORTANT: REPLACE WITH YOUR CLIENT ID
+    API_KEY: 'AIzaSyC9JSD6VWXMQ7Pe8VPf-gIlNUtcwQhkG1o', // <-- IMPORTANT: REPLACE WITH YOUR API KEY
+    CLIENT_ID: '254093944424-mfvk48avc9n86de6jit9oai7kqrsr2f7.apps.googleusercontent.com', // <-- IMPORTANT: REPLACE WITH YOUR CLIENT ID
     SCOPES: 'https://www.googleapis.com/auth/spreadsheets',
     DISCOVERY_DOC: 'https://sheets.googleapis.com/$discovery/rest?version=v4',
     SHEET_NAME: '2025'

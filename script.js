@@ -65,7 +65,6 @@ async function loadGisClient() {
     });
 }
 
-
 function maybeEnableButtons() {
     if (gapiInited && gisInited) {
         authorizeButton.style.display = 'block';
@@ -82,7 +81,9 @@ async function initializeApp() {
 function handleAuthClick() {
     tokenClient.callback = async (resp) => {
         if (resp.error !== undefined) {
-            throw (resp);
+            console.error('Auth error:', resp);
+            showToast('Authentication failed. Please try again.', 'error');
+            return;
         }
         
         gapi.client.setToken(resp); 
@@ -142,15 +143,19 @@ async function loadTicketData() {
     try {
         loading.style.display = 'block';
         dashboardContent.style.display = 'none';
+        
+        console.log('Loading ticket data...');
         const response = await gapi.client.sheets.spreadsheets.values.get({
             spreadsheetId: CONFIG.SHEET_ID,
             range: `${CONFIG.SHEET_NAME}!A:S`,
         });
         
         const data = response.result;
+        console.log('Raw data from sheets:', data);
         
         if (data.values && data.values.length > 1) {
             allTickets = parseTicketData(data.values);
+            console.log('Parsed tickets:', allTickets);
             updateCharts();
             displayAllTickets();
         }
@@ -180,6 +185,15 @@ async function handleSellTicket(e) {
         return;
     }
 
+    // Check if user is authenticated
+    const token = gapi.client.getToken();
+    if (!token || !token.access_token) {
+        showToast('Please sign in to Google Sheets first.', 'error');
+        submitButton.disabled = false;
+        submitButton.textContent = 'Submit Ticket';
+        return;
+    }
+
     const formData = new FormData(form);
     const ticketData = {};
     
@@ -187,16 +201,20 @@ async function handleSellTicket(e) {
         ticketData[key] = value;
     }
     
+    // Set additional fields
     ticketData.issued_date = getCurrentDateDDMMYYYY();
     ticketData.paid = document.getElementById('paid').checked;
     ticketData.commission = document.getElementById('commission').value;
     
+    // Format dates
     if (ticketData.departing_on) {
         ticketData.departing_on = formatDateToDDMMYYYY(ticketData.departing_on);
     }
     if (ticketData.paid_date) {
         ticketData.paid_date = formatDateToDDMMYYYY(ticketData.paid_date);
     }
+    
+    console.log('Ticket data to save:', ticketData);
     
     try {
         await saveTicket(ticketData);
@@ -207,7 +225,7 @@ async function handleSellTicket(e) {
         showView('home');
     } catch (error) {
         console.error('Error in handleSellTicket:', error);
-        const errorMessage = error.result?.error?.message || 'Could not save the ticket. Check console for details.';
+        const errorMessage = error.result?.error?.message || error.message || 'Could not save the ticket. Check console for details.';
         showToast(`Error: ${errorMessage}`, 'error');
     } finally {
         submitButton.disabled = false;
@@ -225,12 +243,11 @@ async function saveTicket(ticketData) {
 
     const token = gapi.client.getToken();
     if (!token || !token.access_token) {
-        showToast('Authentication required. Please sign in again.', 'error');
-        tokenClient.requestAccessToken({ prompt: 'consent' });
         throw new Error('No valid access token');
     }
 
-    // **FIXED**: The order of values now matches your Google Sheet columns.
+    // **FIXED**: The order of values now matches your Google Sheet columns exactly
+    // Based on your screenshot: issued_date, name, nrc_no, phone, account_name, account_type, account_link, departure, destination, departing_on, airline, base_fare, booking_reference, net_amount, paid, payment_method, paid_date, commission, remark
     const values = [
         ticketData.issued_date || '',
         ticketData.name || '',
@@ -243,15 +260,17 @@ async function saveTicket(ticketData) {
         ticketData.destination || '',
         ticketData.departing_on || '',
         ticketData.airline || '',
-        ticketData.base_fare || 0,
-        ticketData.booking_reference || '', // Corrected position
-        ticketData.net_amount || 0,        // Corrected position
-        ticketData.paid,
+        parseFloat(ticketData.base_fare) || 0,
+        ticketData.booking_reference || '',
+        parseFloat(ticketData.net_amount) || 0,
+        ticketData.paid || false,
         ticketData.payment_method || '',
         ticketData.paid_date || '',
-        ticketData.commission || 0,
+        parseFloat(ticketData.commission) || 0,
         ticketData.remark || ''
     ];
+
+    console.log('Values to append:', values);
 
     try {
         const response = await gapi.client.sheets.spreadsheets.values.append({
@@ -261,12 +280,12 @@ async function saveTicket(ticketData) {
             resource: { values: [values] },
         });
         console.log('API Response:', response);
+        return response;
     } catch (err) {
         console.error("API Error saving ticket:", err);
         throw err;
     }
 }
-
 
 // --- UI & DISPLAY ---
 
@@ -321,12 +340,13 @@ function showToast(message, type = 'success') {
     }, 5000);
 }
 
-
 // --- UTILITY & HELPER FUNCTIONS ---
 
 function parseTicketData(rawData) {
     const headers = rawData[0].map(h => h.toLowerCase().replace(/\s+/g, '_'));
     const tickets = [];
+    
+    console.log('Headers:', headers);
     
     for (let i = 1; i < rawData.length; i++) {
         const row = rawData[i];
@@ -351,6 +371,7 @@ function parseTicketData(rawData) {
 function formatDateToDDMMYYYY(date) {
     if (!date) return '';
     const d = new Date(date);
+    if (isNaN(d.getTime())) return '';
     const day = String(d.getDate()).padStart(2, '0');
     const month = String(d.getMonth() + 1).padStart(2, '0');
     const year = d.getFullYear();
@@ -361,7 +382,10 @@ function parseDateFromDDMMYYYY(dateString) {
     if (!dateString) return null;
     const parts = dateString.split('-');
     if (parts.length === 3) {
-        return new Date(parts[2], parseInt(parts[1], 10) - 1, parts[0]);
+        const day = parseInt(parts[0], 10);
+        const month = parseInt(parts[1], 10) - 1; // Month is 0-indexed
+        const year = parseInt(parts[2], 10);
+        return new Date(year, month, day);
     }
     return new Date(dateString);
 }
@@ -449,10 +473,11 @@ function updateCharts() {
 
     yearlyData.forEach(ticket => {
         const ticketDate = parseDateFromDDMMYYYY(ticket.issued_date);
-        const monthIndex = ticketDate.getMonth();
-        
-        monthlyCommissions[monthIndex] += ticket.commission;
-        monthlyNetAmounts[monthIndex] += ticket.net_amount;
+        if (ticketDate) {
+            const monthIndex = ticketDate.getMonth();
+            monthlyCommissions[monthIndex] += ticket.commission;
+            monthlyNetAmounts[monthIndex] += ticket.net_amount;
+        }
     });
 
     if (charts.commission) {

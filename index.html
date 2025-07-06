@@ -5,6 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Ocean Air Ticket Management</title>
     <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/vanillajs-datepicker@1.3.4/dist/css/datepicker.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/vanillajs-datepicker@1.3.4/dist/js/datepicker-full.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
     <script src="https://accounts.google.com/gsi/client" async defer></script>
     <script src="https://apis.google.com/js/api.js" async defer></script>
@@ -52,7 +54,7 @@
                     <div class="search-inputs">
                         <input type="text" id="searchName" placeholder="Client Name">
                         <input type="text" id="searchBooking" placeholder="Booking Reference">
-                        <input type="date" id="searchDate" placeholder="(Issued date)" required>
+                        <input type="text" id="searchDate" placeholder="MM/DD/YYYY">
                     </div>
                     <div class="search-buttons">
                         <button id="searchBtn" class="btn btn-primary">Search</button>
@@ -90,7 +92,7 @@
                     <div class="form-grid">
                         <div class="form-group">
                             <label for="issued_date">Issued Date</label>
-                            <input type="date" id="issued_date" name="issued_date" required>
+                            <input type="text" id="issued_date" name="issued_date" placeholder="MM/DD/YYYY" required>
                         </div>
                         <div class="form-group">
                             <label for="name">Client Name</label>
@@ -196,7 +198,7 @@
                         </div>
                         <div class="form-group">
                             <label for="departing_on">Travel Date</label>
-                            <input type="date" id="departing_on" name="departing_on" required>
+                            <input type="text" id="departing_on" name="departing_on" placeholder="MM/DD/YYYY" required>
                         </div>
                         <div class="form-group">
                             <label for="airline">Airline</label>
@@ -236,7 +238,7 @@
                         </div>
                         <div class="form-group">
                             <label for="paid_date">Paid Date</label>
-                            <input type="date" id="paid_date" name="paid_date">
+                            <input type="text" id="paid_date" name="paid_date" placeholder="MM/DD/YYYY">
                         </div>
                         <div class="form-group">
                             <label for="extra_fare">Extra Fare (Optional)</label>

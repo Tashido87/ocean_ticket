@@ -462,7 +462,7 @@ async function saveTicket(ticketData) {
         const response = await gapi.client.sheets.spreadsheets.values.append({
             spreadsheetId: CONFIG.SHEET_ID,
             range: `${CONFIG.SHEET_NAME}!A:S`,
-            valueInputOption: 'RAW', // <-- This is the change
+            valueInputOption: 'USER_ENTERED', // <-- This is the corrected value
             resource: {
                 values: [values],
             },

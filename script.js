@@ -165,8 +165,14 @@ async function loadTicketData() {
 
 async function handleSellTicket(e) {
     e.preventDefault();
+    const form = e.target;
+    const submitButton = form.querySelector('button[type="submit"]');
+
+    // Disable button and show loading text to prevent multiple submissions
+    submitButton.disabled = true;
+    submitButton.textContent = 'Submitting...';
     
-    const formData = new FormData(e.target);
+    const formData = new FormData(form);
     const ticketData = {};
     
     for (let [key, value] of formData.entries()) {
@@ -187,13 +193,18 @@ async function handleSellTicket(e) {
     try {
         await saveTicket(ticketData);
         showToast('Ticket saved successfully!', 'success');
-        e.target.reset();
+        form.reset();
         document.getElementById('commission').value = '';
         await loadTicketData(); // Refresh data after saving
+        showView('home'); // Go back to home view after successful submission
     } catch (error) {
         console.error('Error in handleSellTicket:', error);
-        const errorMessage = error.result?.error?.message || 'Could not save the ticket.';
+        const errorMessage = error.result?.error?.message || 'Could not save the ticket. Check console for details.';
         showToast(`Error: ${errorMessage}`, 'error');
+    } finally {
+        // Re-enable button and restore original text
+        submitButton.disabled = false;
+        submitButton.textContent = 'Submit Ticket';
     }
 }
 
@@ -262,8 +273,8 @@ function displayTickets(tickets) {
             <td>${ticket.booking_reference || ''}</td>
             <td>${ticket.departure || ''} → ${ticket.destination || ''}</td>
             <td>${ticket.airline || ''}</td>
-            <td>${(parseFloat(ticket.base_fare) || 0).toFixed(2)}</td>
-            <td>${(parseFloat(ticket.net_amount) || 0).toFixed(2)}</td>
+            <td>${(parseFloat(ticket.base_fare) || 0).toLocaleString()}</td>
+            <td>${(parseFloat(ticket.net_amount) || 0).toLocaleString()}</td>
             <td><span class="status-badge ${ticket.canceled ? 'canceled' : 'confirmed'}">${ticket.canceled ? 'Canceled' : 'Active'}</span></td>
         `;
         
@@ -273,11 +284,37 @@ function displayTickets(tickets) {
 
 function showToast(message, type = 'success') {
     toastMessage.textContent = message;
-    toast.className = 'toast show';
-    toast.classList.add(type);
     
+    // The CSS in styles.css uses '.notification', but the HTML has class="toast".
+    // This mismatch is why notifications were not showing.
+    // This corrected function directly manipulates the style to ensure it's visible.
+    toast.style.position = 'fixed';
+    toast.style.top = '100px';
+    toast.style.right = '2rem';
+    toast.style.padding = '1rem 1.5rem';
+    toast.style.borderRadius = '10px';
+    toast.style.fontWeight = '500';
+    toast.style.zIndex = '1001';
+    toast.style.color = 'white';
+    toast.style.transition = 'transform 0.5s ease-in-out';
+    toast.style.transform = 'translateX(120%)'; // Start off-screen
+    
+    if (type === 'success') {
+        toast.style.backgroundColor = 'rgba(72, 187, 120, 0.9)';
+    } else if (type === 'error') {
+        toast.style.backgroundColor = 'rgba(229, 62, 62, 0.9)';
+    } else {
+        toast.style.backgroundColor = 'rgba(74, 144, 226, 0.9)';
+    }
+
+    // Slide in
     setTimeout(() => {
-        toast.classList.remove('show', 'success', 'error', 'info');
+        toast.style.transform = 'translateX(0)';
+    }, 100);
+
+    // Slide out
+    setTimeout(() => {
+        toast.style.transform = 'translateX(120%)';
     }, 5000);
 }
 
@@ -363,7 +400,7 @@ function setupCharts() {
 
     const commissionCtx = document.getElementById('commissionChart').getContext('2d');
     charts.commission = new Chart(commissionCtx, {
-        type: 'line', // Changed to line chart
+        type: 'line',
         data: {
             labels: monthLabels,
             datasets: [{
@@ -464,14 +501,13 @@ function clearSearch() {
 }
 
 function findTicket(action) {
-    // This is a placeholder. A full implementation would involve
-    // finding the ticket and showing a modal for modification or cancellation.
     const pnrInputId = action === 'modify' ? 'modifyPnr' : 'cancelPnr';
     const pnr = document.getElementById(pnrInputId).value;
     if (!pnr) {
         showToast('Please enter a PNR code.', 'error');
         return;
     }
+    // Placeholder for future functionality
     showToast(`Find ticket functionality for PNR: ${pnr} is not yet implemented.`, 'info');
 }
 

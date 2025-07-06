@@ -111,7 +111,6 @@ function handleSignoutClick() {
     }
 }
 
-
 // --- EVENT LISTENERS ---
 
 function setupEventListeners() {
@@ -132,7 +131,6 @@ function setupEventListeners() {
         if (e.target === modal) closeModal();
     });
 }
-
 
 // --- CORE APP LOGIC ---
 
@@ -172,6 +170,14 @@ async function handleSellTicket(e) {
     submitButton.disabled = true;
     submitButton.textContent = 'Submitting...';
     
+    // ADDED: Check if API is initialized
+    if (!gapiInited || !gisInited) {
+        showToast('Google API not initialized. Please try signing in again.', 'error');
+        submitButton.disabled = false;
+        submitButton.textContent = 'Submit Ticket';
+        return;
+    }
+
     const formData = new FormData(form);
     const ticketData = {};
     
@@ -191,6 +197,7 @@ async function handleSellTicket(e) {
     }
     
     try {
+        // MODIFIED: Only show success toast after successful save
         await saveTicket(ticketData);
         showToast('Ticket saved successfully!', 'success');
         form.reset();
@@ -209,6 +216,22 @@ async function handleSellTicket(e) {
 }
 
 async function saveTicket(ticketData) {
+    // ADDED: Validate required fields
+    const requiredFields = ['name', 'nrc_no', 'phone', 'account_name', 'account_type', 'departure', 'destination', 'departing_on', 'airline', 'base_fare', 'booking_reference', 'net_amount'];
+    for (const field of requiredFields) {
+        if (!ticketData[field]) {
+            throw new Error(`Missing required field: ${field}`);
+        }
+    }
+
+    // ADDED: Check for valid token
+    const token = gapi.client.getToken();
+    if (!token || !token.access_token) {
+        showToast('Authentication required. Please sign in again.', 'error');
+        tokenClient.requestAccessToken({ prompt: 'consent' });
+        throw new Error('No valid access token');
+    }
+
     const values = [
         ticketData.issued_date || '', ticketData.name || '',
         ticketData.nrc_no || '', ticketData.phone || '',
@@ -235,7 +258,6 @@ async function saveTicket(ticketData) {
         throw err;
     }
 }
-
 
 // --- UI & DISPLAY ---
 
@@ -318,7 +340,6 @@ function showToast(message, type = 'success') {
     }, 5000);
 }
 
-
 // --- UTILITY & HELPER FUNCTIONS ---
 
 function parseTicketData(rawData) {
@@ -372,7 +393,6 @@ function calculateCommission() {
     const commission = Math.round((baseFare * 0.05) * 0.60);
     document.getElementById('commission').value = commission;
 }
-
 
 // --- CHARTS ---
 
@@ -467,7 +487,6 @@ function updateCharts() {
         charts.netAmount.update();
     }
 }
-
 
 // --- MODAL & SEARCH ---
 

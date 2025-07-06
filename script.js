@@ -462,14 +462,17 @@ async function saveTicket(ticketData) {
         const response = await gapi.client.sheets.spreadsheets.values.append({
             spreadsheetId: CONFIG.SHEET_ID,
             range: `${CONFIG.SHEET_NAME}!A:S`,
-            valueInputOption: 'USER_ENTERED',
+            valueInputOption: 'RAW', // <-- This is the change
             resource: {
                 values: [values],
             },
         });
-        console.log(response);
+        console.log('API Response:', response);
     } catch (err) {
-        console.error("error saving ticket", err);
+        console.error("Error saving ticket:", err);
+        // Display a more detailed error message to the user
+        const errorMessage = err.result?.error?.message || 'An unknown error occurred.';
+        showToast(`Error saving ticket: ${errorMessage}`, 'error');
     }
 }
 

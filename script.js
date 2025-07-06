@@ -10,73 +10,73 @@ const CONFIG = {
 
 // Global variables
 let allTickets = [];
+let filteredTickets = [];
 let currentView = 'home';
 let charts = {};
 let tokenClient;
 let gapiInited = false;
 let gisInited = false;
-let isSubmitting = false; // Add submission flag
+let isSubmitting = false; 
+const rowsPerPage = 10;
+let currentPage = 1;
+
 
 // DOM Elements
 const navBtns = document.querySelectorAll('.nav-btn');
 const views = document.querySelectorAll('.view');
 const loading = document.getElementById('loading');
 const dashboardContent = document.getElementById('dashboard-content');
-const modal = document.getElementById('modal');
+const detailsModal = document.getElementById('modal');
+const detailsModalBody = document.getElementById('modalBody');
+const modifyModal = document.getElementById('modifyModal');
+const modifyModalBody = document.getElementById('modifyModalBody');
 const toast = document.getElementById('toast');
 const toastMessage = document.getElementById('toastMessage');
 const authorizeButton = document.getElementById('authorize_button');
 const signoutButton = document.getElementById('signout_button');
+const totalTicketsMonth = document.getElementById('total-tickets-month');
+const totalTicketsCount = document.getElementById('total-tickets-count');
 
 // --- INITIALIZATION ---
 
 window.onload = async () => {
     console.log('Window loaded, initializing...');
+    initializeDatepickers();
     setupEventListeners();
     
-    // Check if gapi is available
-    if (typeof gapi === 'undefined') {
-        console.error('Google API (gapi) not loaded. Make sure you have included the Google API script.');
-        showToast('Google API not loaded. Please check your internet connection and refresh the page.', 'error');
+    if (typeof gapi === 'undefined' || typeof google === 'undefined' || !google.accounts) {
+        showToast('Google API scripts not loaded. Please check your internet connection.', 'error');
         return;
     }
     
-    // Check if google.accounts is available
-    if (typeof google === 'undefined' || !google.accounts) {
-        console.error('Google Identity Services not loaded. Make sure you have included the Google Identity script.');
-        showToast('Google Identity Services not loaded. Please check your internet connection and refresh the page.', 'error');
-        return;
-    }
-    
-    // Improved async loading of Google APIs
     try {
-        await Promise.all([
-            loadGapiClient(),
-            loadGisClient()
-        ]);
-        console.log('Google APIs loaded successfully');
+        await Promise.all([loadGapiClient(), loadGisClient()]);
     } catch (error) {
-        console.error('Error loading Google APIs:', error);
-        showToast('Failed to load Google APIs. Please refresh the page and try again.', 'error');
+        showToast('Failed to load Google APIs. Please refresh the page.', 'error');
     }
 };
+
+function initializeDatepickers() {
+    const options = {
+        format: 'mm/dd/yyyy',
+        autohide: true,
+        todayHighlight: true,
+    };
+    new Datepicker(document.getElementById('searchDate'), options);
+    new Datepicker(document.getElementById('issued_date'), options);
+    new Datepicker(document.getElementById('departing_on'), options);
+    new Datepicker(document.getElementById('paid_date'), options);
+}
 
 async function loadGapiClient() {
     return new Promise((resolve, reject) => {
         gapi.load('client', async () => {
             try {
-                await gapi.client.init({
-                    apiKey: CONFIG.API_KEY,
-                    discoveryDocs: [CONFIG.DISCOVERY_DOC],
-                });
-                console.log('GAPI client initialized');
+                await gapi.client.init({ apiKey: CONFIG.API_KEY, discoveryDocs: [CONFIG.DISCOVERY_DOC] });
                 gapiInited = true;
                 maybeEnableButtons();
                 resolve();
-            } catch (error) {
-                console.error('Error initializing GAPI client:', error);
-                reject(error);
-            }
+            } catch (error) { reject(error); }
         });
     });
 }
@@ -87,66 +87,48 @@ async function loadGisClient() {
             tokenClient = google.accounts.oauth2.initTokenClient({
                 client_id: CONFIG.CLIENT_ID,
                 scope: CONFIG.SCOPES,
-                callback: '', // Will be defined in handleAuthClick
+                callback: '', 
             });
-            console.log('GIS client initialized');
             gisInited = true;
             maybeEnableButtons();
             resolve();
-        } catch (error) {
-            console.error('Error initializing GIS client:', error);
-            reject(error);
-        }
+        } catch (error) { reject(error); }
     });
 }
 
 function maybeEnableButtons() {
     if (gapiInited && gisInited) {
-        console.log('Both APIs initialized, enabling buttons');
         authorizeButton.style.display = 'block';
-        // Hide the loading/error state
-        if (loading) {
-            loading.style.display = 'none';
-        }
+        if (loading) loading.style.display = 'none';
     }
 }
 
 async function initializeApp() {
-    console.log('Initializing app...');
-    setupCharts(); // Setup charts before loading data
-    await loadTicketData(); // Load data which will then update the charts
+    setupCharts();
+    await loadTicketData();
 }
 
 // --- AUTHENTICATION ---
 
 function handleAuthClick() {
-    console.log('Auth button clicked');
     tokenClient.callback = async (resp) => {
         if (resp.error !== undefined) {
-            console.error('Auth error:', resp);
             showToast('Authentication failed. Please try again.', 'error');
-            return;
+            throw (resp);
         }
-        
-        console.log('Auth successful, setting token');
         gapi.client.setToken(resp); 
-
         authorizeButton.style.display = 'none';
         signoutButton.style.display = 'block';
         await initializeApp();
     };
-
     if (gapi.client.getToken() === null) {
-        console.log('Requesting new token with consent');
         tokenClient.requestAccessToken({ prompt: 'consent' });
     } else {
-        console.log('Requesting token refresh');
         tokenClient.requestAccessToken({ prompt: '' });
     }
 }
 
 function handleSignoutClick() {
-    console.log('Signout clicked');
     const token = gapi.client.getToken();
     if (token !== null) {
         google.accounts.oauth2.revoke(token.access_token);
@@ -156,8 +138,7 @@ function handleSignoutClick() {
         if (dashboardContent) dashboardContent.style.display = 'none';
         if (loading) loading.style.display = 'block';
         allTickets = [];
-        const resultsBody = document.getElementById('resultsBody');
-        if (resultsBody) resultsBody.innerHTML = '';
+        document.getElementById('resultsBody').innerHTML = '';
         if (charts.commission) charts.commission.destroy();
         if (charts.netAmount) charts.netAmount.destroy();
     }
@@ -166,63 +147,28 @@ function handleSignoutClick() {
 // --- EVENT LISTENERS ---
 
 function setupEventListeners() {
-    console.log('Setting up event listeners...');
+    navBtns.forEach(btn => btn.addEventListener('click', (e) => showView(e.target.dataset.view)));
+    authorizeButton.addEventListener('click', handleAuthClick);
+    signoutButton.addEventListener('click', handleSignoutClick);
+    document.getElementById('searchBtn').addEventListener('click', performSearch);
+    document.getElementById('clearBtn').addEventListener('click', clearSearch);
+    document.getElementById('sellForm').addEventListener('submit', handleSellTicket);
+    document.getElementById('base_fare').addEventListener('input', calculateCommission);
+    document.getElementById('extra_fare').addEventListener('input', calculateCommission);
+    document.getElementById('findTicketBtn').addEventListener('click', findTicketForModify);
+    document.getElementById('findCancelBtn').addEventListener('click', () => showToast('Cancel functionality not yet implemented.', 'info'));
     
-    navBtns.forEach(btn => {
-        btn.addEventListener('click', (e) => showView(e.target.dataset.view));
+    // Modal close listeners
+    modifyModal.querySelector('.close').addEventListener('click', () => modifyModal.style.display = "none");
+    
+    window.addEventListener('click', (event) => {
+        if (event.target == detailsModal) {
+            detailsModal.style.display = "none";
+        }
+        if (event.target == modifyModal) {
+            modifyModal.style.display = "none";
+        }
     });
-
-    if (authorizeButton) {
-        authorizeButton.addEventListener('click', handleAuthClick);
-    }
-    
-    if (signoutButton) {
-        signoutButton.addEventListener('click', handleSignoutClick);
-    }
-    
-    const searchBtn = document.getElementById('searchBtn');
-    if (searchBtn) {
-        searchBtn.addEventListener('click', performSearch);
-    }
-    
-    const clearBtn = document.getElementById('clearBtn');
-    if (clearBtn) {
-        clearBtn.addEventListener('click', clearSearch);
-    }
-    
-    const sellForm = document.getElementById('sellForm');
-    if (sellForm) {
-        sellForm.addEventListener('submit', handleSellTicket);
-        console.log('Sell form event listener added');
-    } else {
-        console.error('Sell form not found! Make sure the form has id="sellForm"');
-    }
-    
-    const baseFareInput = document.getElementById('base_fare');
-    if (baseFareInput) {
-        baseFareInput.addEventListener('input', calculateCommission);
-    }
-    
-    const findTicketBtn = document.getElementById('findTicketBtn');
-    if (findTicketBtn) {
-        findTicketBtn.addEventListener('click', () => findTicket('modify'));
-    }
-    
-    const findCancelBtn = document.getElementById('findCancelBtn');
-    if (findCancelBtn) {
-        findCancelBtn.addEventListener('click', () => findTicket('cancel'));
-    }
-    
-    const closeBtn = document.querySelector('.close');
-    if (closeBtn) {
-        closeBtn.addEventListener('click', closeModal);
-    }
-    
-    if (modal) {
-        modal.addEventListener('click', (e) => {
-            if (e.target === modal) closeModal();
-        });
-    }
 }
 
 // --- CORE APP LOGIC ---
@@ -232,555 +178,421 @@ async function loadTicketData() {
         if (loading) loading.style.display = 'block';
         if (dashboardContent) dashboardContent.style.display = 'none';
         
-        console.log('Loading ticket data...');
-        
-        // Add retry logic for API calls
-        const response = await retryApiCall(async () => {
-            return await gapi.client.sheets.spreadsheets.values.get({
-                spreadsheetId: CONFIG.SHEET_ID,
-                range: `${CONFIG.SHEET_NAME}!A:S`,
-            });
+        const response = await gapi.client.sheets.spreadsheets.values.get({
+            spreadsheetId: CONFIG.SHEET_ID,
+            range: `${CONFIG.SHEET_NAME}!A:S`,
         });
         
-        const data = response.result;
-        console.log('Raw data from sheets:', data);
-        
-        if (data.values && data.values.length > 1) {
-            allTickets = parseTicketData(data.values);
-            console.log('Parsed tickets:', allTickets);
+        if (response.result.values && response.result.values.length > 1) {
+            allTickets = parseTicketData(response.result.values);
             updateCharts();
+            updateTotalTickets();
             displayAllTickets();
         }
         
         if (loading) loading.style.display = 'none';
         if (dashboardContent) dashboardContent.style.display = 'block';
     } catch (error) {
-        const errorMessage = error.result?.error?.message || error.toString();
-        console.error('Error loading ticket data:', error);
-        showToast(`Error loading data: ${errorMessage}`, 'error');
+        showToast(`Error loading data: ${error.result?.error?.message || error}`, 'error');
         if (loading) loading.style.display = 'none';
-    }
-}
-
-// Add retry logic for API calls
-async function retryApiCall(apiCall, maxRetries = 3, delay = 1000) {
-    for (let i = 0; i < maxRetries; i++) {
-        try {
-            return await apiCall();
-        } catch (error) {
-            console.warn(`API call failed, attempt ${i + 1}/${maxRetries}:`, error);
-            
-            if (i === maxRetries - 1) {
-                throw error;
-            }
-            
-            // Exponential backoff
-            await new Promise(resolve => setTimeout(resolve, delay * Math.pow(2, i)));
-        }
     }
 }
 
 async function handleSellTicket(e) {
     e.preventDefault();
-    console.log('Sell ticket form submitted');
-    
-    // Prevent multiple submissions
-    if (isSubmitting) {
-        console.log('Already submitting, ignoring duplicate submission');
-        return;
-    }
+    if (isSubmitting) return;
     
     isSubmitting = true;
-    const form = e.target;
-    const submitButton = form.querySelector('button[type="submit"]');
-
-    if (submitButton) {
-        submitButton.disabled = true;
-        submitButton.textContent = 'Submitting...';
-    }
+    const submitButton = e.target.querySelector('button[type="submit"]');
+    if (submitButton) submitButton.disabled = true;
     
     try {
-        if (!gapiInited || !gisInited) {
-            throw new Error('Google API not initialized. Please try signing in again.');
-        }
-
-        // Check if user is authenticated
-        const token = gapi.client.getToken();
-        if (!token || !token.access_token) {
-            throw new Error('Please sign in to Google Sheets first.');
-        }
-
-        // Enhanced form data collection with better error handling
-        const ticketData = collectFormData(form);
-        console.log('Form data collected:', ticketData);
-        
-        // Validate required fields
+        const ticketData = collectFormData(e.target);
         validateTicketData(ticketData);
-        
-        // Format dates
-        if (ticketData.issued_date) {
-            ticketData.issued_date = formatDateToDDMMYYYY(ticketData.issued_date);
-        }
-        if (ticketData.departing_on) {
-            ticketData.departing_on = formatDateToDDMMYYYY(ticketData.departing_on);
-        }
-        if (ticketData.paid_date) {
-            ticketData.paid_date = formatDateToDDMMYYYY(ticketData.paid_date);
-        }
-        
-        console.log('Ticket data to save:', ticketData);
-        
+
+        if (ticketData.issued_date) ticketData.issued_date = formatDateForSheet(ticketData.issued_date);
+        if (ticketData.departing_on) ticketData.departing_on = formatDateForSheet(ticketData.departing_on);
+        if (ticketData.paid_date) ticketData.paid_date = formatDateForSheet(ticketData.paid_date);
+
         await saveTicket(ticketData);
         showToast('Ticket saved successfully!', 'success');
-        form.reset();
-        const commissionField = document.getElementById('commission');
-        if (commissionField) commissionField.value = '';
+        e.target.reset();
         await loadTicketData(); 
         showView('home');
-        
     } catch (error) {
-        console.error('Error in handleSellTicket:', error);
-        const errorMessage = error.result?.error?.message || error.message || 'Could not save the ticket. Check console for details.';
-        showToast(`Error: ${errorMessage}`, 'error');
+        showToast(`Error: ${error.message || 'Could not save ticket.'}`, 'error');
     } finally {
         isSubmitting = false;
-        if (submitButton) {
-            submitButton.disabled = false;
-            submitButton.textContent = 'Submit Ticket';
-        }
+        if (submitButton) submitButton.disabled = false;
     }
 }
 
-// Enhanced form data collection
 function collectFormData(form) {
-    const formData = new FormData(form);
-    const ticketData = {};
-    
-    // List of expected fields - make sure these match your HTML form IDs
-    const expectedFields = [
-        'issued_date', 'name', 'nrc_no', 'phone', 'account_name', 'account_type', 
-        'account_link', 'departure', 'destination', 'departing_on', 'airline', 
-        'base_fare', 'booking_reference', 'net_amount', 'paid', 'payment_method', 
-        'paid_date', 'commission', 'remark'
-    ];
-    
-    expectedFields.forEach(field => {
-        const element = form.querySelector(`#${field}`);
-        if (element) {
-            if (element.type === 'checkbox') {
-                ticketData[field] = element.checked;
-            } else {
-                ticketData[field] = element.value || '';
-            }
-        } else {
-            console.warn(`Form field not found: ${field}`);
-            ticketData[field] = '';
-        }
+    const data = {};
+    const fields = ['issued_date', 'name', 'nrc_no', 'phone', 'account_name', 'account_type', 'account_link', 'departure', 'destination', 'departing_on', 'airline', 'base_fare', 'booking_reference', 'net_amount', 'paid', 'payment_method', 'paid_date', 'commission', 'remark'];
+    fields.forEach(field => {
+        const el = form.querySelector(`#${field}`);
+        if(el) data[field] = el.type === 'checkbox' ? el.checked : el.value;
     });
-    
-    return ticketData;
+    return data;
 }
 
-// Enhanced validation
-function validateTicketData(ticketData) {
-    const requiredFields = [
-        'issued_date', 'name', 'nrc_no', 'phone', 'account_name', 'account_type', 
-        'departure', 'destination', 'departing_on', 'airline', 'base_fare', 
-        'booking_reference', 'net_amount'
-    ];
-    
-    const missingFields = [];
-    
-    for (const field of requiredFields) {
-        if (!ticketData[field] || ticketData[field].toString().trim() === '') {
-            missingFields.push(field.replace('_', ' '));
-        }
-    }
-    
-    if (missingFields.length > 0) {
-        throw new Error(`Missing required fields: ${missingFields.join(', ')}`);
-    }
-    
-    // Validate numeric fields
-    const numericFields = ['base_fare', 'net_amount', 'commission'];
-    for (const field of numericFields) {
-        if (ticketData[field] && isNaN(parseFloat(ticketData[field]))) {
-            throw new Error(`Invalid number format for field: ${field.replace('_', ' ')}`);
-        }
-    }
+function validateTicketData(data) {
+    const required = ['issued_date', 'name', 'nrc_no', 'phone', 'account_name', 'account_type', 'departure', 'destination', 'departing_on', 'airline', 'base_fare', 'booking_reference', 'net_amount'];
+    const missing = required.filter(f => !data[f]);
+    if (missing.length > 0) throw new Error(`Missing required fields: ${missing.join(', ')}`);
 }
 
-async function saveTicket(ticketData) {
-    console.log('Saving ticket:', ticketData);
-    
-    const token = gapi.client.getToken();
-    if (!token || !token.access_token) {
-        throw new Error('No valid access token');
-    }
-
-    // The order of values matches your Google Sheet columns exactly
-    const values = [
-        [
-            ticketData.issued_date || '',
-            ticketData.name || '',
-            ticketData.nrc_no || '',
-            ticketData.phone || '',
-            ticketData.account_name || '',
-            ticketData.account_type || '',
-            ticketData.account_link || '',
-            ticketData.departure || '',
-            ticketData.destination || '',
-            ticketData.departing_on || '',
-            ticketData.airline || '',
-            parseFloat(ticketData.base_fare) || 0,
-            ticketData.booking_reference || '',
-            parseFloat(ticketData.net_amount) || 0,
-            ticketData.paid || false,
-            ticketData.payment_method || '',
-            ticketData.paid_date || '',
-            parseFloat(ticketData.commission) || 0,
-            ticketData.remark || ''
-        ]
-    ];
-
-    console.log('Values to append:', values);
-
-    try {
-        const response = await retryApiCall(async () => {
-            return await gapi.client.sheets.spreadsheets.values.append({
-                spreadsheetId: CONFIG.SHEET_ID,
-                range: `${CONFIG.SHEET_NAME}!A:S`,
-                valueInputOption: 'USER_ENTERED',
-                resource: { values: values },
-            });
-        });
-        
-        console.log('API Response:', response);
-        return response;
-    } catch (err) {
-        console.error("API Error saving ticket:", err);
-        throw err;
-    }
+async function saveTicket(data) {
+    const values = [[
+        data.issued_date, data.name, data.nrc_no.toUpperCase(), data.phone,
+        data.account_name.toUpperCase(), data.account_type.toUpperCase(), data.account_link,
+        data.departure, data.destination, data.departing_on, data.airline,
+        parseFloat(data.base_fare) || 0, data.booking_reference.toUpperCase(), parseFloat(data.net_amount) || 0,
+        data.paid, data.payment_method, data.paid_date,
+        parseFloat(data.commission) || 0, data.remark
+    ]];
+    await gapi.client.sheets.spreadsheets.values.append({
+        spreadsheetId: CONFIG.SHEET_ID, range: `${CONFIG.SHEET_NAME}!A:S`,
+        valueInputOption: 'USER_ENTERED', resource: { values },
+    });
 }
 
 // --- UI & DISPLAY ---
 
 function showView(viewName) {
-    navBtns.forEach(btn => {
-        btn.classList.toggle('active', btn.dataset.view === viewName);
-    });
-    views.forEach(view => {
-        view.classList.toggle('active', view.id === `${viewName}-view`);
-    });
-    currentView = viewName;
-
-    if (viewName === 'sell') {
-        const issuedDateInput = document.getElementById('issued_date');
-        if (issuedDateInput) {
-            // Set the default value to today's date
-            issuedDateInput.valueAsDate = new Date();
-        }
-    }
+    navBtns.forEach(btn => btn.classList.toggle('active', btn.dataset.view === viewName));
+    views.forEach(view => view.classList.toggle('active', view.id === `${viewName}-view`));
+    if (viewName === 'sell') document.getElementById('sellForm').reset();
 }
 
 function displayAllTickets() {
-    const sortedTickets = [...allTickets].sort((a, b) => {
-        const dateA = parseDateFromDDMMYYYY(a.issued_date);
-        const dateB = parseDateFromDDMMYYYY(b.issued_date);
-        return dateB - dateA;
+    const sorted = [...allTickets].sort((a, b) => {
+        const dateDiff = parseSheetDate(b.issued_date) - parseSheetDate(a.issued_date);
+        return dateDiff !== 0 ? dateDiff : b.rowIndex - a.rowIndex;
     });
-    displayTickets(sortedTickets);
+    filteredTickets = sorted;
+    displayTickets(filteredTickets, 1);
 }
 
-function displayTickets(tickets) {
+function displayTickets(tickets, page = 1) {
     const tbody = document.getElementById('resultsBody');
-    if (!tbody) return;
-    
     tbody.innerHTML = '';
-    
-    tickets.forEach((ticket, index) => {
-        const row = document.createElement('tr');
-        row.className = ticket.canceled ? 'canceled' : '';
-        row.style.animationDelay = `${index * 0.05}s`;
-        
+    currentPage = page;
+    const paginated = tickets.slice((page - 1) * rowsPerPage, page * rowsPerPage);
+    paginated.forEach((ticket) => {
+        const row = tbody.insertRow();
         row.innerHTML = `
-            <td>${ticket.issued_date || ''}</td>
-            <td>${ticket.name || ''}</td>
-            <td>${ticket.booking_reference || ''}</td>
-            <td>${ticket.departure || ''} → ${ticket.destination || ''}</td>
+            <td>${ticket.issued_date || ''}</td><td>${ticket.name || ''}</td>
+            <td>${ticket.booking_reference || ''}</td><td>${ticket.departure || ''} → ${ticket.destination || ''}</td>
             <td>${ticket.airline || ''}</td>
-            <td>${(parseFloat(ticket.base_fare) || 0).toLocaleString()}</td>
-            <td>${(parseFloat(ticket.net_amount) || 0).toLocaleString()}</td>
-            <td><span class="status-badge ${ticket.canceled ? 'canceled' : 'confirmed'}">${ticket.canceled ? 'Canceled' : 'Active'}</span></td>
-        `;
-        
-        tbody.appendChild(row);
+            <td><button class="btn btn-secondary" style="padding: 0.5rem 1rem;" onclick="showDetails(${ticket.rowIndex})">Details</button></td>`;
     });
+    setupPagination(tickets);
 }
 
-function showToast(message, type = 'success') {
-    console.log(`Toast: ${type} - ${message}`);
-    if (toastMessage) {
-        toastMessage.textContent = message;
-    }
-    if (toast) {
-        toast.className = `notification ${type} show`;
-        setTimeout(() => {
-            toast.className = toast.className.replace('show', '');
-        }, 5000);
+function closeDetailsModal() {
+    detailsModal.style.display = 'none';
+}
+
+function showDetails(rowIndex) {
+    const ticket = allTickets.find(t => t.rowIndex === rowIndex);
+    if (ticket) {
+        const statusHtml = ticket.canceled ? `<p><strong>Status:</strong> <span class="status-badge canceled">Canceled</span></p>` : '';
+        detailsModalBody.innerHTML = `
+            <h3>Client & Booking Details</h3>
+            <p><strong>Name:</strong> ${ticket.name || 'N/A'}</p>
+            <p><strong>Phone:</strong> ${makeClickable(ticket.phone)}</p>
+            <p><strong>Account Name:</strong> ${ticket.account_name || 'N/A'}</p>
+            <p><strong>Account Type:</strong> ${ticket.account_type || 'N/A'}</p>
+            <p><strong>Account Link:</strong> ${makeClickable(ticket.account_link) || 'N/A'}</p>
+            <hr style="border-color: rgba(255,255,255,0.2); margin: 1rem 0;">
+            <p><strong>PNR:</strong> ${ticket.booking_reference || 'N/A'}</p>
+            <p><strong>Route:</strong> ${ticket.departure || 'N/A'} → ${ticket.destination || 'N/A'}</p>
+            <p><strong>Airline:</strong> ${ticket.airline || 'N/A'}</p>
+            <p><strong>Travel Date:</strong> ${ticket.departing_on || 'N/A'}</p>
+            <p><strong>Net Amount:</strong> ${(ticket.net_amount || 0).toLocaleString()} MMK</p>
+            <p><strong>Commission:</strong> ${(ticket.commission || 0).toLocaleString()} MMK</p>
+            ${statusHtml}
+            <div style="text-align: center; margin-top: 1.5rem;">
+                <button class="btn btn-secondary" onclick="closeDetailsModal()">Close</button>
+            </div>
+        `;
+        detailsModal.style.display = 'block';
     }
 }
 
 // --- UTILITY & HELPER FUNCTIONS ---
 
-function parseTicketData(rawData) {
-    const headers = rawData[0].map(h => h.toLowerCase().replace(/\s+/g, '_'));
-    const tickets = [];
-    
-    console.log('Headers:', headers);
-    
-    for (let i = 1; i < rawData.length; i++) {
-        const row = rawData[i];
+function parseTicketData(values) {
+    const headers = values[0].map(h => h.toLowerCase().replace(/\s+/g, '_'));
+    return values.slice(1).map((row, i) => {
         const ticket = {};
-        
-        headers.forEach((header, index) => {
-            ticket[header] = row[index] || '';
-        });
-        
-        ticket.base_fare = parseFloat(ticket.base_fare) || 0;
-        ticket.net_amount = parseFloat(ticket.net_amount) || 0;
-        ticket.commission = parseFloat(ticket.commission) || 0;
-        ticket.paid = ticket.paid === 'TRUE' || ticket.paid === true;
-        ticket.rowIndex = i + 1;
-        
-        tickets.push(ticket);
-    }
-    
-    return tickets;
-}
-
-function formatDateToDDMMYYYY(date) {
-    if (!date) return '';
-    const d = new Date(date);
-    if (isNaN(d.getTime())) return '';
-    // Adjust for timezone offset by working with UTC dates
-    const day = String(d.getUTCDate()).padStart(2, '0');
-    const month = String(d.getUTCMonth() + 1).padStart(2, '0');
-    const year = d.getUTCFullYear();
-    return `${day}-${month}-${year}`;
-}
-
-function parseDateFromDDMMYYYY(dateString) {
-    if (!dateString) return null;
-    const parts = dateString.split('-');
-    if (parts.length === 3) {
-        const day = parseInt(parts[0], 10);
-        const month = parseInt(parts[1], 10) - 1; // Month is 0-indexed
-        const year = parseInt(parts[2], 10);
-        return new Date(year, month, day);
-    }
-    return new Date(dateString);
-}
-
-function getCurrentDateDDMMYYYY() {
-    return formatDateToDDMMYYYY(new Date());
+        headers.forEach((h, j) => ticket[h] = row[j] || '');
+        const safeParse = (val) => parseFloat(String(val).replace(/,/g, '')) || 0;
+        ticket.base_fare = safeParse(ticket.base_fare);
+        ticket.net_amount = safeParse(ticket.net_amount);
+        ticket.commission = safeParse(ticket.commission);
+        ticket.paid = ticket.paid === 'TRUE';
+        ticket.rowIndex = i + 2;
+        return ticket;
+    });
 }
 
 function calculateCommission() {
-    const baseFareInput = document.getElementById('base_fare');
+    const baseFare = parseFloat(document.getElementById('base_fare').value) || 0;
+    const extraFare = parseFloat(document.getElementById('extra_fare').value) || 0;
     const commissionInput = document.getElementById('commission');
-    
-    if (baseFareInput && commissionInput) {
-        const baseFare = parseFloat(baseFareInput.value) || 0;
-        const commission = Math.round((baseFare * 0.05) * 0.60);
-        commissionInput.value = commission;
+    commissionInput.value = Math.round((baseFare * 0.05) * 0.60) + extraFare;
+}
+
+function makeClickable(text) {
+    if (!text) return 'N/A';
+    if (text.toLowerCase().startsWith('http')) return `<a href="${text}" target="_blank">${text}</a>`;
+    if (/^[\d\s\-+()]+$/.test(text)) return `<a href="tel:${text.replace(/[^\d+]/g, '')}">${text}</a>`;
+    if (text.startsWith('@')) return `<a href="https://t.me/${text.substring(1)}" target="_blank">${text}</a>`;
+    return text;
+}
+
+function showToast(message, type = 'success') { if(toastMessage) toastMessage.textContent = message; if(toast) { toast.className = `notification ${type} show`; setTimeout(() => toast.className = toast.className.replace('show', ''), 5000); } }
+
+function formatDateForSheet(dateString) {
+    if (!dateString) return '';
+    const date = new Date(dateString);
+    if (isNaN(date.getTime())) return dateString; // Return original if invalid
+    const day = String(date.getDate()).padStart(2, '0');
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const year = date.getFullYear();
+    return `${month}/${day}/${year}`;
+}
+
+function parseSheetDate(dateString) {
+    if (!dateString) return new Date(0);
+    // Handles "DD-MMM-YYYY" from sheets
+    const monthMap = { 'JAN': 0, 'FEB': 1, 'MAR': 2, 'APR': 3, 'MAY': 4, 'JUN': 5, 'JUL': 6, 'AUG': 7, 'SEP': 8, 'OCT': 9, 'NOV': 10, 'DEC': 11 };
+    const parts = dateString.split('-');
+    if (parts.length === 3 && isNaN(parseInt(parts[1], 10))) {
+        const day = parseInt(parts[0], 10);
+        const month = monthMap[parts[1].toUpperCase()];
+        const year = parseInt(parts[2], 10);
+        if (!isNaN(day) && month !== undefined && !isNaN(year)) {
+            return new Date(year, month, day);
+        }
     }
+    // Handles "MM/DD/YYYY" or other standard formats
+    return new Date(dateString);
 }
 
 // --- CHARTS ---
 
 function setupCharts() {
+    const chartOptions = { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { callbacks: { label: function(c) { return `${c.dataset.label}: ${c.parsed.y.toLocaleString()} MMK`}}}}, scales: { y: { beginAtZero: true, ticks: { callback: function(v) { if (v >= 1e6) return v/1e6+'M'; if (v >= 1e3) return v/1e3+'K'; return v; }}}, x: {}}, interaction: { intersect: false, mode: 'index' }};
     const monthLabels = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-    const initialData = Array(12).fill(0);
-
-    const chartOptions = {
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: { legend: { display: false } },
-        scales: {
-            y: { beginAtZero: true, grid: { color: 'rgba(74, 144, 226, 0.1)' } },
-            x: { grid: { color: 'rgba(74, 144, 226, 0.1)' } }
-        },
-        interaction: {
-            intersect: false,
-            mode: 'index',
-        }
-    };
-
     if (charts.commission) charts.commission.destroy();
     if (charts.netAmount) charts.netAmount.destroy();
-
-    const commissionChart = document.getElementById('commissionChart');
-    const netAmountChart = document.getElementById('netAmountChart');
-
-    if (commissionChart) {
-        const commissionCtx = commissionChart.getContext('2d');
-        charts.commission = new Chart(commissionCtx, {
-            type: 'line',
-            data: {
-                labels: monthLabels,
-                datasets: [{
-                    label: 'Commission',
-                    data: [...initialData],
-                    backgroundColor: 'rgba(74, 144, 226, 0.2)',
-                    borderColor: 'rgba(74, 144, 226, 1)',
-                    borderWidth: 3,
-                    fill: true,
-                    tension: 0.4
-                }]
-            },
-            options: chartOptions
-        });
+    if (document.getElementById('commissionChart')) {
+        charts.commission = new Chart(document.getElementById('commissionChart').getContext('2d'), { type: 'line', data: { labels: monthLabels, datasets: [{ label: 'Commission', data: [], backgroundColor: 'rgba(74, 144, 226, 0.2)', borderColor: 'rgba(74, 144, 226, 1)', borderWidth: 3, fill: true, tension: 0.4 }] }, options: chartOptions });
     }
-
-    if (netAmountChart) {
-        const netAmountCtx = netAmountChart.getContext('2d');
-        charts.netAmount = new Chart(netAmountCtx, {
-            type: 'line',
-            data: {
-                labels: monthLabels,
-                datasets: [{
-                    label: 'Net Amount',
-                    data: [...initialData],
-                    backgroundColor: 'rgba(106, 183, 255, 0.2)',
-                    borderColor: 'rgba(106, 183, 255, 1)',
-                    borderWidth: 3,
-                    fill: true,
-                    tension: 0.4
-                }]
-            },
-            options: chartOptions
-        });
+    if (document.getElementById('netAmountChart')) {
+        charts.netAmount = new Chart(document.getElementById('netAmountChart').getContext('2d'), { type: 'line', data: { labels: monthLabels, datasets: [{ label: 'Net Amount', data: [], backgroundColor: 'rgba(106, 183, 255, 0.2)', borderColor: 'rgba(106, 183, 255, 1)', borderWidth: 3, fill: true, tension: 0.4 }] }, options: chartOptions });
     }
 }
 
 function updateCharts() {
-    const currentYear = 2025;
-    
-    const monthlyCommissions = Array(12).fill(0);
-    const monthlyNetAmounts = Array(12).fill(0);
-    
-    const yearlyData = allTickets.filter(ticket => {
-        const ticketDate = parseDateFromDDMMYYYY(ticket.issued_date);
-        return ticketDate && ticketDate.getFullYear() === currentYear && !ticket.canceled;
-    });
+    const comms = Array(12).fill(0);
+    const nets = Array(12).fill(0);
+    const currentYear = new Date().getFullYear();
 
-    yearlyData.forEach(ticket => {
-        const ticketDate = parseDateFromDDMMYYYY(ticket.issued_date);
-        if (ticketDate) {
-            const monthIndex = ticketDate.getMonth();
-            monthlyCommissions[monthIndex] += ticket.commission;
-            monthlyNetAmounts[monthIndex] += ticket.net_amount;
+    allTickets.forEach(t => {
+        const d = parseSheetDate(t.issued_date);
+        if (d.getFullYear() === currentYear && !t.canceled) {
+            const m = d.getMonth();
+            if (m >= 0 && m < 12) {
+                comms[m] += t.commission;
+                nets[m] += t.net_amount;
+            }
         }
     });
-
+    
     if (charts.commission) {
-        charts.commission.data.datasets[0].data = monthlyCommissions;
+        charts.commission.data.datasets[0].data = comms;
         charts.commission.update();
     }
-
     if (charts.netAmount) {
-        charts.netAmount.data.datasets[0].data = monthlyNetAmounts;
+        charts.netAmount.data.datasets[0].data = nets;
         charts.netAmount.update();
     }
 }
 
-// --- MODAL & SEARCH ---
+function updateTotalTickets() {
+    const now = new Date();
+    const currentMonth = now.getMonth();
+    const currentYear = now.getFullYear();
+
+    const ticketsThisMonth = allTickets.filter(ticket => {
+        const ticketDate = parseSheetDate(ticket.issued_date);
+        return ticketDate.getMonth() === currentMonth && ticketDate.getFullYear() === currentYear && !ticket.canceled;
+    }).length;
+
+    totalTicketsMonth.textContent = `Total Tickets for ${now.toLocaleString('default', { month: 'long' })}`;
+    totalTicketsCount.textContent = ticketsThisMonth;
+}
+
+
+// --- SEARCH & PAGINATION ---
 
 function performSearch() {
-    const searchNameInput = document.getElementById('searchName');
-    const searchBookingInput = document.getElementById('searchBooking');
-    const searchDateInput = document.getElementById('searchDate');
+    const name = (document.getElementById('searchName')?.value || '').toUpperCase();
+    const bookRef = (document.getElementById('searchBooking')?.value || '').toUpperCase();
+    const dateVal = document.getElementById('searchDate')?.value || '';
     
-    const searchName = searchNameInput ? searchNameInput.value.toLowerCase() : '';
-    const searchBooking = searchBookingInput ? searchBookingInput.value.toLowerCase() : '';
-    const searchDateInputValue = searchDateInput ? searchDateInput.value : '';
+    let searchDate = null;
+    if (dateVal) {
+        searchDate = new Date(dateVal);
+    }
+
+    const results = allTickets.filter(t => {
+        const issuedDate = parseSheetDate(t.issued_date);
+        const isDateMatch = !searchDate || (
+            issuedDate.getDate() === searchDate.getDate() &&
+            issuedDate.getMonth() === searchDate.getMonth() &&
+            issuedDate.getFullYear() === searchDate.getFullYear()
+        );
+
+        return (!name || t.name.includes(name)) &&
+               (!bookRef || t.booking_reference.includes(bookRef)) &&
+               isDateMatch;
+    }).sort((a,b) => parseSheetDate(b.issued_date) - parseSheetDate(a.issued_date) || b.rowIndex - a.rowIndex);
     
-    const filteredTickets = allTickets.filter(ticket => {
-        const nameMatch = !searchName || (ticket.name && ticket.name.toLowerCase().includes(searchName));
-        const bookingMatch = !searchBooking || (ticket.booking_reference && ticket.booking_reference.toLowerCase().includes(searchBooking));
-        
-        let dateMatch = true;
-        if (searchDateInputValue) {
-            const searchDateFormatted = formatDateToDDMMYYYY(new Date(searchDateInputValue));
-            dateMatch = ticket.issued_date === searchDateFormatted;
-        }
-        
-        return nameMatch && bookingMatch && dateMatch;
-    });
-    
-    displayTickets(filteredTickets);
+    filteredTickets = results;
+    displayTickets(filteredTickets, 1);
 }
 
-function clearSearch() {
-    const searchNameInput = document.getElementById('searchName');
-    const searchBookingInput = document.getElementById('searchBooking');
-    const searchDateInput = document.getElementById('searchDate');
-    
-    if (searchNameInput) searchNameInput.value = '';
-    if (searchBookingInput) searchBookingInput.value = '';
-    if (searchDateInput) searchDateInput.value = '';
-    
-    displayAllTickets();
+function clearSearch() { document.getElementById('searchName').value = ''; document.getElementById('searchBooking').value = ''; document.getElementById('searchDate').value = ''; displayAllTickets(); }
+function setupPagination(items) { const container = document.getElementById('pagination'); container.innerHTML = ''; const pageCount = Math.ceil(items.length / rowsPerPage); if (pageCount <= 1) return; const btn = (txt, pg, en=true) => {const b = document.createElement('button'); b.className = 'pagination-btn'; b.innerText=txt; b.disabled=!en; if(en) b.onclick=()=>displayTickets(items,pg); if(pg===currentPage)b.classList.add('active'); return b;}; container.append(btn('Prev', currentPage - 1, currentPage > 1)); for (let i = 1; i <= pageCount; i++) container.append(btn(i,i)); container.append(btn('Next', currentPage + 1, currentPage < pageCount));}
+
+// --- MODIFY & UPDATE ---
+
+function findTicketForModify() {
+    const pnr = document.getElementById('modifyPnr').value.toUpperCase();
+    if (!pnr) return showToast('Please enter a PNR code.', 'error');
+    const found = allTickets.filter(t => t.booking_reference === pnr);
+    displayModifyResults(found);
 }
 
-function findTicket(action) {
-    const pnrInputId = action === 'modify' ? 'modifyPnr' : 'cancelPnr';
-    const pnrInput = document.getElementById(pnrInputId);
-    const pnr = pnrInput ? pnrInput.value : '';
-    
-    if (!pnr) {
-        showToast('Please enter a PNR code.', 'error');
+function displayModifyResults(tickets) {
+    const container = document.getElementById('modifyResultsContainer');
+    if (tickets.length === 0) {
+        container.innerHTML = '<p style="text-align: center; margin-top: 1rem;">No tickets found for this PNR.</p>';
         return;
     }
-    showToast(`Find ticket functionality for PNR: ${pnr} is not yet implemented.`, 'info');
-}
-
-function closeModal() {
-    if (modal) {
-        modal.style.display = 'none';
-    }
-}
-
-// Add debugging function to check form elements
-function debugForm() {
-    console.log('=== FORM DEBUG ===');
-    const form = document.getElementById('sellForm');
-    if (!form) {
-        console.error('Form with id="sellForm" not found!');
-        return;
-    }
-    
-    console.log('Form found:', form);
-    
-    const expectedFields = [
-        'issued_date', 'name', 'nrc_no', 'phone', 'account_name', 'account_type', 
-        'account_link', 'departure', 'destination', 'departing_on', 'airline', 
-        'base_fare', 'booking_reference', 'net_amount', 'paid', 'payment_method', 
-        'paid_date', 'commission', 'remark'
-    ];
-    
-    expectedFields.forEach(field => {
-        const element = form.querySelector(`#${field}`);
-        if (element) {
-            console.log(`✓ Found field: ${field}`, element);
-        } else {
-            console.error(`✗ Missing field: ${field}`);
-        }
+    let html = `<div class="table-container"><table><thead><tr><th>Name</th><th>Route</th><th>Action</th></tr></thead><tbody>`;
+    tickets.forEach(t => {
+        const actionButton = t.base_fare > 0 ? `<button class="btn btn-primary" onclick="openModifyModal(${t.rowIndex})">Modify</button>` : '';
+        html += `<tr><td>${t.name}</td><td>${t.departure}→${t.destination}</td><td>${actionButton}</td></tr>`;
     });
-    
-    console.log('=== END DEBUG ===');
+    container.innerHTML = html + '</tbody></table></div>';
 }
 
-// Call this function from browser console to debug form issues
-window.debugForm = debugForm;
+function openModifyModal(rowIndex) {
+    const ticket = allTickets.find(t => t.rowIndex === rowIndex);
+    if (!ticket) return showToast('Ticket not found.', 'error');
+
+    let travelDateForInput = '';
+    if (ticket.departing_on) {
+        const d = parseSheetDate(ticket.departing_on);
+        if (!isNaN(d.getTime())) {
+            travelDateForInput = `${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')}/${d.getFullYear()}`;
+        }
+    }
+
+    modifyModalBody.innerHTML = `
+        <h2>Modify Ticket: ${ticket.name}</h2>
+        <form id="updateForm" data-pnr="${ticket.booking_reference}" data-master-row-index="${rowIndex}">
+            <div class="form-grid">
+                <div class="form-group"><label>New Travel Date (for all in PNR)</label><input type="text" id="update_departing_on" placeholder="MM/DD/YYYY" value="${travelDateForInput}"></div>
+                <div class="form-group"><label>New Base Fare (Optional)</label><input type="number" id="update_base_fare" placeholder="${(ticket.base_fare||0).toLocaleString()}"></div>
+                <div class="form-group"><label>New Net Amount (Optional)</label><input type="number" id="update_net_amount" placeholder="${(ticket.net_amount||0).toLocaleString()}"></div>
+                <div class="form-group"><label>Date Change Fees (Optional)</label><input type="number" id="date_change_fees"></div>
+            </div>
+            <div class="form-actions">
+                <button type="button" class="btn btn-secondary" onclick="modifyModal.style.display='none'">Cancel</button>
+                <button type="submit" class="btn btn-primary">Update Ticket(s)</button>
+            </div>
+        </form>`;
+    
+    new Datepicker(document.getElementById('update_departing_on'), {
+        format: 'mm/dd/yyyy',
+        autohide: true,
+        todayHighlight: true,
+    });
+
+    modifyModal.style.display = 'block';
+    document.getElementById('updateForm').addEventListener('submit', handleUpdateTicket);
+}
+
+async function handleUpdateTicket(e) {
+    e.preventDefault();
+    const form = e.target;
+    const pnr = form.dataset.pnr;
+    const masterRowIndex = form.dataset.masterRowIndex;
+    const masterTicket = allTickets.find(t => t.rowIndex == masterRowIndex);
+    if (!masterTicket) return showToast('Error: Original ticket not found.', 'error');
+
+    const ticketsToUpdate = allTickets.filter(t => t.booking_reference === pnr);
+    
+    let newTravelDate = document.getElementById('update_departing_on').value;
+    const newBaseFare = parseFloat(document.getElementById('update_base_fare').value);
+    const newNetAmount = parseFloat(document.getElementById('update_net_amount').value);
+    const fees = parseFloat(document.getElementById('date_change_fees').value) || 0;
+    
+    if (newTravelDate) {
+        newTravelDate = formatDateForSheet(newTravelDate);
+    }
+
+
+    const dataForBatchUpdate = ticketsToUpdate.map(ticket => {
+        const isMaster = ticket.rowIndex == masterRowIndex;
+        let finalBaseFare = ticket.base_fare;
+        let finalNetAmount = ticket.net_amount;
+        let finalCommission = ticket.commission;
+
+        if (isMaster) {
+            finalBaseFare = isNaN(newBaseFare) ? ticket.base_fare : newBaseFare;
+            finalCommission = isNaN(newBaseFare) ? ticket.commission : Math.round((newBaseFare * 0.05) * 0.60);
+            finalNetAmount = (isNaN(newNetAmount) ? ticket.net_amount : newNetAmount) + fees;
+        }
+
+        const finalTravelDate = newTravelDate || ticket.departing_on;
+
+        return {
+            range: `${CONFIG.SHEET_NAME}!A${ticket.rowIndex}:S${ticket.rowIndex}`,
+            values: [[
+                ticket.issued_date, ticket.name, ticket.nrc_no, ticket.phone,
+                ticket.account_name, ticket.account_type, ticket.account_link,
+                ticket.departure, ticket.destination, finalTravelDate, ticket.airline,
+                finalBaseFare, ticket.booking_reference, finalNetAmount,
+                ticket.paid, ticket.payment_method, ticket.paid_date,
+                finalCommission, ticket.remark
+            ]]
+        };
+    });
+
+    try {
+        showToast('Updating tickets...', 'info');
+        await gapi.client.sheets.spreadsheets.values.batchUpdate({
+            spreadsheetId: CONFIG.SHEET_ID,
+            resource: {
+                valueInputOption: 'USER_ENTERED',
+                data: dataForBatchUpdate
+            }
+        });
+        showToast('Tickets updated successfully!', 'success');
+        modifyModal.style.display = 'none';
+        document.getElementById('modifyResultsContainer').innerHTML = '';
+        document.getElementById('modifyPnr').value = '';
+        await loadTicketData();
+    } catch (error) {
+        showToast(`Error: ${error.result?.error?.message || 'Could not update.'}`, 'error');
+    }
+}

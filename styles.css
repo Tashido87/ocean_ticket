@@ -511,8 +511,7 @@ tbody tr.canceled {
     color: #C53030;
 }
 
-/* Notifications */
-.notification {
+#toast {
     position: fixed;
     top: 100px;
     right: 2rem;

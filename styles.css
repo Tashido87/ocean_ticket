@@ -14,7 +14,7 @@
     --text-secondary: #cecece;
     --border-color: rgba(255, 255, 255, 0.1);
     --glass-bg: rgba(30, 41, 59, 0.3);
-    --glass-bg-hover: rgba(45, 55, 72, 0.5);
+    --glass-bg-hover: rgba(66, 74, 86, 0.5);
     --glass-border: rgba(255, 255, 255, 0.15);
     --shadow: rgba(0, 0, 0, 0.3);
 }
@@ -109,7 +109,7 @@ body {
 
 .info-grid {
     display: grid;
-    grid-template-columns: repeat(5, 1fr);
+    grid-template-columns: repeat(6, 1fr);
     gap: 1.5rem;
 }
 
@@ -127,7 +127,7 @@ body {
     flex-direction: column;
     justify-content: space-between;
     padding: 1rem;
-    height: 160px;
+    height: 155px; 
 }
 .info-card h3 {
     font-size: 0.9rem;
@@ -136,22 +136,24 @@ body {
     margin-bottom: 0.5rem;
 }
 .info-card .main-value {
-    font-size: clamp(1.5rem, 4vw, 2.2rem);
+    /* MODIFIED: Adjusted font size to better fit long numbers */
+    font-size: clamp(1.1rem, 2.5vw, 1.6rem);
     font-weight: 700;
     color: var(--primary-accent);
     line-height: 1.1;
     word-wrap: break-word;
 }
 .info-card .main-value.long-text {
-    font-size: clamp(1rem, 3vw, 1.5rem);
+    font-size: clamp(0.9rem, 2.5vw, 1.3rem);
 }
 .info-card .sub-value {
     font-size: 1rem;
     font-weight: 600;
     color: var(--text-primary);
+    line-height: 1.2;
 }
 .info-card .icon {
-    font-size: 1.5rem;
+    font-size: 1.4rem;
     color: var(--primary-accent);
     opacity: 0.5;
     align-self: flex-end;
@@ -196,7 +198,12 @@ tbody tr:hover { background-color: var(--glass-bg-hover); }
 .form-group.full-width {grid-column: 1 / -1;}
 .form-group label {margin-bottom: 0.5rem; font-weight: 500; font-size: 0.9rem; color: var(--text-secondary);}
 .form-group input, .form-group select, .form-group textarea {padding: 0.75rem 1rem; border: 1px solid var(--border-color); border-radius: 8px; background: #0d1117; color: var(--text-primary); font-size: 1rem; transition: all 0.2s ease; text-transform: uppercase;}
-.form-group input:focus, .form-group select:focus, .form-group textarea:focus {outline: none; border-color: var(--primary-accent); box-shadow: 0 0 0 3px rgba(88, 166, 255, 0.3);}
+
+.form-group input:focus, .form-group select:focus, .form-group textarea:focus {
+    outline: none;
+    border-color: var(--primary-accent);
+}
+
 .form-actions { display: flex; gap: 1rem; justify-content: center; margin-top: 1rem; }
 
 .centered-form {
@@ -242,7 +249,7 @@ tbody tr:hover { background-color: var(--glass-bg-hover); }
 
 /* --- RESPONSIVE DESIGN --- */
 @media (max-width: 1200px) {
-    .info-grid { grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); }
+    .info-grid { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
 }
 
 @media (max-width: 1024px) {
@@ -255,4 +262,40 @@ tbody tr:hover { background-color: var(--glass-bg-hover); }
     .nav { width: 100%; justify-content: space-around; }
     .nav-btn span { display: none; }
     .info-grid { grid-template-columns: repeat(2, 1fr); }
+}
+
+/* --- ADDED: Full Datepicker Theme Fix --- */
+.datepicker-picker {
+    background-color: #21262d; /* Dark background for the calendar pop-up */
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+}
+
+.datepicker-picker .datepicker-header .datepicker-controls .button {
+    color: var(--text-primary);
+    background-color: transparent !important;
+}
+.datepicker-picker .datepicker-header .datepicker-controls .button:hover {
+    background-color: var(--glass-bg-hover) !important;
+    border-radius: 6px;
+}
+.datepicker-view .dow {
+    color: var(--text-secondary); /* Day of week (Su, Mo) text color */
+    font-weight: 600;
+}
+.datepicker-view .day:not(.disabled):not(.prev):not(.next) {
+    color: var(--text-primary); /* Current month's dates text color */
+}
+.datepicker-view .day.prev, .datepicker-view .day.next {
+    color: var(--text-secondary);
+    opacity: 0.5; /* Make previous/next month dates visible but distinct */
+}
+.datepicker-view .days .day:not(.disabled):hover {
+    background-color: var(--glass-bg-hover);
+    border-radius: 50%;
+}
+.datepicker-view .days .day.selected {
+    background: var(--primary-accent) !important;
+    color: var(--bg-color) !important;
+    font-weight: 700;
 }

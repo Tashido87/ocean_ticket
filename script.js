@@ -121,8 +121,9 @@ function setupEventListeners() {
     document.getElementById('searchBtn').addEventListener('click', performSearch);
     document.getElementById('clearBtn').addEventListener('click', clearSearch);
     document.getElementById('sellForm').addEventListener('submit', handleSellTicket);
+    // Link both base fare and extra fare to commission calculation
     document.getElementById('base_fare').addEventListener('input', calculateCommission);
-    document.getElementById('extra_fare').addEventListener('input', calculateCommission);
+    document.getElementById('extra_fare').addEventListener('input', calculateCommission); // This listener is kept, but the function logic is changed
     document.getElementById('findTicketBtn').addEventListener('click', findTicketForModify);
     document.getElementById('findCancelBtn').addEventListener('click', () => showToast('Cancel functionality not yet implemented.', 'info'));
     
@@ -138,7 +139,11 @@ async function loadTicketData() {
     try {
         loading.style.display = 'block';
         dashboardContent.style.display = 'none';
-        const response = await gapi.client.sheets.spreadsheets.values.get({ spreadsheetId: CONFIG.SHEET_ID, range: `${CONFIG.SHEET_NAME}!A:S` });
+        // MODIFIED: Range extended to column T to get extra_fare
+        const response = await gapi.client.sheets.spreadsheets.values.get({ 
+            spreadsheetId: CONFIG.SHEET_ID, 
+            range: `${CONFIG.SHEET_NAME}!A:T` 
+        });
         
         if (response.result.values && response.result.values.length > 1) {
             allTickets = parseTicketData(response.result.values);
@@ -159,7 +164,8 @@ function parseTicketData(values) {
         const ticket = {};
         headers.forEach((h, j) => ticket[h] = row[j] || '');
         const safeParse = (val) => parseFloat(String(val).replace(/,/g, '')) || 0;
-        ['base_fare', 'net_amount', 'commission'].forEach(key => ticket[key] = safeParse(ticket[key]));
+        // MODIFIED: Added extra_fare to the list of keys to be parsed as numbers
+        ['base_fare', 'net_amount', 'commission', 'extra_fare'].forEach(key => ticket[key] = safeParse(ticket[key]));
         ticket.paid = ticket.paid === 'TRUE';
         ticket.rowIndex = i + 2;
         return ticket;
@@ -198,7 +204,18 @@ function initializeBackgroundChanger() {
 function showView(viewName) {
     navBtns.forEach(btn => btn.classList.toggle('active', btn.dataset.view === viewName));
     views.forEach(view => view.classList.toggle('active', view.id === `${viewName}-view`));
-    if (viewName === 'sell') document.getElementById('sellForm').reset();
+    if (viewName === 'sell') {
+        document.getElementById('sellForm').reset();
+    }
+    // MODIFIED: Clear receipt/invoice view when navigating away
+    if (viewName !== 'receipt') {
+        const controlsContainer = document.getElementById('receiptControlsContainer');
+        const displayContainer = document.getElementById('documentDisplayContainer');
+        const pnrInput = document.getElementById('receiptPnr');
+        if(controlsContainer) controlsContainer.innerHTML = '';
+        if(displayContainer) displayContainer.innerHTML = '';
+        if(pnrInput) pnrInput.value = '';
+    }
 }
 
 function displayAllTickets() {
@@ -220,7 +237,6 @@ function displayTickets(tickets, page = 1) {
 
 function closeDetailsModal() { document.getElementById('modal').style.display = 'none'; }
 
-// THE FIX: Restored detailed view from original script
 function showDetails(rowIndex) {
     const ticket = allTickets.find(t => t.rowIndex === rowIndex);
     if (ticket) {
@@ -239,6 +255,7 @@ function showDetails(rowIndex) {
             <p><strong>Travel Date:</strong> ${ticket.departing_on || 'N/A'}</p>
             <p><strong>Net Amount:</strong> ${(ticket.net_amount || 0).toLocaleString()} MMK</p>
             <p><strong>Commission:</strong> ${(ticket.commission || 0).toLocaleString()} MMK</p>
+            <p><strong>Extra Fare:</strong> ${(ticket.extra_fare || 0).toLocaleString()} MMK</p>
             ${statusHtml}
             <div style="text-align: center; margin-top: 1.5rem;">
                 <button class="btn btn-secondary" onclick="closeDetailsModal()">Close</button>
@@ -263,14 +280,21 @@ function updateDashboardData() {
     const totalTicketsBox = document.getElementById('total-tickets-box');
     totalTicketsBox.innerHTML = `<h3>Tickets (${monthName})</h3><div class="main-value">${ticketsThisMonth.length}</div><i class="icon fa-solid fa-ticket-simple"></i>`;
 
-    const totalRevenue = ticketsThisMonth.reduce((sum, t) => sum + t.net_amount, 0);
+    const totalRevenue = ticketsThisMonth.reduce((sum, t) => sum + (t.net_amount || 0), 0);
     const revenueBox = document.getElementById('monthly-revenue-box');
-    revenueBox.innerHTML = `<h3>Revenue (${monthName})</h3><div class="main-value">${(totalRevenue/1000).toFixed(1)}k</div><span class="sub-value">MMK</span><i class="icon fa-solid fa-sack-dollar"></i>`;
+    // MODIFIED: Display full number with commas
+    revenueBox.innerHTML = `<h3>Revenue (${monthName})</h3><div class="main-value">${totalRevenue.toLocaleString()}</div><span class="sub-value">MMK</span><i class="icon fa-solid fa-sack-dollar"></i>`;
 
-    const totalCommission = ticketsThisMonth.reduce((sum, t) => sum + t.commission, 0);
+    const totalCommission = ticketsThisMonth.reduce((sum, t) => sum + (t.commission || 0), 0);
     const commissionBox = document.getElementById('monthly-commission-box');
-    commissionBox.innerHTML = `<h3>Commission (${monthName})</h3><div class="main-value">${(totalCommission/1000).toFixed(1)}k</div><span class="sub-value">MMK</span><i class="icon fa-solid fa-hand-holding-dollar"></i>`;
+    // MODIFIED: Display full number with commas
+    commissionBox.innerHTML = `<h3>Commission (${monthName})</h3><div class="main-value">${totalCommission.toLocaleString()}</div><span class="sub-value">MMK</span><i class="icon fa-solid fa-hand-holding-dollar"></i>`;
     
+    const totalExtraFare = ticketsThisMonth.reduce((sum, t) => sum + (t.extra_fare || 0), 0);
+    const extraFareBox = document.getElementById('monthly-extra-fare-box');
+    // MODIFIED: Display full number with commas
+    extraFareBox.innerHTML = `<h3>Extra Fare (${monthName})</h3><div class="main-value">${totalExtraFare.toLocaleString()}</div><span class="sub-value">MMK</span><i class="icon fa-solid fa-dollar-sign"></i>`;
+
     const getTopItem = (data, key) => {
         if (data.length === 0) return 'N/A';
         const counts = data.reduce((acc, t) => {
@@ -301,7 +325,11 @@ function makeClickable(text) { if (!text) return 'N/A'; if (text.toLowerCase().s
 function showToast(message, type = 'info') { document.getElementById('toastMessage').textContent = message; const toastEl = document.getElementById('toast'); toastEl.className = `show ${type}`; setTimeout(() => toastEl.className = toastEl.className.replace('show', ''), 4000); }
 function formatDateForSheet(dateString) { if (!dateString) return ''; const date = new Date(dateString); return isNaN(date.getTime()) ? dateString : `${String(date.getMonth() + 1).padStart(2, '0')}/${String(date.getDate()).padStart(2, '0')}/${date.getFullYear()}`; }
 function parseSheetDate(dateString) { if (!dateString) return new Date(0); const monthMap = { 'JAN':0,'FEB':1,'MAR':2,'APR':3,'MAY':4,'JUN':5,'JUL':6,'AUG':7,'SEP':8,'OCT':9,'NOV':10,'DEC':11 }; const parts = dateString.split('-'); if (parts.length === 3 && isNaN(parseInt(parts[1], 10))) { return new Date(parseInt(parts[2], 10), monthMap[parts[1].toUpperCase()], parseInt(parts[0], 10)); } return new Date(dateString); }
-function calculateCommission() { const baseFare = parseFloat(document.getElementById('base_fare').value) || 0; const extraFare = parseFloat(document.getElementById('extra_fare').value) || 0; document.getElementById('commission').value = Math.round((baseFare * 0.05) * 0.60) + extraFare; }
+
+function calculateCommission() { 
+    const baseFare = parseFloat(document.getElementById('base_fare').value) || 0;
+    document.getElementById('commission').value = Math.round((baseFare * 0.05) * 0.60); 
+}
 
 // --- SEARCH & PAGINATION ---
 function performSearch() {
@@ -313,7 +341,7 @@ function performSearch() {
         const issuedDate = parseSheetDate(t.issued_date);
         const isDateMatch = !searchDate || (issuedDate.getDate() === searchDate.getDate() && issuedDate.getMonth() === searchDate.getMonth() && issuedDate.getFullYear() === searchDate.getFullYear());
         return (!name || t.name.toUpperCase().includes(name)) && (!bookRef || t.booking_reference.toUpperCase().includes(bookRef)) && isDateMatch;
-    }).sort((a,b) => parseSheetDate(b.issued_date) - parseSheetDate(a.issued_date) || b.rowIndex - a.rowIndex);
+    }).sort((a,b) => parseSheetDate(b.issued_date) - parseSheetDate(a.rowIndex - b.rowIndex) || b.rowIndex - a.rowIndex);
     filteredTickets = results;
     displayTickets(filteredTickets, 1);
 }
@@ -323,9 +351,26 @@ function setupPagination(items) { const container = document.getElementById('pag
 // --- FORM SUBMISSIONS ---
 async function handleSellTicket(e) { e.preventDefault(); if (isSubmitting) return; isSubmitting = true; const submitButton = e.target.querySelector('button[type="submit"]'); if (submitButton) submitButton.disabled = true; try { const ticketData = collectFormData(e.target); if (!ticketData.name || !ticketData.booking_reference) throw new Error('Missing required fields.'); await saveTicket(ticketData); showToast('Ticket saved successfully!', 'success'); e.target.reset(); await loadTicketData(); showView('home'); } catch (error) { showToast(`Error: ${error.message || 'Could not save ticket.'}`, 'error'); } finally { isSubmitting = false; if (submitButton) submitButton.disabled = false; } }
 function collectFormData(form) { const data = {}; const fields = ['issued_date', 'name', 'nrc_no', 'phone', 'account_name', 'account_type', 'account_link', 'departure', 'destination', 'departing_on', 'airline', 'base_fare', 'booking_reference', 'net_amount', 'paid', 'payment_method', 'paid_date', 'commission', 'remark', 'extra_fare']; fields.forEach(field => { const el = form.querySelector(`#${field}`); if(el) data[field] = el.type === 'checkbox' ? el.checked : el.value; }); return data; }
-async function saveTicket(data) { const values = [[ formatDateForSheet(data.issued_date), data.name, data.nrc_no.toUpperCase(), data.phone, data.account_name.toUpperCase(), data.account_type.toUpperCase(), data.account_link, data.departure, data.destination, formatDateForSheet(data.departing_on), data.airline, parseFloat(data.base_fare) || 0, data.booking_reference.toUpperCase(), parseFloat(data.net_amount) || 0, data.paid, data.payment_method, formatDateForSheet(data.paid_date), parseFloat(data.commission) || 0, data.remark ]]; await gapi.client.sheets.spreadsheets.values.append({ spreadsheetId: CONFIG.SHEET_ID, range: `${CONFIG.SHEET_NAME}!A:S`, valueInputOption: 'USER_ENTERED', resource: { values }, }); }
 
-// --- MODIFY & UPDATE TICKET (THE FIX) ---
+async function saveTicket(data) { 
+    const values = [[ 
+        formatDateForSheet(data.issued_date), data.name, data.nrc_no.toUpperCase(), 
+        data.phone, data.account_name.toUpperCase(), data.account_type.toUpperCase(), 
+        data.account_link, data.departure, data.destination, 
+        formatDateForSheet(data.departing_on), data.airline, parseFloat(data.base_fare) || 0, 
+        data.booking_reference.toUpperCase(), parseFloat(data.net_amount) || 0, data.paid, 
+        data.payment_method, formatDateForSheet(data.paid_date), parseFloat(data.commission) || 0, 
+        data.remark, parseFloat(data.extra_fare) || 0 
+    ]]; 
+    await gapi.client.sheets.spreadsheets.values.append({ 
+        spreadsheetId: CONFIG.SHEET_ID, 
+        range: `${CONFIG.SHEET_NAME}!A:T`, 
+        valueInputOption: 'USER_ENTERED', 
+        resource: { values }, 
+    }); 
+}
+
+// --- MODIFY & UPDATE TICKET ---
 function findTicketForModify() {
     const pnr = document.getElementById('modifyPnr').value.toUpperCase();
     if (!pnr) return showToast('Please enter a PNR code.', 'error');
@@ -367,6 +412,7 @@ function openModifyModal(rowIndex) {
                 <div class="form-group"><label>New Base Fare (Optional)</label><input type="number" id="update_base_fare" placeholder="${(ticket.base_fare||0).toLocaleString()}"></div>
                 <div class="form-group"><label>New Net Amount (Optional)</label><input type="number" id="update_net_amount" placeholder="${(ticket.net_amount||0).toLocaleString()}"></div>
                 <div class="form-group"><label>Date Change Fees (Optional)</label><input type="number" id="date_change_fees"></div>
+                <div class="form-group"><label>Extra Fare (Optional)</label><input type="number" id="update_extra_fare" placeholder="Adds to existing extra fare"></div>
             </div>
             <div class="form-actions">
                 <button type="button" class="btn btn-secondary" onclick="modifyModal.style.display='none'">Cancel</button>
@@ -390,28 +436,34 @@ async function handleUpdateTicket(e) {
     const newBaseFare = parseFloat(document.getElementById('update_base_fare').value);
     const newNetAmount = parseFloat(document.getElementById('update_net_amount').value);
     const fees = parseFloat(document.getElementById('date_change_fees').value) || 0;
+    const extraFare = parseFloat(document.getElementById('update_extra_fare').value) || 0;
     
     if (newTravelDate) newTravelDate = formatDateForSheet(newTravelDate);
 
     const dataForBatchUpdate = ticketsToUpdate.map(ticket => {
         const isMaster = ticket.rowIndex == masterRowIndex;
-        let finalBaseFare = ticket.base_fare, finalNetAmount = ticket.net_amount, finalCommission = ticket.commission;
+        let finalBaseFare = ticket.base_fare, 
+            finalNetAmount = ticket.net_amount, 
+            finalCommission = ticket.commission,
+            finalExtraFare = ticket.extra_fare;
 
         if (isMaster) {
             finalBaseFare = isNaN(newBaseFare) ? ticket.base_fare : newBaseFare;
-            finalCommission = isNaN(newBaseFare) ? ticket.commission : Math.round((newBaseFare * 0.05) * 0.60);
+            let commissionBase = isNaN(newBaseFare) ? ticket.commission : Math.round((newBaseFare * 0.05) * 0.60);
+            finalCommission = commissionBase;
+            finalExtraFare = (ticket.extra_fare || 0) + extraFare;
             finalNetAmount = (isNaN(newNetAmount) ? ticket.net_amount : newNetAmount) + fees;
         }
 
         return {
-            range: `${CONFIG.SHEET_NAME}!A${ticket.rowIndex}:S${ticket.rowIndex}`,
+            range: `${CONFIG.SHEET_NAME}!A${ticket.rowIndex}:T${ticket.rowIndex}`,
             values: [[
                 ticket.issued_date, ticket.name, ticket.nrc_no, ticket.phone,
                 ticket.account_name, ticket.account_type, ticket.account_link,
-                ticket.departure, ticket.destination, newTravelDate || ticket.departing_on, ticket.airline,
-                finalBaseFare, ticket.booking_reference, finalNetAmount,
+                ticket.departure, ticket.destination, newTravelDate || ticket.departing_on, 
+                ticket.airline, finalBaseFare, ticket.booking_reference, finalNetAmount,
                 ticket.paid, ticket.payment_method, ticket.paid_date,
-                finalCommission, ticket.remark
+                finalCommission, ticket.remark, finalExtraFare
             ]]
         };
     });

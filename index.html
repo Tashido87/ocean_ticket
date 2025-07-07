@@ -5,304 +5,162 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Ocean Air Ticket Management</title>
     <link rel="stylesheet" href="styles.css">
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/vanillajs-datepicker@1.3.4/dist/css/datepicker.min.css">
     <script src="https://cdn.jsdelivr.net/npm/vanillajs-datepicker@1.3.4/dist/js/datepicker-full.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
+    
     <script src="https://accounts.google.com/gsi/client" async defer></script>
     <script src="https://apis.google.com/js/api.js" async defer></script>
 </head>
 <body>
-    <header class="header">
-        <h1 class="title">Ocean Air Ticket Management</h1>
-        <nav class="nav">
-            <button class="nav-btn active" data-view="home">Home</button>
-            <button class="nav-btn" data-view="sell">Sell Ticket</button>
-            <button class="nav-btn" data-view="modify">Modify Ticket</button>
-            <button class="nav-btn" data-view="cancel">Cancel Ticket</button>
-        </nav>
-        <div class="auth-buttons">
-            <button id="authorize_button" class="btn btn-primary" style="display: none;">Sign In</button>
-            <button id="signout_button" class="btn btn-secondary" style="display: none;">Sign Out</button>
-        </div>
-    </header>
-
-    <main class="main-content">
-        <section id="home-view" class="view active">
-            <div class="loading-indicator" id="loading">
-                <div class="spinner"></div>
-                <p>Loading data...</p>
+    <div class="main-container">
+        <header class="header">
+            <div class="header-left">
+                <i class="fa-solid fa-plane-departure logo-icon"></i>
+                <h1 class="title">Ocean Air</h1>
             </div>
+            <nav class="nav">
+                <button class="nav-btn active" data-view="home"><i class="fa-solid fa-house"></i><span>Dashboard</span></button>
+                <button class="nav-btn" data-view="sell"><i class="fa-solid fa-ticket"></i><span>Sell Ticket</span></button>
+                <button class="nav-btn" data-view="modify"><i class="fa-solid fa-pen-to-square"></i><span>Modify Ticket</span></button>
+                <button class="nav-btn" data-view="cancel"><i class="fa-solid fa-ban"></i><span>Cancel Ticket</span></button>
+            </nav>
+            <div class="header-right">
+                <div class="settings-buttons">
+                    <a href="https://docs.google.com/spreadsheets/d/1SGc80isz0VRVt447R_q-fBdZ_me52H_Z32W5HauHMWQ/edit?gid=492131850#gid=492131850" target="_blank" rel="noopener noreferrer" class="icon-btn" title="Open Google Sheet">
+                        <i class="fa-solid fa-table-cells"></i>
+                    </a>
+                    <input type="file" id="background-uploader" accept="image/*" style="display: none;">
+                    <button id="background-upload-btn" class="icon-btn" title="Change Background"><i class="fa-solid fa-image"></i></button>
+                    <button id="background-reset-btn" class="icon-btn" title="Reset Background"><i class="fa-solid fa-trash-arrow-up"></i></button>
+                </div>
+                <div class="auth-buttons">
+                    <button id="authorize_button" class="btn btn-primary" style="display: none;">Sign In</button>
+                    <button id="signout_button" class="btn btn-secondary" style="display: none;">Sign Out</button>
+                </div>
+            </div>
+        </header>
+
+        <main class="main-content">
+            <section id="home-view" class="view active">
+                <div class="loading-indicator" id="loading">
+                    <div class="spinner"></div>
+                    <p>Loading data...</p>
+                </div>
+                
+                <div class="dashboard-content-wrapper" id="dashboard-content" style="display: none;">
+                    <div class="info-grid">
+                        <div id="total-tickets-box" class="info-card glass-card"></div>
+                        <div id="monthly-revenue-box" class="info-card glass-card"></div>
+                        <div id="monthly-commission-box" class="info-card glass-card"></div>
+                        <div id="top-airline-box" class="info-card glass-card"></div>
+                        <div id="top-route-box" class="info-card glass-card"></div>
+                    </div>
+
+                    <div class="actions-grid">
+                        <div class="search-section glass-card">
+                            <h3><i class="fa-solid fa-magnifying-glass"></i> Search Tickets</h3>
+                            <div class="search-inputs">
+                                <input type="text" id="searchName" placeholder="Client Name">
+                                <input type="text" id="searchBooking" placeholder="Booking Reference">
+                                <input type="text" id="searchDate" placeholder="Issued Date (MM/DD/YYYY)">
+                            </div>
+                            <div class="search-buttons">
+                                <button id="searchBtn" class="btn btn-primary"><i class="fa-solid fa-search"></i> Search</button>
+                                <button id="clearBtn" class="btn btn-secondary"><i class="fa-solid fa-eraser"></i> Clear</button>
+                            </div>
+                        </div>
+
+                        <div class="results-section glass-card">
+                            <h3>Search Results</h3>
+                            <div class="table-container">
+                                <table id="resultsTable">
+                                    <thead>
+                                        <tr>
+                                            <th>Issued Date</th><th>Name</th><th>Booking Ref</th><th>Route</th><th>Airline</th><th>Details</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="resultsBody"></tbody>
+                                </table>
+                            </div>
+                            <div id="pagination" class="pagination-container"></div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <section id="sell-view" class="view">
+                 <div class="form-container glass-card">
+                    <h2><i class="fa-solid fa-ticket"></i> Sell New Ticket</h2>
+                    <form id="sellForm">
+                        <div class="form-grid">
+                            <div class="form-group"><label for="issued_date">Issued Date</label><input type="text" id="issued_date" name="issued_date" placeholder="MM/DD/YYYY" required></div>
+                            <div class="form-group"><label for="name">Client Name</label><input type="text" id="name" name="name" required></div>
+                            <div class="form-group"><label for="nrc_no">NRC Number</label><input type="text" id="nrc_no" name="nrc_no" required></div>
+                            <div class="form-group"><label for="phone">Phone</label><input type="tel" id="phone" name="phone" required></div>
+                            <div class="form-group"><label for="account_name">Social Media Account Name</label><input type="text" id="account_name" name="account_name" required></div>
+                            <div class="form-group"><label for="account_type">Social Media Account Type</label><select id="account_type" name="account_type" required><option value="">Select Account Type</option><option value="Facebook Page">Facebook Page</option><option value="Messenger">Messenger</option><option value="Viber">Viber</option><option value="Telegram">Telegram</option><option value="WeChat">WeChat</option><option value="Phone">Phone</option></select></div>
+                            <div class="form-group"><label for="account_link">Account Link</label><input type="text" id="account_link" name="account_link" placeholder="URL, phone number or @username"></div>
+                            <div class="form-group"><label for="departure">Departure</label><select id="departure" name="departure" required><option value="">Select Departure</option><option value="Bhamo (BMO)">Bhamo (BMO)</option><option value="Bokpyin (VBP)">Bokpyin (VBP)</option><option value="Dawei (TVY)">Dawei (TVY)</option><option value="Heho (HEH)">Heho (HEH)</option><option value="Hommalinn (HOX)">Hommalinn (HOX)</option><option value="Kalemyo (KMV)">Kalemyo (KMV)</option><option value="Kawthaung (KAW)">Kawthaung (KAW)</option><option value="Kengtung (KET)">Kengtung (KET)</option><option value="Khamti (KHM)">Khamti (KHM)</option><option value="Kyaukpyu (KYP)">Kyaukpyu (KYP)</option><option value="Lashio (LSH)">Lashio (LSH)</option><option value="Loikaw (LIW)">Loikaw (LIW)</option><option value="Magway (MWQ)">Magway (MWQ)</option><option value="Manaung (MGU)">Manaung (MGU)</option><option value="Mandalay (MDL)">Mandalay (MDL)</option><option value="Mawlamyaing (MNU)">Mawlamyaing (MNU)</option><option value="Monywa (NYW)">Monywa (NYW)</option><option value="Myeik (MGZ)">Myeik (MGZ)</option><option value="Myitkyina (MYT)">Myitkyina (MYT)</option><option value="Namsang (NMS)">Namsang (NMS)</option><option value="Nay Pyi Taw (NYT)">Nay Pyi Taw (NYT)</option><option value="Nyaung U (NYU)">Nyaung U (NYU)</option><option value="Putao (PBU)">Putao (PBU)</option><option value="Sittwe (AKY)">Sittwe (AKY)</option><option value="Tachilek (THL)">Tachilek (THL)</option><option value="Thandwe (SNW)">Thandwe (SNW)</option><option value="Yangon (RGN)">Yangon (RGN)</option><option value="Bangkok (BKK)">Bangkok (BKK)</option><option value="Singapore">Singapore</option></select></div>
+                            <div class="form-group"><label for="destination">Destination</label><select id="destination" name="destination" required><option value="">Select Destination</option><option value="Bhamo (BMO)">Bhamo (BMO)</option><option value="Bokpyin (VBP)">Bokpyin (VBP)</option><option value="Dawei (TVY)">Dawei (TVY)</option><option value="Heho (HEH)">Heho (HEH)</option><option value="Hommalinn (HOX)">Hommalinn (HOX)</option><option value="Kalemyo (KMV)">Kalemyo (KMV)</option><option value="Kawthaung (KAW)">Kawthaung (KAW)</option><option value="Kengtung (KET)">Kengtung (KET)</option><option value="Khamti (KHM)">Khamti (KHM)</option><option value="Kyaukpyu (KYP)">Kyaukpyu (KYP)</option><option value="Lashio (LSH)">Lashio (LSH)</option><option value="Loikaw (LIW)">Loikaw (LIW)</option><option value="Magway (MWQ)">Magway (MWQ)</option><option value="Manaung (MGU)">Manaung (MGU)</option><option value="Mandalay (MDL)">Mandalay (MDL)</option><option value="Mawlamyaing (MNU)">Mawlamyaing (MNU)</option><option value="Monywa (NYW)">Monywa (NYW)</option><option value="Myeik (MGZ)">Myeik (MGZ)</option><option value="Myitkyina (MYT)">Myitkyina (MYT)</option><option value="Namsang (NMS)">Namsang (NMS)</option><option value="Nay Pyi Taw (NYT)">Nay Pyi Taw (NYT)</option><option value="Nyaung U (NYU)">Nyaung U (NYU)</option><option value="Putao (PBU)">Putao (PBU)</option><option value="Sittwe (AKY)">Sittwe (AKY)</option><option value="Tachilek (THL)">Tachilek (THL)</option><option value="Thandwe (SNW)">Thandwe (SNW)</option><option value="Yangon (RGN)">Yangon (RGN)</option><option value="Bangkok (BKK)">Bangkok (BKK)</option><option value="Singapore">Singapore</option></select></div>
+                            <div class="form-group"><label for="departing_on">Travel Date</label><input type="text" id="departing_on" name="departing_on" placeholder="MM/DD/YYYY" required></div>
+                            <div class="form-group"><label for="airline">Airline</label><select id="airline" name="airline" required><option value="">Select Airline</option><option value="MNA">MNA</option><option value="MAI">MAI</option><option value="ManYadanarpon">ManYadanarpon</option><option value="AirThanwlin">AirThanwlin</option></select></div>
+                            <div class="form-group"><label for="base_fare">Base Fare (MMK)</label><input type="number" id="base_fare" name="base_fare" step="1" required></div>
+                            <div class="form-group"><label for="booking_reference">PNR Code</label><input type="text" id="booking_reference" name="booking_reference" required></div>
+                            <div class="form-group"><label for="net_amount">Net Amount (MMK)</label><input type="number" id="net_amount" name="net_amount" step="1" required></div>
+                            <div class="form-group"><label for="extra_fare">Extra Fare (Optional)</label><input type="number" id="extra_fare" name="extra_fare" step="1"></div>
+                            <div class="form-group"><label for="commission">Total Commission</label><input type="number" id="commission" name="commission" step="1" readonly></div>
+                            <div class="form-group"><label for="payment_method">Payment Method</label><select id="payment_method" name="payment_method"><option value="">Select Payment Method</option><option value="KBZ Pay">KBZ Pay</option><option value="Mobile Banking">Mobile Banking</option><option value="Aya Pay">Aya Pay</option><option value="Cash">Cash</option></select></div>
+                            <div class="form-group"><label for="paid_date">Paid Date</label><input type="text" id="paid_date" name="paid_date" placeholder="MM/DD/YYYY"></div>
+                            <div class="form-group checkbox-group"><label for="paid">Paid</label><input type="checkbox" id="paid" name="paid"></div>
+                            <div class="form-group full-width"><label for="remark">Remark</label><textarea id="remark" name="remark" rows="3"></textarea></div>
+                        </div>
+                        <div class="form-actions"><button type="button" class="btn btn-secondary" onclick="showView('home')"><i class="fa-solid fa-xmark"></i> Cancel</button><button type="submit" class="btn btn-primary"><i class="fa-solid fa-check"></i> Submit Ticket</button></div>
+                    </form>
+                </div>
+            </section>
             
-            <div class="dashboard-content" id="dashboard-content" style="display: none;">
-                <div class="charts-container">
-                    <div class="chart-card glass-card">
-                        <h3>Monthly Commission</h3>
-                        <canvas id="commissionChart"></canvas>
-                    </div>
-                    <div class="chart-card glass-card">
-                        <h3>Monthly Net Amount</h3>
-                        <canvas id="netAmountChart"></canvas>
-                    </div>
-                    <div id="total-tickets-box" class="chart-card glass-card">
-                        <h3 id="total-tickets-month"></h3>
-                        <p id="total-tickets-count"></p>
-                    </div>
+            <section id="modify-view" class="view">
+                 <div class="form-container glass-card">
+                    <h2><i class="fa-solid fa-pen-to-square"></i> Modify Ticket</h2>
+                    <form class="centered-form">
+                        <div class="form-group">
+                            <label for="modifyPnr">Enter PNR Code to Modify</label>
+                            <input type="text" id="modifyPnr" name="modifyPnr" placeholder="e.g., BDUVUU">
+                        </div>
+                        <div class="form-actions">
+                            <button id="findTicketBtn" type="button" class="btn btn-primary"><i class="fa-solid fa-magnifying-glass"></i> Find Ticket</button>
+                            <button type="button" class="btn btn-secondary" onclick="showView('home')">Back to Dashboard</button>
+                        </div>
+                    </form>
+                    <div id="modifyResultsContainer" class="results-section" style="padding: 1rem 0 0 0; background: transparent; border: none; box-shadow: none;"></div>
                 </div>
+            </section>
 
-                <div class="search-section glass-card">
-                    <h3>Search Tickets</h3>
-                    <div class="search-inputs">
-                        <input type="text" id="searchName" placeholder="Client Name">
-                        <input type="text" id="searchBooking" placeholder="Booking Reference">
-                        <input type="text" id="searchDate" placeholder="MM/DD/YYYY">
-                    </div>
-                    <div class="search-buttons">
-                        <button id="searchBtn" class="btn btn-primary">Search</button>
-                        <button id="clearBtn" class="btn btn-secondary">Clear</button>
-                    </div>
+            <section id="cancel-view" class="view">
+                <div class="form-container glass-card">
+                    <h2><i class="fa-solid fa-ban"></i> Cancel Ticket</h2>
+                     <form class="centered-form">
+                        <div class="form-group">
+                            <label for="cancelPnr">Enter PNR Code to Cancel</label>
+                            <input type="text" id="cancelPnr" name="cancelPnr" placeholder="e.g., BDUVUU">
+                        </div>
+                        <div class="form-actions">
+                            <button id="findCancelBtn" type="button" class="btn btn-primary"><i class="fa-solid fa-ban"></i> Find & Cancel</button>
+                            <button type="button" class="btn btn-secondary" onclick="showView('home')">Back to Dashboard</button>
+                        </div>
+                    </form>
                 </div>
-
-                <div class="results-section glass-card">
-                    <h3>Search Results</h3>
-                    <div class="table-container">
-                        <table id="resultsTable">
-                            <thead>
-                                <tr>
-                                    <th>Issued Date</th>
-                                    <th>Name</th>
-                                    <th>Booking Reference</th>
-                                    <th>Route</th>
-                                    <th>Airline</th>
-                                    <th>Details</th>
-                                </tr>
-                            </thead>
-                            <tbody id="resultsBody">
-                            </tbody>
-                        </table>
-                    </div>
-                    <div id="pagination" class="pagination-container"></div>
-                </div>
-            </div>
-        </section>
-
-        <section id="sell-view" class="view">
-            <div class="form-container glass-card">
-                <h2>Sell New Ticket</h2>
-                <form id="sellForm">
-                    <div class="form-grid">
-                        <div class="form-group">
-                            <label for="issued_date">Issued Date</label>
-                            <input type="text" id="issued_date" name="issued_date" placeholder="MM/DD/YYYY" required>
-                        </div>
-                        <div class="form-group">
-                            <label for="name">Client Name</label>
-                            <input type="text" id="name" name="name" required>
-                        </div>
-                        <div class="form-group">
-                            <label for="nrc_no">NRC Number</label>
-                            <input type="text" id="nrc_no" name="nrc_no" required>
-                        </div>
-                        <div class="form-group">
-                            <label for="phone">Phone</label>
-                            <input type="tel" id="phone" name="phone" required>
-                        </div>
-                        <div class="form-group">
-                            <label for="account_name">Social Media Account Name</label>
-                            <input type="text" id="account_name" name="account_name" required>
-                        </div>
-                        <div class="form-group">
-                            <label for="account_type">Social Media Account Type</label>
-                            <select id="account_type" name="account_type" required>
-                                <option value="">Select Account Type</option>
-                                <option value="Facebook Page">Facebook Page</option>
-                                <option value="Messenger">Messenger</option>
-                                <option value="Viber">Viber</option>
-                                <option value="Telegram">Telegram</option>
-                                <option value="WeChat">WeChat</option>
-                                <option value="Phone">Phone</option>
-                            </select>
-                        </div>
-                        <div class="form-group">
-                            <label for="account_link">Account Link</label>
-                            <input type="text" id="account_link" name="account_link" placeholder="URL, phone number or @username">
-                        </div>
-                        <div class="form-group">
-                            <label for="departure">Departure</label>
-                            <select id="departure" name="departure" required>
-                                <option value="">Select Departure</option>
-                                <option value="Bhamo (BMO)">Bhamo (BMO)</option>
-                                <option value="Bokpyin (VBP)">Bokpyin (VBP)</option>
-                                <option value="Dawei (TVY)">Dawei (TVY)</option>
-                                <option value="Heho (HEH)">Heho (HEH)</option>
-                                <option value="Hommalinn (HOX)">Hommalinn (HOX)</option>
-                                <option value="Kalemyo (KMV)">Kalemyo (KMV)</option>
-                                <option value="Kawthaung (KAW)">Kawthaung (KAW)</option>
-                                <option value="Kengtung (KET)">Kengtung (KET)</option>
-                                <option value="Khamti (KHM)">Khamti (KHM)</option>
-                                <option value="Kyaukpyu (KYP)">Kyaukpyu (KYP)</option>
-                                <option value="Lashio (LSH)">Lashio (LSH)</option>
-                                <option value="Loikaw (LIW)">Loikaw (LIW)</option>
-                                <option value="Magway (MWQ)">Magway (MWQ)</option>
-                                <option value="Manaung (MGU)">Manaung (MGU)</option>
-                                <option value="Mandalay (MDL)">Mandalay (MDL)</option>
-                                <option value="Mawlamyaing (MNU)">Mawlamyaing (MNU)</option>
-                                <option value="Monywa (NYW)">Monywa (NYW)</option>
-                                <option value="Myeik (MGZ)">Myeik (MGZ)</option>
-                                <option value="Myitkyina (MYT)">Myitkyina (MYT)</option>
-                                <option value="Namsang (NMS)">Namsang (NMS)</option>
-                                <option value="Nay Pyi Taw (NYT)">Nay Pyi Taw (NYT)</option>
-                                <option value="Nyaung U (NYU)">Nyaung U (NYU)</option>
-                                <option value="Putao (PBU)">Putao (PBU)</option>
-                                <option value="Sittwe (AKY)">Sittwe (AKY)</option>
-                                <option value="Tachilek (THL)">Tachilek (THL)</option>
-                                <option value="Thandwe (SNW)">Thandwe (SNW)</option>
-                                <option value="Yangon (RGN)">Yangon (RGN)</option>
-                                <option value="Bangkok (BKK)">Bangkok (BKK)</option>
-                                <option value="Singapore">Singapore</option>
-                            </select>
-                        </div>
-                        <div class="form-group">
-                            <label for="destination">Destination</label>
-                            <select id="destination" name="destination" required>
-                                <option value="">Select Destination</option>
-                                <option value="Bhamo (BMO)">Bhamo (BMO)</option>
-                                <option value="Bokpyin (VBP)">Bokpyin (VBP)</option>
-                                <option value="Dawei (TVY)">Dawei (TVY)</option>
-                                <option value="Heho (HEH)">Heho (HEH)</option>
-                                <option value="Hommalinn (HOX)">Hommalinn (HOX)</option>
-                                <option value="Kalemyo (KMV)">Kalemyo (KMV)</option>
-                                <option value="Kawthaung (KAW)">Kawthaung (KAW)</option>
-                                <option value="Kengtung (KET)">Kengtung (KET)</option>
-                                <option value="Khamti (KHM)">Khamti (KHM)</option>
-                                <option value="Kyaukpyu (KYP)">Kyaukpyu (KYP)</option>
-                                <option value="Lashio (LSH)">Lashio (LSH)</option>
-                                <option value="Loikaw (LIW)">Loikaw (LIW)</option>
-                                <option value="Magway (MWQ)">Magway (MWQ)</option>
-                                <option value="Manaung (MGU)">Manaung (MGU)</option>
-                                <option value="Mandalay (MDL)">Mandalay (MDL)</option>
-                                <option value="Mawlamyaing (MNU)">Mawlamyaing (MNU)</option>
-                                <option value="Monywa (NYW)">Monywa (NYW)</option>
-                                <option value="Myeik (MGZ)">Myeik (MGZ)</option>
-                                <option value="Myitkyina (MYT)">Myitkyina (MYT)</option>
-                                <option value="Namsang (NMS)">Namsang (NMS)</option>
-                                <option value="Nay Pyi Taw (NYT)">Nay Pyi Taw (NYT)</option>
-                                <option value="Nyaung U (NYU)">Nyaung U (NYU)</option>
-                                <option value="Putao (PBU)">Putao (PBU)</option>
-                                <option value="Sittwe (AKY)">Sittwe (AKY)</option>
-                                <option value="Tachilek (THL)">Tachilek (THL)</option>
-                                <option value="Thandwe (SNW)">Thandwe (SNW)</option>
-                                <option value="Yangon (RGN)">Yangon (RGN)</option>
-                                <option value="Bangkok (BKK)">Bangkok (BKK)</option>
-                                <option value="Singapore">Singapore</option>
-                            </select>
-                        </div>
-                        <div class="form-group">
-                            <label for="departing_on">Travel Date</label>
-                            <input type="text" id="departing_on" name="departing_on" placeholder="MM/DD/YYYY" required>
-                        </div>
-                        <div class="form-group">
-                            <label for="airline">Airline</label>
-                            <select id="airline" name="airline" required>
-                                <option value="">Select Airline</option>
-                                <option value="MNA">MNA</option>
-                                <option value="MAI">MAI</option>
-                                <option value="ManYadanarpon">ManYadanarpon</option>
-                                <option value="AirThanwlin">AirThanwlin</option>
-                            </select>
-                        </div>
-                        <div class="form-group">
-                            <label for="base_fare">Base Fare (MMK)</label>
-                            <input type="number" id="base_fare" name="base_fare" step="1" required>
-                        </div>
-                        <div class="form-group">
-                            <label for="booking_reference">PNR Code</label>
-                            <input type="text" id="booking_reference" name="booking_reference" required>
-                        </div>
-                        <div class="form-group">
-                            <label for="net_amount">Net Amount (MMK)</label>
-                            <input type="number" id="net_amount" name="net_amount" step="1" required>
-                        </div>
-                        <div class="form-group">
-                            <label for="paid">Paid</label>
-                            <input type="checkbox" id="paid" name="paid">
-                        </div>
-                        <div class="form-group">
-                            <label for="payment_method">Payment Method</label>
-                            <select id="payment_method" name="payment_method">
-                                <option value="">Select Payment Method</option>
-                                <option value="KBZ Pay">KBZ Pay</option>
-                                <option value="Mobile Banking">Mobile Banking</option>
-                                <option value="Aya Pay">Aya Pay</option>
-                                <option value="Cash">Cash</option>
-                            </select>
-                        </div>
-                        <div class="form-group">
-                            <label for="paid_date">Paid Date</label>
-                            <input type="text" id="paid_date" name="paid_date" placeholder="MM/DD/YYYY">
-                        </div>
-                        <div class="form-group">
-                            <label for="extra_fare">Extra Fare (Optional)</label>
-                            <input type="number" id="extra_fare" name="extra_fare" step="1">
-                        </div>
-                        <div class="form-group">
-                            <label for="commission">Total Commission</label>
-                            <input type="number" id="commission" name="commission" step="1" readonly>
-                        </div>
-                        <div class="form-group full-width">
-                            <label for="remark">Remark</label>
-                            <textarea id="remark" name="remark" rows="3"></textarea>
-                        </div>
-                    </div>
-                    <div class="form-actions">
-                        <button type="button" class="btn btn-secondary" onclick="showView('home')">Cancel</button>
-                        <button type="submit" class="btn btn-primary">Submit Ticket</button>
-                    </div>
-                </form>
-            </div>
-        </section>
-
-        <section id="modify-view" class="view">
-            <div class="form-container glass-card">
-                <h2>Modify Ticket</h2>
-                <div class="pnr-search">
-                    <input type="text" id="modifyPnr" placeholder="Enter PNR Code">
-                    <button id="findTicketBtn" class="btn btn-primary">Find Ticket</button>
-                    <button type="button" class="btn btn-secondary" onclick="showView('home')">Cancel</button>
-                </div>
-                <div id="modifyResultsContainer" class="results-section" style="padding: 1rem 0 0 0;">
-                    </div>
-            </div>
-        </section>
-
-        <section id="cancel-view" class="view">
-            <div class="form-container glass-card">
-                <h2>Cancel Ticket</h2>
-                <div class="pnr-search">
-                    <input type="text" id="cancelPnr" placeholder="Enter PNR Code">
-                    <button id="findCancelBtn" class="btn btn-primary">Find & Cancel</button>
-                    <button type="button" class="btn btn-secondary" onclick="showView('home')">Cancel</button>
-                </div>
-            </div>
-        </section>
-    </main>
-
-    <div id="modal" class="modal">
-        <div class="modal-content glass-card">
-            <div id="modalBody"></div>
-        </div>
+            </section>
+        </main>
     </div>
 
-    <div id="modifyModal" class="modal">
-        <div class="modal-content glass-card">
-            <span id="closeModifyModal" class="close">&times;</span>
-            <div id="modifyModalBody">
-                </div>
-        </div>
-    </div>
+    <div id="modal" class="modal"><div class="modal-content glass-card"><span class="close" onclick="closeDetailsModal()">&times;</span><div id="modalBody"></div></div></div>
+    <div id="modifyModal" class="modal"><div class="modal-content glass-card"><span id="closeModifyModal" class="close">&times;</span><div id="modifyModalBody"></div></div></div>
 
-    <div id="toast" class="toast">
-        <span id="toastMessage"></span>
-    </div>
+    <div id="toast"><span id="toastMessage"></span></div>
 
     <script src="script.js"></script>
 </body>

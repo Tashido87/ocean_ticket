@@ -5,12 +5,15 @@ const CONFIG = {
     CLIENT_ID: '254093944424-mfvk48avc9n86de6jit9oai7kqrsr2f7.apps.googleusercontent.com', // IMPORTANT: REPLACE WITH YOUR CLIENT ID
     SCOPES: 'https://www.googleapis.com/auth/spreadsheets',
     DISCOVERY_DOC: 'https://sheets.googleapis.com/$discovery/rest?version=v4',
-    SHEET_NAME: '2025'
+    SHEET_NAME: '2025',
+    BOOKING_SHEET_NAME: 'booking' // New configuration for the booking tab
 };
 
 // Global variables
 let allTickets = [];
 let filteredTickets = [];
+let allBookings = []; // For storing booking data
+let filteredBookings = []; // For displaying sorted/filtered booking data
 let charts = {};
 let tokenClient;
 let gapiInited = false;
@@ -18,6 +21,9 @@ let gisInited = false;
 let isSubmitting = false; 
 const rowsPerPage = 10;
 let currentPage = 1;
+let bookingCurrentPage = 1; // Pagination for booking table
+let searchTimeout;
+
 
 // --- DOM Elements ---
 const navBtns = document.querySelectorAll('.nav-btn');
@@ -33,6 +39,12 @@ const cancelModalBody = document.getElementById('cancelModalBody');
 const toast = document.getElementById('toast');
 const authorizeButton = document.getElementById('authorize_button');
 const signoutButton = document.getElementById('signout_button');
+// New Booking-related DOM elements
+const bookingDetailModal = document.getElementById('bookingDetailModal');
+const bookingDetailModalBody = document.getElementById('bookingDetailModalBody');
+const bookingConfirmModal = document.getElementById('bookingConfirmModal');
+const bookingConfirmModalBody = document.getElementById('bookingConfirmModalBody');
+
 
 // --- INITIALIZATION ---
 window.onload = async () => {
@@ -41,15 +53,18 @@ window.onload = async () => {
     initializeBackgroundChanger();
     if (typeof gapi === 'undefined' || !google.accounts) { showToast('Google API scripts not loaded.', 'error'); return; }
     try {
+        // These will now trigger the automatic sign-in check upon completion
         await Promise.all([loadGapiClient(), loadGisClient()]);
     } catch (error) {
         showToast('Failed to load Google APIs. Please refresh.', 'error');
+        authorizeButton.style.display = 'block';
+        loading.style.display = 'none';
     }
 };
 
 function initializeDatepickers() {
     const options = { format: 'mm/dd/yyyy', autohide: true, todayHighlight: true };
-    ['searchTravelDate', 'issued_date', 'departing_on', 'paid_date'].forEach(id => {
+    ['searchTravelDate', 'issued_date', 'departing_on', 'paid_date', 'booking_departing_on'].forEach(id => {
         const el = document.getElementById(id);
         if (el) new Datepicker(el, options);
     });
@@ -60,7 +75,9 @@ async function loadGapiClient() {
         gapi.load('client', async () => {
             try {
                 await gapi.client.init({ apiKey: CONFIG.API_KEY, discoveryDocs: [CONFIG.DISCOVERY_DOC] });
-                gapiInited = true; maybeEnableButtons(); resolve();
+                gapiInited = true;
+                tryAutoSignIn(); // Attempt to sign in once GAPI is ready
+                resolve();
             } catch (error) { reject(error); }
         });
     });
@@ -70,50 +87,86 @@ async function loadGisClient() {
     return new Promise((resolve, reject) => {
         try {
             tokenClient = google.accounts.oauth2.initTokenClient({
-                client_id: CONFIG.CLIENT_ID, scope: CONFIG.SCOPES, callback: '', 
+                client_id: CONFIG.CLIENT_ID,
+                scope: CONFIG.SCOPES,
+                callback: async (tokenResponse) => {
+                    // This single callback handles all token responses
+                    if (tokenResponse.error) {
+                        // This can happen if silent sign-in fails, which is expected
+                        // if the user isn't logged in. We just show the sign-in button.
+                        console.log('Token request failed:', tokenResponse.error);
+                        authorizeButton.style.display = 'block';
+                        loading.style.display = 'none';
+                        return;
+                    }
+                    // On success, set the token and initialize the app
+                    gapi.client.setToken(tokenResponse);
+                    authorizeButton.style.display = 'none';
+                    signoutButton.style.display = 'block';
+                    await initializeApp();
+                },
             });
-            gisInited = true; maybeEnableButtons(); resolve();
+            gisInited = true;
+            tryAutoSignIn(); // Attempt to sign in once GIS is ready
+            resolve();
         } catch (error) { reject(error); }
     });
 }
 
-function maybeEnableButtons() {
+// --- AUTHENTICATION ---
+
+// New function to attempt a silent sign-in on page load
+function tryAutoSignIn() {
+    // We can only attempt this if both Google libraries are fully loaded
     if (gapiInited && gisInited) {
-        authorizeButton.style.display = 'block';
-        loading.style.display = 'none';
+        // The prompt: '' option attempts to get a token without showing a popup.
+        // It will succeed if the user is signed in and has previously given consent.
+        tokenClient.requestAccessToken({ prompt: '' });
     }
 }
 
-async function initializeApp() {
-    await loadTicketData();
-}
-
-// --- AUTHENTICATION ---
+// This function is now only for the manual "Sign In" button click
 function handleAuthClick() {
-    tokenClient.callback = async (resp) => {
-        if (resp.error) { showToast('Authentication failed.', 'error'); throw (resp); }
-        gapi.client.setToken(resp); 
-        authorizeButton.style.display = 'none';
-        signoutButton.style.display = 'block';
-        await initializeApp();
-    };
-    if (gapi.client.getToken() === null) tokenClient.requestAccessToken({ prompt: 'consent' });
-    else tokenClient.requestAccessToken({ prompt: '' });
+    // If the user clicks, it means silent sign-in failed.
+    // We use prompt: 'consent' to force the Google sign-in popup.
+    if (gapi.client.getToken() === null) {
+        tokenClient.requestAccessToken({ prompt: 'consent' });
+    } else {
+        tokenClient.requestAccessToken({ prompt: '' });
+    }
 }
 
 function handleSignoutClick() {
     const token = gapi.client.getToken();
     if (token) {
-        google.accounts.oauth2.revoke(token.access_token);
+        google.accounts.oauth2.revoke(token.access_token, () => {
+            console.log('Token revoked.');
+        });
         gapi.client.setToken('');
+        // Reset the UI to the signed-out state
         authorizeButton.style.display = 'block';
         signoutButton.style.display = 'none';
         dashboardContent.style.display = 'none';
         loading.style.display = 'block';
         allTickets = [];
+        allBookings = []; // Clear booking data on signout
         document.getElementById('resultsBody').innerHTML = '';
+        document.getElementById('bookingTableBody').innerHTML = '';
     }
 }
+
+async function initializeApp() {
+    try {
+        await Promise.all([
+            loadTicketData(),
+            loadBookingData()
+        ]);
+    } catch (error) {
+        console.error("Initialization failed:", error);
+        showToast('A critical error occurred during data initialization. Please check the console (F12) for details.', 'error');
+    }
+}
+
 
 // --- EVENT LISTENERS ---
 function setupEventListeners() {
@@ -130,10 +183,27 @@ function setupEventListeners() {
     document.getElementById('findCancelBtn').addEventListener('click', findTicketForCancel);
     document.getElementById('clearCancelBtn').addEventListener('click', clearCancelResults);
     
-    ['departure', 'destination', 'searchDeparture', 'searchDestination'].forEach(id => {
+    // New Booking Event Listeners
+    document.getElementById('newBookingBtn').addEventListener('click', showNewBookingForm);
+    document.getElementById('cancelNewBookingBtn').addEventListener('click', hideNewBookingForm);
+    document.getElementById('newBookingForm').addEventListener('submit', handleNewBookingSubmit);
+    document.getElementById('bookingSearchBtn').addEventListener('click', performBookingSearch);
+    document.getElementById('bookingClearBtn').addEventListener('click', clearBookingSearch);
+    bookingDetailModal.querySelector('.close').addEventListener('click', () => bookingDetailModal.style.display = "none");
+
+    ['departure', 'destination', 'searchDeparture', 'searchDestination', 'booking_departure', 'booking_destination'].forEach(id => {
         const select = document.getElementById(id);
         if (select) {
-            select.addEventListener('keyup', (e) => handleShortcutTyping(e, id));
+            const tempInput = document.createElement('input');
+            tempInput.setAttribute('type', 'text');
+            tempInput.setAttribute('style', 'position:absolute;opacity:0;height:0;width:0;');
+            select.parentNode.insertBefore(tempInput, select);
+
+            select.addEventListener('focus', () => {
+                tempInput.focus();
+            });
+
+            tempInput.addEventListener('keyup', (e) => handleShortcutTyping(e, id));
         }
     });
 
@@ -143,10 +213,12 @@ function setupEventListeners() {
         if (event.target == detailsModal) detailsModal.style.display = "none";
         if (event.target == modifyModal) modifyModal.style.display = "none";
         if (event.target == cancelModal) cancelModal.style.display = "none";
+        if (event.target == bookingDetailModal) bookingDetailModal.style.display = "none";
+        if (event.target == bookingConfirmModal) bookingConfirmModal.style.display = "none";
     });
 }
 
-// --- CORE APP LOGIC ---
+// --- CORE APP LOGIC (TICKETS) ---
 async function loadTicketData() {
     try {
         loading.style.display = 'block';
@@ -164,7 +236,7 @@ async function loadTicketData() {
         loading.style.display = 'none';
         dashboardContent.style.display = 'flex';
     } catch (error) {
-        showToast(`Error loading data: ${error.result?.error?.message || error}`, 'error');
+        showToast(`Error loading ticket data: ${error.result?.error?.message || error}`, 'error');
         loading.style.display = 'none';
     }
 }
@@ -183,6 +255,323 @@ function parseTicketData(values) {
         ticket.rowIndex = i + 2;
         return ticket;
     });
+}
+
+
+// --- BOOKING LOGIC ---
+async function loadBookingData() {
+    try {
+        const response = await gapi.client.sheets.spreadsheets.values.get({
+            spreadsheetId: CONFIG.SHEET_ID,
+            range: `${CONFIG.BOOKING_SHEET_NAME}!A:K`
+        });
+
+        if (response.result.values) {
+            allBookings = parseBookingData(response.result.values);
+        } else {
+            allBookings = [];
+        }
+        populateBookingSearchOptions();
+        displayBookings();
+    } catch (error) {
+        showToast(`Error loading booking data: ${error.result?.error?.message || error}`, 'error');
+        document.getElementById('bookingTableBody').innerHTML = `<tr><td colspan="7" style="text-align:center; color: #F85149;">Failed to load data.</td></tr>`;
+    }
+}
+
+function parseBookingData(values) {
+    if (values.length < 1) return [];
+    const headers = values[0].map(h => h.toLowerCase().replace(/\s+/g, '_'));
+    return values.slice(1).map((row, i) => {
+        const booking = {};
+        headers.forEach((h, j) => {
+            const value = row[j] || '';
+            booking[h] = typeof value === 'string' ? value.trim() : value;
+        });
+        booking.rowIndex = i + 2; // Sheet rows are 1-indexed, and we have a header
+        return booking;
+    });
+}
+
+function displayBookings(bookingsToDisplay) {
+    const tbody = document.getElementById('bookingTableBody');
+    tbody.innerHTML = '';
+    
+    let bookings;
+    if (bookingsToDisplay) {
+        // If a specific set of bookings is provided (e.g., from search), use it
+        bookings = bookingsToDisplay;
+    } else {
+        // Otherwise, show the default view (current, non-actioned bookings)
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        bookings = allBookings.filter(b => {
+            const hasNoAction = !b.remark || String(b.remark).trim() === '';
+            const travelDate = parseSheetDate(b.departing_on);
+            return hasNoAction && travelDate >= today;
+        });
+    }
+
+    // Sort whatever list of bookings we're displaying
+    bookings.sort((a, b) => {
+        const dateA = parseSheetDate(a.departing_on);
+        const dateB = parseSheetDate(b.departing_on);
+        return dateA - dateB;
+    });
+
+    filteredBookings = bookings; // Store the currently displayed set for pagination
+
+    if (filteredBookings.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;">No bookings found.</td></tr>`;
+        setupBookingPagination([]);
+        return;
+    }
+    
+    // Paginate and Render
+    bookingCurrentPage = 1;
+    renderBookingPage(1);
+}
+
+function renderBookingPage(page) {
+    bookingCurrentPage = page;
+    const tbody = document.getElementById('bookingTableBody');
+    tbody.innerHTML = '';
+
+    const paginated = filteredBookings.slice((page - 1) * rowsPerPage, page * rowsPerPage);
+
+    paginated.forEach(booking => {
+        const row = tbody.insertRow();
+        row.innerHTML = `
+            <td>${booking.departing_on || ''}</td>
+            <td>${booking.name || ''}</td>
+            <td>${(booking.departure || '').split(' ')[0]}→${(booking.destination || '').split(' ')[0]}</td>
+            <td>${booking.pax_no || ''}</td>
+            <td><input type="checkbox" class="action-checkbox" onclick="handleGetTicket(${booking.rowIndex})"></td>
+            <td><input type="checkbox" class="action-checkbox" onclick="handleCancelBooking(${booking.rowIndex})"></td>
+            <td><button class="btn btn-secondary" style="padding:0.5rem 1rem;" onclick="showBookingDetails(${booking.rowIndex})">Details</button></td>
+        `;
+    });
+    
+    setupBookingPagination(filteredBookings);
+}
+
+function handleGetTicket(rowIndex) {
+    const booking = allBookings.find(b => b.rowIndex === rowIndex);
+    const message = `Are you sure you want to mark booking for <strong>${booking.name}</strong> as "Get Ticket"? This will remove it from the list.`;
+    showBookingConfirmModal(message, () => updateBookingStatus(rowIndex, 'Get Ticket'));
+}
+
+function handleCancelBooking(rowIndex) {
+    const booking = allBookings.find(b => b.rowIndex === rowIndex);
+    const message = `Are you sure you want to <strong>CANCEL</strong> the booking for <strong>${booking.name}</strong>? This will remove it from the list.`;
+    showBookingConfirmModal(message, () => updateBookingStatus(rowIndex, 'Canceled'));
+}
+
+async function updateBookingStatus(rowIndex, remark) {
+    try {
+        isSubmitting = true;
+        showToast('Updating booking status...', 'info');
+        const range = `${CONFIG.BOOKING_SHEET_NAME}!K${rowIndex}`;
+        await gapi.client.sheets.spreadsheets.values.update({
+            spreadsheetId: CONFIG.SHEET_ID,
+            range: range,
+            valueInputOption: 'USER_ENTERED',
+            resource: {
+                values: [[remark]]
+            }
+        });
+        showToast('Booking updated successfully!', 'success');
+        await loadBookingData();
+    } catch (error) {
+        showToast(`Update Error: ${error.result?.error?.message || 'Could not update.'}`, 'error');
+        await loadBookingData();
+    } finally {
+        isSubmitting = false;
+        bookingConfirmModal.style.display = 'none';
+    }
+}
+
+function showBookingDetails(rowIndex) {
+    const booking = allBookings.find(b => b.rowIndex === rowIndex);
+    if (booking) {
+        bookingDetailModalBody.innerHTML = `
+            <h3>Booking Request Details</h3>
+            <p><strong>Name:</strong> ${booking.name || 'N/A'}</p>
+            <p><strong>NRC No:</strong> ${booking.nrc_no || 'N/A'}</p>
+            <p><strong>Phone:</strong> ${makeClickable(booking.phone)}</p>
+            <p><strong>Pax No:</strong> ${booking.pax_no || 'N/A'}</p>
+            <hr style="border-color: rgba(255,255,255,0.2); margin: 1rem 0;">
+            <p><strong>Account Name:</strong> ${booking.account_name || 'N/A'}</p>
+            <p><strong>Account Type:</strong> ${booking.account_type || 'N/A'}</p>
+            <p><strong>Account Link:</strong> ${makeClickable(booking.account_link) || 'N/A'}</p>
+            <hr style="border-color: rgba(255,255,255,0.2); margin: 1rem 0;">
+            <p><strong>Route:</strong> ${booking.departure || 'N/A'} → ${booking.destination || 'N/A'}</p>
+            <p><strong>Travel Date:</strong> ${booking.departing_on || 'N/A'}</p>
+            <p><strong>Remark:</strong> ${booking.remark || 'N/A'}</p>
+            <div style="text-align: center; margin-top: 1.5rem;">
+                <button class="btn btn-secondary" onclick="bookingDetailModal.style.display='none'">Close</button>
+            </div>
+        `;
+        bookingDetailModal.style.display = 'block';
+    }
+}
+
+function showNewBookingForm() {
+    document.getElementById('booking-display-container').style.display = 'none';
+    document.getElementById('booking-form-container').style.display = 'block';
+}
+
+function hideNewBookingForm() {
+    document.getElementById('booking-form-container').style.display = 'none';
+    document.getElementById('booking-display-container').style.display = 'block';
+    document.getElementById('newBookingForm').reset();
+}
+
+async function handleNewBookingSubmit(e) {
+    e.preventDefault();
+    if (isSubmitting) return;
+    isSubmitting = true;
+    const submitButton = e.target.querySelector('button[type="submit"]');
+    if (submitButton) submitButton.disabled = true;
+
+    try {
+        const bookingData = {
+            name: document.getElementById('booking_name').value.toUpperCase(),
+            nrc_no: document.getElementById('booking_nrc_no').value.toUpperCase(),
+            phone: document.getElementById('booking_phone').value,
+            account_name: document.getElementById('booking_account_name').value.toUpperCase(),
+            account_type: document.getElementById('booking_account_type').value.toUpperCase(),
+            account_link: document.getElementById('booking_account_link').value,
+            departure: document.getElementById('booking_departure').value.toUpperCase(),
+            destination: document.getElementById('booking_destination').value.toUpperCase(),
+            departing_on: document.getElementById('booking_departing_on').value,
+            pax_no: document.getElementById('booking_pax_no').value,
+        };
+
+        if (!bookingData.name || !bookingData.departing_on) {
+            throw new Error('Client Name and Travel Date are required.');
+        }
+
+        const values = [[
+            bookingData.name, bookingData.nrc_no, bookingData.phone,
+            bookingData.account_name, bookingData.account_type, bookingData.account_link,
+            bookingData.departure, bookingData.destination, 
+            formatDateForSheet(bookingData.departing_on),
+            bookingData.pax_no, 
+            '' 
+        ]];
+
+        await gapi.client.sheets.spreadsheets.values.append({
+            spreadsheetId: CONFIG.SHEET_ID,
+            range: `${CONFIG.BOOKING_SHEET_NAME}!A:K`,
+            valueInputOption: 'USER_ENTERED',
+            resource: { values },
+        });
+
+        showToast('Booking saved successfully!', 'success');
+        hideNewBookingForm();
+        await loadBookingData();
+    } catch (error) {
+        showToast(`Error: ${error.message || 'Could not save booking.'}`, 'error');
+    } finally {
+        isSubmitting = false;
+        if (submitButton) submitButton.disabled = false;
+    }
+}
+
+function setupBookingPagination(items) {
+    const container = document.getElementById('bookingPagination');
+    container.innerHTML = '';
+    const pageCount = Math.ceil(items.length / rowsPerPage);
+    if (pageCount <= 1) return;
+
+    const createBtn = (txt, pg, enabled = true) => {
+        const btn = document.createElement('button');
+        btn.className = 'pagination-btn';
+        btn.innerHTML = txt;
+        btn.disabled = !enabled;
+        if (enabled) {
+            btn.onclick = () => renderBookingPage(pg);
+        }
+        if (pg === bookingCurrentPage) {
+            btn.classList.add('active');
+        }
+        return btn;
+    };
+
+    container.append(createBtn('&laquo;', bookingCurrentPage - 1, bookingCurrentPage > 1));
+    for (let i = 1; i <= pageCount; i++) {
+        container.append(createBtn(i, i));
+    }
+    container.append(createBtn('&raquo;', bookingCurrentPage + 1, bookingCurrentPage < pageCount));
+}
+
+function showBookingConfirmModal(message, onConfirm) {
+    bookingConfirmModalBody.innerHTML = `
+        <p style="margin-bottom: 1.5rem; line-height: 1.5;">${message}</p>
+        <div class="form-actions">
+            <button id="confirmCancelBtn" type="button" class="btn btn-secondary">Back</button>
+            <button id="confirmActionBtn" type="button" class="btn btn-primary">Confirm</button>
+        </div>
+    `;
+    bookingConfirmModal.style.display = 'block';
+
+    document.getElementById('confirmActionBtn').onclick = onConfirm;
+    document.getElementById('confirmCancelBtn').onclick = async () => {
+        bookingConfirmModal.style.display = 'none';
+        await loadBookingData();
+    };
+}
+
+// --- NEW BOOKING SEARCH FUNCTIONS ---
+function populateBookingSearchOptions() {
+    const select = document.getElementById('bookingSearchRoute');
+    select.innerHTML = '<option value="">-- SEARCH BY ROUTE --</option>'; // Reset
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const activeBookings = allBookings.filter(b => {
+        const hasNoAction = !b.remark || String(b.remark).trim() === '';
+        const travelDate = parseSheetDate(b.departing_on);
+        return hasNoAction && travelDate >= today;
+    });
+
+    const routes = [...new Set(activeBookings.map(b => `${b.departure || ''}→${b.destination || ''}`))];
+    
+    routes.sort().forEach(route => {
+        const option = document.createElement('option');
+        option.value = route;
+        option.textContent = route.replace(/ \([^)]*\)/g, ''); // Clean display like RGN→MDL
+        select.appendChild(option);
+    });
+}
+
+function performBookingSearch() {
+    const routeQuery = document.getElementById('bookingSearchRoute').value;
+    if (!routeQuery) {
+        showToast('Please select a route to search.', 'info');
+        return;
+    }
+    
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const searchResults = allBookings.filter(b => {
+        const route = `${b.departure || ''}→${b.destination || ''}`;
+        const hasNoAction = !b.remark || String(b.remark).trim() === '';
+        const travelDate = parseSheetDate(b.departing_on);
+
+        return hasNoAction && travelDate >= today && route === routeQuery;
+    });
+
+    displayBookings(searchResults);
+}
+
+function clearBookingSearch() {
+    document.getElementById('bookingSearchRoute').value = '';
+    displayBookings(); // Display default list of current bookings
 }
 
 // --- BACKGROUND CHANGER ---
@@ -220,13 +609,8 @@ function showView(viewName) {
     if (viewName === 'sell') {
         document.getElementById('sellForm').reset();
     }
-    if (viewName !== 'receipt') {
-        const controlsContainer = document.getElementById('receiptControlsContainer');
-        const displayContainer = document.getElementById('documentDisplayContainer');
-        const pnrInput = document.getElementById('receiptPnr');
-        if(controlsContainer) controlsContainer.innerHTML = '';
-        if(displayContainer) displayContainer.innerHTML = '';
-        if(pnrInput) pnrInput.value = '';
+    if (viewName === 'booking') {
+        hideNewBookingForm();
     }
 }
 
@@ -334,16 +718,19 @@ function makeClickable(text) { if (!text) return 'N/A'; if (text.toLowerCase().s
 function showToast(message, type = 'info') { document.getElementById('toastMessage').textContent = message; const toastEl = document.getElementById('toast'); toastEl.className = `show ${type}`; setTimeout(() => toastEl.className = toastEl.className.replace('show', ''), 4000); }
 function formatDateForSheet(dateString) { if (!dateString) return ''; const date = new Date(dateString); return isNaN(date.getTime()) ? dateString : `${String(date.getMonth() + 1).padStart(2, '0')}/${String(date.getDate()).padStart(2, '0')}/${date.getFullYear()}`; }
 
-// MODIFICATION: Made function robust to handle both string and number date inputs
 function parseSheetDate(dateString) {
     if (!dateString) return new Date(0);
-    const safeDateString = String(dateString); // Ensure the input is a string
+    const safeDateString = String(dateString); 
     const monthMap = { 'JAN':0,'FEB':1,'MAR':2,'APR':3,'MAY':4,'JUN':5,'JUL':6,'AUG':7,'SEP':8,'OCT':9,'NOV':10,'DEC':11 };
     const parts = safeDateString.split('-');
     if (parts.length === 3 && isNaN(parseInt(parts[1], 10))) {
         return new Date(parseInt(parts[2], 10), monthMap[parts[1].toUpperCase()], parseInt(parts[0], 10));
     }
-    return new Date(safeDateString);
+    const date = new Date(safeDateString);
+    if (!isNaN(date.getTime())) {
+        return date;
+    }
+    return new Date(0); 
 }
 
 
@@ -393,7 +780,24 @@ function clearSearch() {
     displayAllTickets();
 }
 
-function setupPagination(items) { const container = document.getElementById('pagination'); container.innerHTML = ''; const pageCount = Math.ceil(items.length / rowsPerPage); if (pageCount <= 1) return; const btn = (txt, pg, en=true) => {const b = document.createElement('button'); b.className = 'pagination-btn'; b.innerHTML=txt; b.disabled=!en; if(en) b.onclick=()=>displayTickets(items,pg); if(pg===currentPage)b.classList.add('active'); return b;}; container.append(btn('&laquo;', currentPage - 1, currentPage > 1)); for (let i = 1; i <= pageCount; i++) container.append(btn(i,i)); container.append(btn('&raquo;', currentPage + 1, currentPage < pageCount));}
+function setupPagination(items) { 
+    const container = document.getElementById('pagination'); 
+    container.innerHTML = ''; 
+    const pageCount = Math.ceil(items.length / rowsPerPage); 
+    if (pageCount <= 1) return; 
+    const btn = (txt, pg, en=true) => {
+        const b = document.createElement('button'); 
+        b.className = 'pagination-btn'; 
+        b.innerHTML=txt; 
+        b.disabled=!en; 
+        if(en) b.onclick=()=>displayTickets(items,pg); 
+        if(pg===currentPage)b.classList.add('active'); 
+        return b;
+    }; 
+    container.append(btn('&laquo;', currentPage - 1, currentPage > 1)); 
+    for (let i = 1; i <= pageCount; i++) container.append(btn(i,i)); 
+    container.append(btn('&raquo;', currentPage + 1, currentPage < pageCount));
+}
 
 // --- FORM SUBMISSIONS ---
 async function handleSellTicket(e) { e.preventDefault(); if (isSubmitting) return; isSubmitting = true; const submitButton = e.target.querySelector('button[type="submit"]'); if (submitButton) submitButton.disabled = true; try { const ticketData = collectFormData(e.target); if (!ticketData.name || !ticketData.booking_reference) throw new Error('Missing required fields.'); await saveTicket(ticketData); showToast('Ticket saved successfully!', 'success'); e.target.reset(); await loadTicketData(); showView('home'); } catch (error) { showToast(`Error: ${error.message || 'Could not save ticket.'}`, 'error'); } finally { isSubmitting = false; if (submitButton) submitButton.disabled = false; } }
@@ -699,13 +1103,51 @@ async function handleCancelTicket(rowIndex, type, refundAmount = 0) {
 // --- SHORTCUT TYPING FUNCTION ---
 function handleShortcutTyping(event, elementId) {
     const selectElement = document.getElementById(elementId);
-    const searchString = event.key.toUpperCase();
+    const tempInput = event.target;
 
-    if (searchString.length === 1 && /[A-Z]/.test(searchString)) {
+    clearTimeout(searchTimeout);
+
+    searchTimeout = setTimeout(() => {
+        tempInput.value = '';
+    }, 1500);
+
+    // Handle input keys
+    if (event.key === 'Backspace') {
+        event.preventDefault();
+        tempInput.value = tempInput.value.slice(0, -1);
+    } else if (event.key.length === 1 && /[a-zA-Z]/.test(event.key)) {
+        event.preventDefault();
+        tempInput.value += event.key.toUpperCase();
+    } else {
+        // Ignore other keys like Shift, Enter, etc.
+        return;
+    }
+
+    const currentSearch = tempInput.value;
+    if (!currentSearch) {
+        // Do nothing if the search string is empty
+        return;
+    }
+
+    let exactMatchFound = false;
+
+    // First, prioritize finding an exact match for the typed code
+    for (let i = 0; i < selectElement.options.length; i++) {
+        const option = selectElement.options[i];
+        const shortcutMatch = option.value.match(/\((.*?)\)/);
+        if (shortcutMatch && shortcutMatch[1].toUpperCase() === currentSearch) {
+            selectElement.value = option.value;
+            exactMatchFound = true;
+            break;
+        }
+    }
+
+    // If no exact match was found, fall back to a partial "startsWith" search
+    if (!exactMatchFound) {
         for (let i = 0; i < selectElement.options.length; i++) {
             const option = selectElement.options[i];
             const shortcutMatch = option.value.match(/\((.*?)\)/);
-            if (shortcutMatch && shortcutMatch[1].toUpperCase().startsWith(searchString)) {
+            if (shortcutMatch && shortcutMatch[1].toUpperCase().startsWith(currentSearch)) {
                 selectElement.value = option.value;
                 break;
             }

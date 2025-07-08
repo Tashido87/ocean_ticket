@@ -49,7 +49,7 @@ window.onload = async () => {
 
 function initializeDatepickers() {
     const options = { format: 'mm/dd/yyyy', autohide: true, todayHighlight: true };
-    ['searchDate', 'issued_date', 'departing_on', 'paid_date'].forEach(id => {
+    ['searchTravelDate', 'issued_date', 'departing_on', 'paid_date'].forEach(id => {
         const el = document.getElementById(id);
         if (el) new Datepicker(el, options);
     });
@@ -123,14 +123,20 @@ function setupEventListeners() {
     document.getElementById('searchBtn').addEventListener('click', performSearch);
     document.getElementById('clearBtn').addEventListener('click', clearSearch);
     document.getElementById('sellForm').addEventListener('submit', handleSellTicket);
-    // Link both base fare and extra fare to commission calculation
     document.getElementById('base_fare').addEventListener('input', calculateCommission);
-    document.getElementById('extra_fare').addEventListener('input', calculateCommission); // This listener is kept, but the function logic is changed
+    document.getElementById('extra_fare').addEventListener('input', calculateCommission);
     document.getElementById('findTicketBtn').addEventListener('click', findTicketForModify);
     document.getElementById('clearModifyBtn').addEventListener('click', clearModifyResults);
     document.getElementById('findCancelBtn').addEventListener('click', findTicketForCancel);
     document.getElementById('clearCancelBtn').addEventListener('click', clearCancelResults);
     
+    ['departure', 'destination', 'searchDeparture', 'searchDestination'].forEach(id => {
+        const select = document.getElementById(id);
+        if (select) {
+            select.addEventListener('keyup', (e) => handleShortcutTyping(e, id));
+        }
+    });
+
     modifyModal.querySelector('.close').addEventListener('click', () => modifyModal.style.display = "none");
     cancelModal.querySelector('.close').addEventListener('click', () => cancelModal.style.display = "none");
     window.addEventListener('click', (event) => {
@@ -145,7 +151,6 @@ async function loadTicketData() {
     try {
         loading.style.display = 'block';
         dashboardContent.style.display = 'none';
-        // MODIFIED: Range extended to column T to get extra_fare
         const response = await gapi.client.sheets.spreadsheets.values.get({ 
             spreadsheetId: CONFIG.SHEET_ID, 
             range: `${CONFIG.SHEET_NAME}!A:T` 
@@ -168,9 +173,11 @@ function parseTicketData(values) {
     const headers = values[0].map(h => h.toLowerCase().replace(/\s+/g, '_'));
     return values.slice(1).map((row, i) => {
         const ticket = {};
-        headers.forEach((h, j) => ticket[h] = row[j] || '');
+        headers.forEach((h, j) => {
+            const value = row[j] || '';
+            ticket[h] = typeof value === 'string' ? value.trim() : value;
+        });
         const safeParse = (val) => parseFloat(String(val).replace(/,/g, '')) || 0;
-        // MODIFIED: Added extra_fare to the list of keys to be parsed as numbers
         ['base_fare', 'net_amount', 'commission', 'extra_fare'].forEach(key => ticket[key] = safeParse(ticket[key]));
         ticket.paid = ticket.paid === 'TRUE';
         ticket.rowIndex = i + 2;
@@ -213,7 +220,6 @@ function showView(viewName) {
     if (viewName === 'sell') {
         document.getElementById('sellForm').reset();
     }
-    // MODIFIED: Clear receipt/invoice view when navigating away
     if (viewName !== 'receipt') {
         const controlsContainer = document.getElementById('receiptControlsContainer');
         const displayContainer = document.getElementById('documentDisplayContainer');
@@ -288,17 +294,14 @@ function updateDashboardData() {
 
     const totalRevenue = ticketsThisMonth.reduce((sum, t) => sum + (t.net_amount || 0), 0);
     const revenueBox = document.getElementById('monthly-revenue-box');
-    // MODIFIED: Display full number with commas
     revenueBox.innerHTML = `<h3>Revenue (${monthName})</h3><div class="main-value">${totalRevenue.toLocaleString()}</div><span class="sub-value">MMK</span><i class="icon fa-solid fa-sack-dollar"></i>`;
 
     const totalCommission = ticketsThisMonth.reduce((sum, t) => sum + (t.commission || 0), 0);
     const commissionBox = document.getElementById('monthly-commission-box');
-    // MODIFIED: Display full number with commas
     commissionBox.innerHTML = `<h3>Commission (${monthName})</h3><div class="main-value">${totalCommission.toLocaleString()}</div><span class="sub-value">MMK</span><i class="icon fa-solid fa-hand-holding-dollar"></i>`;
     
     const totalExtraFare = ticketsThisMonth.reduce((sum, t) => sum + (t.extra_fare || 0), 0);
     const extraFareBox = document.getElementById('monthly-extra-fare-box');
-    // MODIFIED: Display full number with commas
     extraFareBox.innerHTML = `<h3>Extra Fare (${monthName})</h3><div class="main-value">${totalExtraFare.toLocaleString()}</div><span class="sub-value">MMK</span><i class="icon fa-solid fa-dollar-sign"></i>`;
 
     const getTopItem = (data, key) => {
@@ -330,7 +333,19 @@ function updateDashboardData() {
 function makeClickable(text) { if (!text) return 'N/A'; if (text.toLowerCase().startsWith('http')) return `<a href="${text}" target="_blank" style="color:var(--primary-accent);">${text}</a>`; if (/^[\d\s\-+()]+$/.test(text)) return `<a href="tel:${text.replace(/[^\d+]/g, '')}" style="color:var(--primary-accent);">${text}</a>`; if (text.startsWith('@')) return `<a href="https://t.me/${text.substring(1)}" target="_blank" style="color:var(--primary-accent);">${text}</a>`; return text; }
 function showToast(message, type = 'info') { document.getElementById('toastMessage').textContent = message; const toastEl = document.getElementById('toast'); toastEl.className = `show ${type}`; setTimeout(() => toastEl.className = toastEl.className.replace('show', ''), 4000); }
 function formatDateForSheet(dateString) { if (!dateString) return ''; const date = new Date(dateString); return isNaN(date.getTime()) ? dateString : `${String(date.getMonth() + 1).padStart(2, '0')}/${String(date.getDate()).padStart(2, '0')}/${date.getFullYear()}`; }
-function parseSheetDate(dateString) { if (!dateString) return new Date(0); const monthMap = { 'JAN':0,'FEB':1,'MAR':2,'APR':3,'MAY':4,'JUN':5,'JUL':6,'AUG':7,'SEP':8,'OCT':9,'NOV':10,'DEC':11 }; const parts = dateString.split('-'); if (parts.length === 3 && isNaN(parseInt(parts[1], 10))) { return new Date(parseInt(parts[2], 10), monthMap[parts[1].toUpperCase()], parseInt(parts[0], 10)); } return new Date(dateString); }
+
+// MODIFICATION: Made function robust to handle both string and number date inputs
+function parseSheetDate(dateString) {
+    if (!dateString) return new Date(0);
+    const safeDateString = String(dateString); // Ensure the input is a string
+    const monthMap = { 'JAN':0,'FEB':1,'MAR':2,'APR':3,'MAY':4,'JUN':5,'JUL':6,'AUG':7,'SEP':8,'OCT':9,'NOV':10,'DEC':11 };
+    const parts = safeDateString.split('-');
+    if (parts.length === 3 && isNaN(parseInt(parts[1], 10))) {
+        return new Date(parseInt(parts[2], 10), monthMap[parts[1].toUpperCase()], parseInt(parts[0], 10));
+    }
+    return new Date(safeDateString);
+}
+
 
 function calculateCommission() { 
     const baseFare = parseFloat(document.getElementById('base_fare').value) || 0;
@@ -341,30 +356,72 @@ function calculateCommission() {
 function performSearch() {
     const name = (document.getElementById('searchName')?.value || '').toUpperCase();
     const bookRef = (document.getElementById('searchBooking')?.value || '').toUpperCase();
-    const dateVal = document.getElementById('searchDate')?.value || '';
-    let searchDate = dateVal ? new Date(dateVal) : null;
+    const travelDateVal = document.getElementById('searchTravelDate')?.value || '';
+    const departure = document.getElementById('searchDeparture')?.value.toUpperCase();
+    const destination = document.getElementById('searchDestination')?.value.toUpperCase();
+    const airline = document.getElementById('searchAirline')?.value.toUpperCase();
+
+    let searchTravelDate = travelDateVal ? new Date(travelDateVal) : null;
+
     const results = allTickets.filter(t => {
-        const issuedDate = parseSheetDate(t.issued_date);
-        const isDateMatch = !searchDate || (issuedDate.getDate() === searchDate.getDate() && issuedDate.getMonth() === searchDate.getMonth() && issuedDate.getFullYear() === searchDate.getFullYear());
-        return (!name || t.name.toUpperCase().includes(name)) && (!bookRef || t.booking_reference.toUpperCase().includes(bookRef)) && isDateMatch;
-    }).sort((a,b) => parseSheetDate(b.issued_date) - parseSheetDate(a.rowIndex - b.rowIndex) || b.rowIndex - a.rowIndex);
+        const travelDate = parseSheetDate(t.departing_on);
+        const isTravelDateMatch = !searchTravelDate || (travelDate.getDate() === searchTravelDate.getDate() && travelDate.getMonth() === searchTravelDate.getMonth() && travelDate.getFullYear() === searchTravelDate.getFullYear());
+
+        const isDepartureMatch = !departure || (t.departure && t.departure.toUpperCase() === departure);
+        const isDestinationMatch = !destination || (t.destination && t.destination.toUpperCase() === destination);
+        const isAirlineMatch = !airline || (t.airline && t.airline.toUpperCase() === airline);
+
+        return (!name || t.name.toUpperCase().includes(name)) &&
+            (!bookRef || t.booking_reference.toUpperCase().includes(bookRef)) &&
+            isTravelDateMatch &&
+            isDepartureMatch &&
+            isDestinationMatch &&
+            isAirlineMatch;
+    }).sort((a, b) => parseSheetDate(b.issued_date) - parseSheetDate(a.rowIndex - b.rowIndex) || b.rowIndex - a.rowIndex);
+
     filteredTickets = results;
     displayTickets(filteredTickets, 1);
 }
-function clearSearch() { document.getElementById('searchName').value = ''; document.getElementById('searchBooking').value = ''; document.getElementById('searchDate').value = ''; displayAllTickets(); }
+
+function clearSearch() {
+    document.getElementById('searchName').value = '';
+    document.getElementById('searchBooking').value = '';
+    document.getElementById('searchTravelDate').value = '';
+    document.getElementById('searchDeparture').selectedIndex = 0;
+    document.getElementById('searchDestination').selectedIndex = 0;
+    document.getElementById('searchAirline').selectedIndex = 0;
+    displayAllTickets();
+}
+
 function setupPagination(items) { const container = document.getElementById('pagination'); container.innerHTML = ''; const pageCount = Math.ceil(items.length / rowsPerPage); if (pageCount <= 1) return; const btn = (txt, pg, en=true) => {const b = document.createElement('button'); b.className = 'pagination-btn'; b.innerHTML=txt; b.disabled=!en; if(en) b.onclick=()=>displayTickets(items,pg); if(pg===currentPage)b.classList.add('active'); return b;}; container.append(btn('&laquo;', currentPage - 1, currentPage > 1)); for (let i = 1; i <= pageCount; i++) container.append(btn(i,i)); container.append(btn('&raquo;', currentPage + 1, currentPage < pageCount));}
 
 // --- FORM SUBMISSIONS ---
 async function handleSellTicket(e) { e.preventDefault(); if (isSubmitting) return; isSubmitting = true; const submitButton = e.target.querySelector('button[type="submit"]'); if (submitButton) submitButton.disabled = true; try { const ticketData = collectFormData(e.target); if (!ticketData.name || !ticketData.booking_reference) throw new Error('Missing required fields.'); await saveTicket(ticketData); showToast('Ticket saved successfully!', 'success'); e.target.reset(); await loadTicketData(); showView('home'); } catch (error) { showToast(`Error: ${error.message || 'Could not save ticket.'}`, 'error'); } finally { isSubmitting = false; if (submitButton) submitButton.disabled = false; } }
-function collectFormData(form) { const data = {}; const fields = ['issued_date', 'name', 'nrc_no', 'phone', 'account_name', 'account_type', 'account_link', 'departure', 'destination', 'departing_on', 'airline', 'base_fare', 'booking_reference', 'net_amount', 'paid', 'payment_method', 'paid_date', 'commission', 'remark', 'extra_fare']; fields.forEach(field => { const el = form.querySelector(`#${field}`); if(el) data[field] = el.type === 'checkbox' ? el.checked : el.value; }); return data; }
+
+function collectFormData(form) {
+    const data = {};
+    const fields = ['issued_date', 'name', 'nrc_no', 'phone', 'account_name', 'account_type', 'account_link', 'departure', 'destination', 'departing_on', 'airline', 'base_fare', 'booking_reference', 'net_amount', 'paid', 'payment_method', 'paid_date', 'commission', 'remark', 'extra_fare'];
+    
+    fields.forEach(field => {
+        const el = form.querySelector(`#${field}`);
+        if (el) {
+            let value = el.type === 'checkbox' ? el.checked : el.value;
+            if (typeof value === 'string') {
+                value = value.toUpperCase();
+            }
+            data[field] = value;
+        }
+    });
+    return data;
+}
 
 async function saveTicket(data) { 
     const values = [[ 
-        formatDateForSheet(data.issued_date), data.name, data.nrc_no.toUpperCase(), 
-        data.phone, data.account_name.toUpperCase(), data.account_type.toUpperCase(), 
+        formatDateForSheet(data.issued_date), data.name, data.nrc_no, 
+        data.phone, data.account_name, data.account_type, 
         data.account_link, data.departure, data.destination, 
         formatDateForSheet(data.departing_on), data.airline, parseFloat(data.base_fare) || 0, 
-        data.booking_reference.toUpperCase(), parseFloat(data.net_amount) || 0, data.paid, 
+        data.booking_reference, parseFloat(data.net_amount) || 0, data.paid, 
         data.payment_method, formatDateForSheet(data.paid_date), parseFloat(data.commission) || 0, 
         data.remark, parseFloat(data.extra_fare) || 0 
     ]]; 
@@ -636,5 +693,22 @@ async function handleCancelTicket(rowIndex, type, refundAmount = 0) {
         await loadTicketData();
     } catch (error) {
         showToast(`Cancellation Error: ${error.result?.error?.message || 'Could not update.'}`, 'error');
+    }
+}
+
+// --- SHORTCUT TYPING FUNCTION ---
+function handleShortcutTyping(event, elementId) {
+    const selectElement = document.getElementById(elementId);
+    const searchString = event.key.toUpperCase();
+
+    if (searchString.length === 1 && /[A-Z]/.test(searchString)) {
+        for (let i = 0; i < selectElement.options.length; i++) {
+            const option = selectElement.options[i];
+            const shortcutMatch = option.value.match(/\((.*?)\)/);
+            if (shortcutMatch && shortcutMatch[1].toUpperCase().startsWith(searchString)) {
+                selectElement.value = option.value;
+                break;
+            }
+        }
     }
 }

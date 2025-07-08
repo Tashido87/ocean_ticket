@@ -28,6 +28,8 @@ const detailsModal = document.getElementById('modal');
 const detailsModalBody = document.getElementById('modalBody');
 const modifyModal = document.getElementById('modifyModal');
 const modifyModalBody = document.getElementById('modifyModalBody');
+const cancelModal = document.getElementById('cancelModal');
+const cancelModalBody = document.getElementById('cancelModalBody');
 const toast = document.getElementById('toast');
 const authorizeButton = document.getElementById('authorize_button');
 const signoutButton = document.getElementById('signout_button');
@@ -125,12 +127,16 @@ function setupEventListeners() {
     document.getElementById('base_fare').addEventListener('input', calculateCommission);
     document.getElementById('extra_fare').addEventListener('input', calculateCommission); // This listener is kept, but the function logic is changed
     document.getElementById('findTicketBtn').addEventListener('click', findTicketForModify);
-    document.getElementById('findCancelBtn').addEventListener('click', () => showToast('Cancel functionality not yet implemented.', 'info'));
+    document.getElementById('clearModifyBtn').addEventListener('click', clearModifyResults);
+    document.getElementById('findCancelBtn').addEventListener('click', findTicketForCancel);
+    document.getElementById('clearCancelBtn').addEventListener('click', clearCancelResults);
     
     modifyModal.querySelector('.close').addEventListener('click', () => modifyModal.style.display = "none");
+    cancelModal.querySelector('.close').addEventListener('click', () => cancelModal.style.display = "none");
     window.addEventListener('click', (event) => {
         if (event.target == detailsModal) detailsModal.style.display = "none";
         if (event.target == modifyModal) modifyModal.style.display = "none";
+        if (event.target == cancelModal) cancelModal.style.display = "none";
     });
 }
 
@@ -378,16 +384,28 @@ function findTicketForModify() {
     displayModifyResults(found);
 }
 
+function clearModifyResults() {
+    document.getElementById('modifyPnr').value = '';
+    document.getElementById('modifyResultsContainer').innerHTML = '';
+}
+
 function displayModifyResults(tickets) {
     const container = document.getElementById('modifyResultsContainer');
     if (tickets.length === 0) {
         container.innerHTML = '<p style="text-align: center; margin-top: 1rem;">No tickets found for this PNR.</p>';
         return;
     }
-    let html = `<div class="table-container"><table><thead><tr><th>Name</th><th>Route</th><th>Action</th></tr></thead><tbody>`;
+    let html = `<div class="table-container"><table><thead><tr><th>Name</th><th>Route</th><th>Travel Date</th><th>Action</th></tr></thead><tbody>`;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
     tickets.forEach(t => {
-        const actionButton = t.base_fare > 0 ? `<button class="btn btn-primary" onclick="openModifyModal(${t.rowIndex})">Modify</button>` : '';
-        html += `<tr><td>${t.name}</td><td>${t.departure.split(' ')[0]}→${t.destination.split(' ')[0]}</td><td>${actionButton}</td></tr>`;
+        const travelDate = parseSheetDate(t.departing_on);
+        const isPast = travelDate < today;
+        const actionButton = isPast ? 
+            `<button class="btn btn-primary" disabled>Date Passed</button>` :
+            (t.base_fare > 0 ? `<button class="btn btn-primary" onclick="openModifyModal(${t.rowIndex})">Modify</button>` : '');
+        html += `<tr><td>${t.name}</td><td>${t.departure.split(' ')[0]}→${t.destination.split(' ')[0]}</td><td>${t.departing_on}</td><td>${actionButton}</td></tr>`;
     });
     container.innerHTML = html + '</tbody></table></div>';
 }
@@ -481,5 +499,142 @@ async function handleUpdateTicket(e) {
         await loadTicketData();
     } catch (error) {
         showToast(`Update Error: ${error.result?.error?.message || 'Could not update.'}`, 'error');
+    }
+}
+
+// --- CANCEL TICKET ---
+function findTicketForCancel() {
+    const pnr = document.getElementById('cancelPnr').value.toUpperCase();
+    if (!pnr) {
+        showToast('Please enter a PNR code.', 'error');
+        return;
+    }
+    const found = allTickets.filter(t => t.booking_reference === pnr);
+    displayCancelResults(found);
+}
+
+function clearCancelResults() {
+    document.getElementById('cancelPnr').value = '';
+    document.getElementById('cancelResultsContainer').innerHTML = '';
+}
+
+function displayCancelResults(tickets) {
+    const container = document.getElementById('cancelResultsContainer');
+    if (tickets.length === 0) {
+        container.innerHTML = '<p style="text-align: center; margin-top: 1rem;">No tickets found for this PNR.</p>';
+        return;
+    }
+    let html = `<div class="table-container"><table><thead><tr><th>Name</th><th>Route</th><th>Travel Date</th><th>Actions</th></tr></thead><tbody>`;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    tickets.forEach(t => {
+        const travelDate = parseSheetDate(t.departing_on);
+        const isPast = travelDate < today;
+        const actionsHtml = isPast ?
+            `<button class="btn btn-primary" disabled>Date Passed</button>` :
+            `<button class="btn btn-primary" onclick="openCancelModal(${t.rowIndex}, 'refund')">Full Refund</button>
+             <button class="btn btn-secondary" onclick="openCancelModal(${t.rowIndex}, 'cancel')">Cancel</button>`;
+
+        html += `
+            <tr>
+                <td>${t.name}</td>
+                <td>${t.departure.split(' ')[0]}→${t.destination.split(' ')[0]}</td>
+                <td>${t.departing_on}</td>
+                <td>${actionsHtml}</td>
+            </tr>`;
+    });
+    container.innerHTML = html + '</tbody></table></div>';
+}
+
+function openCancelModal(rowIndex, type) {
+    const ticket = allTickets.find(t => t.rowIndex === rowIndex);
+    if (!ticket) {
+        showToast('Ticket not found.', 'error');
+        return;
+    }
+
+    if (type === 'refund') {
+        cancelModalBody.innerHTML = `
+            <h2>Confirm Full Refund</h2>
+            <p>Are you sure you want to process a full refund for <strong>${ticket.name}</strong> (PNR: ${ticket.booking_reference})?</p>
+            <p>This will reset Base Fare, Net Amount, Commission, and Extra Fare to 0, and update the remark.</p>
+            <div class="form-actions">
+                <button type="button" class="btn btn-secondary" onclick="cancelModal.style.display='none'">Back</button>
+                <button type="button" class="btn btn-primary" onclick="handleCancelTicket(${rowIndex}, 'refund')">Confirm Refund</button>
+            </div>`;
+    } else { // type === 'cancel'
+        cancelModalBody.innerHTML = `
+            <h2>Cancel Ticket</h2>
+            <p>For <strong>${ticket.name}</strong> (PNR: ${ticket.booking_reference})</p>
+            <p>Current Net Amount: <strong>${(ticket.net_amount || 0).toLocaleString()} MMK</strong></p>
+            <form id="cancelForm">
+                <div class="form-group">
+                    <label for="refund_amount">Refund Amount (MMK)</label>
+                    <input type="number" id="refund_amount" required>
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="btn btn-secondary" onclick="cancelModal.style.display='none'">Back</button>
+                    <button type="submit" class="btn btn-primary">Process Cancellation</button>
+                </div>
+            </form>`;
+        document.getElementById('cancelForm').addEventListener('submit', (e) => {
+            e.preventDefault();
+            const refundAmount = parseFloat(document.getElementById('refund_amount').value);
+            if (isNaN(refundAmount) || refundAmount < 0) {
+                showToast('Please enter a valid refund amount.', 'error');
+                return;
+            }
+            handleCancelTicket(rowIndex, 'cancel', refundAmount);
+        });
+    }
+
+    cancelModal.style.display = 'block';
+}
+
+async function handleCancelTicket(rowIndex, type, refundAmount = 0) {
+    const ticket = allTickets.find(t => t.rowIndex === rowIndex);
+    if (!ticket) {
+        showToast('Ticket not found for cancellation.', 'error');
+        return;
+    }
+
+    let updatedValues = [];
+    if (type === 'refund') {
+        updatedValues = [
+            ticket.issued_date, ticket.name, ticket.nrc_no, ticket.phone,
+            ticket.account_name, ticket.account_type, ticket.account_link,
+            ticket.departure, ticket.destination, ticket.departing_on, 
+            ticket.airline, 0, ticket.booking_reference, 0,
+            ticket.paid, ticket.payment_method, ticket.paid_date,
+            0, "Full Refund", 0
+        ];
+    } else { // type === 'cancel'
+        const newNetAmount = (ticket.net_amount || 0) - refundAmount;
+        updatedValues = [
+            ticket.issued_date, ticket.name, ticket.nrc_no, ticket.phone,
+            ticket.account_name, ticket.account_type, ticket.account_link,
+            ticket.departure, ticket.destination, ticket.departing_on, 
+            ticket.airline, ticket.base_fare, ticket.booking_reference, newNetAmount,
+            ticket.paid, ticket.payment_method, ticket.paid_date,
+            ticket.commission, `Canceled with ${refundAmount.toLocaleString()} refund`, ticket.extra_fare
+        ];
+    }
+    
+    try {
+        showToast('Processing cancellation...', 'info');
+        await gapi.client.sheets.spreadsheets.values.update({
+            spreadsheetId: CONFIG.SHEET_ID,
+            range: `${CONFIG.SHEET_NAME}!A${rowIndex}:T${rowIndex}`,
+            valueInputOption: 'USER_ENTERED',
+            resource: { values: [updatedValues] }
+        });
+        showToast('Ticket updated successfully!', 'success');
+        cancelModal.style.display = 'none';
+        document.getElementById('cancelResultsContainer').innerHTML = '';
+        document.getElementById('cancelPnr').value = '';
+        await loadTicketData();
+    } catch (error) {
+        showToast(`Cancellation Error: ${error.result?.error?.message || 'Could not update.'}`, 'error');
     }
 }

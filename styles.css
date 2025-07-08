@@ -136,7 +136,6 @@ body {
     margin-bottom: 0.5rem;
 }
 .info-card .main-value {
-    /* MODIFIED: Adjusted font size to better fit long numbers */
     font-size: clamp(1.1rem, 2.5vw, 1.6rem);
     font-weight: 700;
     color: var(--primary-accent);
@@ -173,7 +172,8 @@ body {
 }
 
 .search-inputs { display: flex; flex-direction: column; gap: 1rem; margin-bottom: 1.5rem; }
-.search-inputs input {
+
+.search-inputs input, .search-inputs select {
     font-size: 1.1rem;
     padding: 0.9rem 1rem;
     border: 1px solid var(--border-color);
@@ -181,13 +181,28 @@ body {
     background: #0d1117;
     color: var(--text-primary);
     transition: all 0.2s ease;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3e%3cpath fill='none' stroke='%23e6edf3' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M2 5l6 6 6-6'/%3e%3c/svg%3e");
+    background-repeat: no-repeat;
+    background-position: right 0.75rem center;
+    background-size: 16px 12px;
+    text-transform: uppercase; /* MODIFICATION */
 }
-.search-inputs input:focus { outline: none; border-color: var(--primary-accent); box-shadow: 0 0 0 3px rgba(88, 166, 255, 0.3); }
+.search-inputs input:focus, .search-inputs select:focus { 
+    outline: none; border-color: var(--primary-accent); box-shadow: 0 0 0 3px rgba(88, 166, 255, 0.3); 
+}
+
+.search-inputs select:invalid {
+    color: var(--text-secondary);
+}
+
 .search-buttons { display: flex; gap: 1rem; margin-top: auto; }
 .table-container { overflow-x: auto; flex-grow: 1; }
 table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
 th, td { padding: 0.75rem 1rem; text-align: left; border-bottom: 1px solid var(--border-color); white-space: nowrap; }
-th { font-weight: 600; color: var(--text-secondary); background: rgba(0,0,0,0.2); }
+th { font-weight: 600; color: var(--text-secondary); background: rgba(0,0,0,0.2); text-transform: uppercase; }
 tbody tr:hover { background-color: var(--glass-bg-hover); }
 
 /* --- FORMS --- */
@@ -197,7 +212,20 @@ tbody tr:hover { background-color: var(--glass-bg-hover); }
 .form-group {display: flex; flex-direction: column;}
 .form-group.full-width {grid-column: 1 / -1;}
 .form-group label {margin-bottom: 0.5rem; font-weight: 500; font-size: 0.9rem; color: var(--text-secondary);}
-.form-group input, .form-group select, .form-group textarea {padding: 0.75rem 1rem; border: 1px solid var(--border-color); border-radius: 8px; background: #0d1117; color: var(--text-primary); font-size: 1rem; transition: all 0.2s ease; text-transform: uppercase;}
+.form-group input, .form-group select, .form-group textarea {
+    padding: 0.75rem 1rem; 
+    border: 1px solid var(--border-color); 
+    border-radius: 8px; 
+    background: #0d1117; 
+    color: var(--text-primary); 
+    font-size: 1rem; 
+    transition: all 0.2s ease; 
+    text-transform: uppercase; /* MODIFICATION */
+}
+
+.form-group select:invalid {
+    color: var(--text-secondary);
+}
 
 .form-group input:focus, .form-group select:focus, .form-group textarea:focus {
     outline: none;
@@ -266,7 +294,7 @@ tbody tr:hover { background-color: var(--glass-bg-hover); }
 
 /* --- ADDED: Full Datepicker Theme Fix --- */
 .datepicker-picker {
-    background-color: #21262d; /* Dark background for the calendar pop-up */
+    background-color: #21262d;
     border: 1px solid var(--border-color);
     border-radius: 8px;
 }
@@ -280,15 +308,15 @@ tbody tr:hover { background-color: var(--glass-bg-hover); }
     border-radius: 6px;
 }
 .datepicker-view .dow {
-    color: var(--text-secondary); /* Day of week (Su, Mo) text color */
+    color: var(--text-secondary);
     font-weight: 600;
 }
 .datepicker-view .day:not(.disabled):not(.prev):not(.next) {
-    color: var(--text-primary); /* Current month's dates text color */
+    color: var(--text-primary);
 }
 .datepicker-view .day.prev, .datepicker-view .day.next {
     color: var(--text-secondary);
-    opacity: 0.5; /* Make previous/next month dates visible but distinct */
+    opacity: 0.5;
 }
 .datepicker-view .days .day:not(.disabled):hover {
     background-color: var(--glass-bg-hover);

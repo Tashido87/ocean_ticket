@@ -133,7 +133,7 @@
                         </div>
                         <div class="form-actions">
                             <button id="findTicketBtn" type="button" class="btn btn-primary"><i class="fa-solid fa-magnifying-glass"></i> Find Ticket</button>
-                            <button type="button" class="btn btn-secondary" onclick="showView('home')">Back to Dashboard</button>
+                            <button id="clearModifyBtn" type="button" class="btn btn-secondary"><i class="fa-solid fa-eraser"></i> Clear</button>
                         </div>
                     </form>
                     <div id="modifyResultsContainer" class="results-section" style="padding: 1rem 0 0 0; background: transparent; border: none; box-shadow: none;"></div>
@@ -150,9 +150,10 @@
                         </div>
                         <div class="form-actions">
                             <button id="findCancelBtn" type="button" class="btn btn-primary"><i class="fa-solid fa-ban"></i> Find & Cancel</button>
-                            <button type="button" class="btn btn-secondary" onclick="showView('home')">Back to Dashboard</button>
+                            <button id="clearCancelBtn" type="button" class="btn btn-secondary"><i class="fa-solid fa-eraser"></i> Clear</button>
                         </div>
                     </form>
+                    <div id="cancelResultsContainer" class="results-section" style="padding: 1rem 0 0 0; background: transparent; border: none; box-shadow: none;"></div>
                 </div>
             </section>
         </main>
@@ -160,6 +161,7 @@
 
     <div id="modal" class="modal"><div class="modal-content glass-card"><span class="close" onclick="closeDetailsModal()">&times;</span><div id="modalBody"></div></div></div>
     <div id="modifyModal" class="modal"><div class="modal-content glass-card"><span id="closeModifyModal" class="close">&times;</span><div id="modifyModalBody"></div></div></div>
+    <div id="cancelModal" class="modal"><div class="modal-content glass-card"><span class="close">&times;</span><div id="cancelModalBody"></div></div></div>
 
     <div id="toast"><span id="toastMessage"></span></div>
 

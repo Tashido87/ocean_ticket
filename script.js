@@ -745,18 +745,55 @@ function makeClickable(text) { if (!text) return 'N/A'; if (text.toLowerCase().s
 function showToast(message, type = 'info') { document.getElementById('toastMessage').textContent = message; const toastEl = document.getElementById('toast'); toastEl.className = `show ${type}`; setTimeout(() => toastEl.className = toastEl.className.replace('show', ''), 4000); }
 function formatDateForSheet(dateString) { if (!dateString) return ''; const date = new Date(dateString); return isNaN(date.getTime()) ? dateString : `${String(date.getMonth() + 1).padStart(2, '0')}/${String(date.getDate()).padStart(2, '0')}/${date.getFullYear()}`; }
 
+/**
+ * [MODIFIED] Parses multiple date string formats into a reliable, timezone-agnostic Date object.
+ * Handles "DD-Mon-YYYY" (e.g., "16-Jul-2025") and "MM/DD/YYYY" (e.g., "07/16/2025").
+ * Returns a UTC-based Date object for accurate comparisons.
+ */
 function parseSheetDate(dateString) {
+    // Return an invalid date for null/empty input for safe comparison
     if (!dateString) return new Date(0);
-    const safeDateString = String(dateString);
-    const monthMap = { 'JAN':0,'FEB':1,'MAR':2,'APR':3,'MAY':4,'JUN':5,'JUL':6,'AUG':7,'SEP':8,'OCT':9,'NOV':10,'DEC':11 };
+
+    const safeDateString = String(dateString).trim();
+    const monthMap = { 'JAN': 0, 'FEB': 1, 'MAR': 2, 'APR': 3, 'MAY': 4, 'JUN': 5, 'JUL': 6, 'AUG': 7, 'SEP': 8, 'OCT': 9, 'NOV': 10, 'DEC': 11 };
+
     const parts = safeDateString.split(/[-\/]/);
-    if (parts.length === 3 && isNaN(parseInt(parts[1], 10))) {
-        return new Date(parseInt(parts[2], 10), monthMap[parts[1].toUpperCase()], parseInt(parts[0], 10));
+
+    if (parts.length === 3) {
+        let day, month, year;
+
+        // Case 1: DD-Mon-YYYY (e.g., "16-Jul-2025") - check if middle part is text
+        if (isNaN(parseInt(parts[1], 10))) {
+            day = parseInt(parts[0], 10);
+            month = monthMap[parts[1].toUpperCase()];
+            year = parseInt(parts[2], 10);
+        }
+        // Case 2: MM/DD/YYYY (e.g., "07/16/2025") - middle part is a number
+        else {
+            month = parseInt(parts[0], 10) - 1; // JS months are 0-indexed
+            day = parseInt(parts[1], 10);
+            year = parseInt(parts[2], 10);
+        }
+
+        // Validate parsed components before creating a Date object
+        if (!isNaN(day) && month !== undefined && !isNaN(year) && year > 1900 && day > 0 && day <= 31 && month >= 0 && month < 12) {
+            // Use Date.UTC to create a timezone-agnostic date
+            const d = new Date(Date.UTC(year, month, day));
+            // Verify that the created date is valid (e.g., handles "Feb 30" correctly)
+            if (d.getUTCFullYear() === year && d.getUTCMonth() === month && d.getUTCDate() === day) {
+                return d;
+            }
+        }
     }
-    const date = new Date(safeDateString);
-    if (!isNaN(date.getTime())) {
-        return date;
+
+    // Fallback for any other format that new Date() might understand
+    const fallbackDate = new Date(safeDateString);
+    if (!isNaN(fallbackDate.getTime())) {
+        // Normalize to UTC midnight to ensure consistent time component for comparisons
+        return new Date(Date.UTC(fallbackDate.getFullYear(), fallbackDate.getMonth(), fallbackDate.getDate()));
     }
+
+    // Return an invalid date if all parsing fails
     return new Date(0);
 }
 
@@ -925,8 +962,8 @@ function openModifyModal(rowIndex) {
     let travelDateForInput = '';
     if (ticket.departing_on) {
         const d = parseSheetDate(ticket.departing_on);
-        if (!isNaN(d.getTime())) {
-            travelDateForInput = `${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')}/${d.getFullYear()}`;
+        if (!isNaN(d.getTime()) && d.getTime() !== 0) {
+            travelDateForInput = `${String(d.getUTCMonth() + 1).padStart(2, '0')}/${String(d.getUTCDate()).padStart(2, '0')}/${d.getUTCFullYear()}`;
         }
     }
 
@@ -994,7 +1031,7 @@ async function handleUpdateTicket(e) {
     const ticketsToUpdate = allTickets.filter(t => t.booking_reference === pnr);
     const originalTicket = allTickets.find(t => t.booking_reference === pnr);
 
-    let newTravelDate = document.getElementById('update_departing_on').value;
+    let newTravelDateVal = document.getElementById('update_departing_on').value;
     const newBaseFare = parseFloat(document.getElementById('update_base_fare').value);
     const newNetAmount = parseFloat(document.getElementById('update_net_amount').value);
     const fees = parseFloat(document.getElementById('date_change_fees').value) || 0;
@@ -1005,13 +1042,13 @@ async function handleUpdateTicket(e) {
     const newPaymentMethod = document.getElementById('update_payment_method')?.value.toUpperCase();
     const newPaidDate = document.getElementById('update_paid_date')?.value;
     
-    if (newTravelDate) newTravelDate = formatDateForSheet(newTravelDate);
-    
-    if (newTravelDate) {
-        const d1 = parseSheetDate(newTravelDate).getTime();
-        const d2 = parseSheetDate(originalTicket.departing_on).getTime();
-        if (d1 !== d2) {
-            historyDetails.push(`Travel Date: ${originalTicket.departing_on} to ${newTravelDate}`);
+    const formattedNewTravelDate = newTravelDateVal ? formatDateForSheet(newTravelDateVal) : '';
+
+    if (newTravelDateVal) {
+        const d1 = parseSheetDate(newTravelDateVal);
+        const d2 = parseSheetDate(originalTicket.departing_on);
+        if (d1.getTime() > 0 && d2.getTime() > 0 && d1.getTime() !== d2.getTime()) {
+            historyDetails.push(`Travel Date: ${originalTicket.departing_on} to ${formattedNewTravelDate}`);
         }
     }
     if (!isNaN(newBaseFare) && newBaseFare !== originalTicket.base_fare) historyDetails.push(`Base Fare: ${originalTicket.base_fare} to ${newBaseFare}`);
@@ -1037,7 +1074,7 @@ async function handleUpdateTicket(e) {
             values: [[
                 ticket.issued_date, ticket.name, ticket.nrc_no, ticket.phone,
                 ticket.account_name, ticket.account_type, ticket.account_link,
-                ticket.departure, ticket.destination, newTravelDate || ticket.departing_on,
+                ticket.departure, ticket.destination, formattedNewTravelDate || ticket.departing_on,
                 ticket.airline, finalBaseFare, ticket.booking_reference, finalNetAmount,
                 finalPaid, finalPaymentMethod, finalPaidDate,
                 finalCommission, ticket.remarks, finalExtraFare

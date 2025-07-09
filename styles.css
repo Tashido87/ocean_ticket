@@ -216,6 +216,17 @@ th, td { padding: 0.75rem 1rem; text-align: left; border-bottom: 1px solid var(-
 th { font-weight: 600; color: var(--text-secondary); background: rgba(0,0,0,0.2); text-transform: uppercase; }
 tbody tr:hover { background-color: var(--glass-bg-hover); }
 
+/* Style for canceled/refunded rows */
+.canceled-row {
+    background-color: rgba(70, 70, 70, 0.4) !important;
+    color: #a0a0a0 !important;
+}
+
+.canceled-row:hover {
+    background-color: rgba(85, 85, 85, 0.5) !important;
+}
+
+
 /* --- FORMS --- */
 .form-container {padding: 2.5rem; max-width: 1000px; margin: 0 auto;}
 .form-container h2 {margin-bottom: 2rem; text-align: center; font-weight: 600; display: flex; align-items: center; justify-content: center; gap: 1rem;}

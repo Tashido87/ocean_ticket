@@ -218,6 +218,13 @@
                                     <option value="" disabled selected>AIRLINE</option>
                                     <option value="MNA">MNA</option><option value="MAI">MAI</option><option value="ManYadanarpon">ManYadanarpon</option><option value="AirThanwlin">AirThanwlin</option>
                                 </select>
+                                <div class="toggle-switch">
+                                    <label for="searchNotPaidToggle">Not Paid Only</label>
+                                    <label class="switch">
+                                        <input type="checkbox" id="searchNotPaidToggle">
+                                        <span class="slider round"></span>
+                                    </label>
+                                </div>
                             </div>
                             <div class="search-buttons">
                                 <button id="searchBtn" class="btn btn-primary"><i class="fa-solid fa-search"></i> Search</button>
@@ -601,7 +608,21 @@
                                 <option value="Yangon (RGN)">Yangon (RGN)</option>
                             </select></div>
                             <div class="form-group"><label for="departing_on">Travel Date</label><input type="text" id="departing_on" name="departing_on" placeholder="MM/DD/YYYY" required></div>
-                            <div class="form-group"><label for="airline">Airline</label><select id="airline" name="airline" required><option value="" disabled selected>Select Airline</option><option value="MNA">MNA</option><option value="MAI">MAI</option><option value="ManYadanarpon">ManYadanarpon</option><option value="AirThanwlin">AirThanwlin</option></select></div>
+                            <div class="form-group">
+                                <label for="airline">Airline</label>
+                                <select id="airline" name="airline" required>
+                                    <option value="" disabled selected>Select Airline</option>
+                                    <option value="MNA">MNA</option>
+                                    <option value="MAI">MAI</option>
+                                    <option value="ManYadanarpon">ManYadanarpon</option>
+                                    <option value="AirThanwlin">AirThanwlin</option>
+                                    <option value="CUSTOM">CUSTOM</option>
+                                </select>
+                            </div>
+                            <div class="form-group" id="custom_airline_group" style="display: none;">
+                                <label for="custom_airline">Custom Airline Name</label>
+                                <input type="text" id="custom_airline" name="custom_airline">
+                            </div>
                             <div class="form-group"><label for="base_fare">Base Fare (MMK)</label><input type="number" id="base_fare" name="base_fare" step="1" required></div>
                             <div class="form-group"><label for="booking_reference">PNR Code</label><input type="text" id="booking_reference" name="booking_reference" required></div>
                             <div class="form-group"><label for="net_amount">Net Amount (MMK)</label><input type="number" id="net_amount" name="net_amount" step="1" required></div>
@@ -610,7 +631,7 @@
                             <div class="form-group"><label for="payment_method">Payment Method</label><select id="payment_method" name="payment_method"><option value="">Select Payment Method</option><option value="KBZ Pay">KBZ Pay</option><option value="Mobile Banking">Mobile Banking</option><option value="Aya Pay">Aya Pay</option><option value="Cash">Cash</option></select></div>
                             <div class="form-group"><label for="paid_date">Paid Date</label><input type="text" id="paid_date" name="paid_date" placeholder="MM/DD/YYYY"></div>
                             <div class="form-group checkbox-group"><label for="paid">Paid</label><input type="checkbox" id="paid" name="paid"></div>
-                            <div class="form-group full-width"><label for="remark">Remark</label><textarea id="remark" name="remark" rows="3"></textarea></div>
+                            <div class="form-group"><label for="remark">Remark</label><textarea id="remark" name="remark" rows="1"></textarea></div>
                         </div>
                         <div class="form-actions"><button type="button" class="btn btn-secondary" onclick="showView('home')"><i class="fa-solid fa-xmark"></i> Cancel</button><button type="submit" class="btn btn-primary"><i class="fa-solid fa-check"></i> Submit Ticket</button></div>
                     </form>
@@ -620,7 +641,7 @@
             <section id="modify-view" class="view">
                  <div class="form-container glass-card">
                     <h2><i class="fa-solid fa-pen-to-square"></i> Modify Ticket</h2>
-                    <form class="centered-form">
+                    <form class="centered-form" onsubmit="return false;">
                         <div class="form-group">
                             <label for="modifyPnr">Enter PNR Code to Modify</label>
                             <input type="text" id="modifyPnr" name="modifyPnr" placeholder="e.g., BDUVUU">
@@ -631,13 +652,26 @@
                         </div>
                     </form>
                     <div id="modifyResultsContainer" class="results-section" style="padding: 1rem 0 0 0; background: transparent; border: none; box-shadow: none;"></div>
+                    
+                    <div id="modificationHistoryContainer" class="results-section glass-card" style="margin-top: 2rem; display: none;">
+                        <h3><i class="fa-solid fa-clock-rotate-left"></i> Modification History</h3>
+                        <div class="table-container">
+                            <table id="modificationHistoryTable">
+                                <thead>
+                                    <tr><th>Date</th><th>Name</th><th>Booking Ref</th><th>Details</th></tr>
+                                </thead>
+                                <tbody id="modificationHistoryBody"></tbody>
+                            </table>
+                        </div>
+                        <div id="modificationHistoryPagination" class="pagination-container"></div>
+                    </div>
                 </div>
             </section>
 
             <section id="cancel-view" class="view">
                 <div class="form-container glass-card">
                     <h2><i class="fa-solid fa-ban"></i> Cancel Ticket</h2>
-                     <form class="centered-form">
+                     <form class="centered-form" onsubmit="return false;">
                         <div class="form-group">
                             <label for="cancelPnr">Enter PNR Code to Cancel</label>
                             <input type="text" id="cancelPnr" name="cancelPnr" placeholder="e.g., BDUVUU">
@@ -648,6 +682,19 @@
                         </div>
                     </form>
                     <div id="cancelResultsContainer" class="results-section" style="padding: 1rem 0 0 0; background: transparent; border: none; box-shadow: none;"></div>
+
+                    <div id="cancellationHistoryContainer" class="results-section glass-card" style="margin-top: 2rem; display: none;">
+                        <h3><i class="fa-solid fa-clock-rotate-left"></i> Cancellation History</h3>
+                        <div class="table-container">
+                            <table id="cancellationHistoryTable">
+                                <thead>
+                                    <tr><th>Date</th><th>Name</th><th>Booking Ref</th><th>Details</th></tr>
+                                </thead>
+                                <tbody id="cancellationHistoryBody"></tbody>
+                            </table>
+                        </div>
+                        <div id="cancellationHistoryPagination" class="pagination-container"></div>
+                    </div>
                 </div>
             </section>
         </main>

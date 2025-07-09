@@ -630,10 +630,21 @@ function displayAllTickets() {
 
 function displayTickets(tickets, page = 1) {
     const tbody = document.getElementById('resultsBody');
-    tbody.innerHTML = ''; currentPage = page;
+    tbody.innerHTML = ''; 
+    currentPage = page;
     const paginated = tickets.slice((page - 1) * rowsPerPage, page * rowsPerPage);
+    
     paginated.forEach((ticket) => {
         const row = tbody.insertRow();
+
+        // Check for cancellation or refund remarks to apply a CSS class
+        if (ticket.remarks) {
+            const lowerRemarks = ticket.remarks.toLowerCase();
+            if (lowerRemarks.includes('refund') || lowerRemarks.includes('cancel')) {
+                row.classList.add('canceled-row');
+            }
+        }
+
         row.innerHTML = `<td>${ticket.issued_date||''}</td><td>${ticket.name||''}</td><td>${ticket.booking_reference||''}</td><td>${(ticket.departure||'').split(' ')[0]}→${(ticket.destination||'').split(' ')[0]}</td><td>${ticket.airline||''}</td><td><button class="btn btn-secondary" style="padding:0.5rem 1rem;" onclick="showDetails(${ticket.rowIndex})">Details</button></td>`;
     });
     setupPagination(tickets);
@@ -651,10 +662,18 @@ function showDetails(rowIndex) {
         let statusHtml = '';
         if (ticket.remarks) {
             const lowerRemarks = ticket.remarks.toLowerCase();
-            if (lowerRemarks.includes('refund')) {
-                statusHtml = `<p style="margin-top: 1rem; font-weight: bold; color: #F85149;">Status: Fully Refunded</p>`;
-            } else if (lowerRemarks.includes('cancel')) {
-                statusHtml = `<p style="margin-top: 1rem; font-weight: bold; color: #F85149;">Status: Canceled</p>`;
+            if (lowerRemarks.includes('refund') || lowerRemarks.includes('cancel')) {
+                // [MODIFIED] Look up the date from the history array.
+                const historyEntry = cancellationHistory.find(h => h.booking_ref === ticket.booking_reference);
+                const actionDate = historyEntry ? ` on ${formatDateToDMMMY(historyEntry.date)}` : '';
+
+                let statusText = ticket.remarks;
+                 if (lowerRemarks.includes('full refund')) {
+                    statusText = 'Fully Refunded';
+                } else if (lowerRemarks.includes('cancel')) {
+                     statusText = 'Canceled';
+                }
+                statusHtml = `<p style="margin-top: 1rem; font-weight: bold; color: #F85149;">Status: ${statusText}${actionDate}</p>`;
             }
         }
 
@@ -745,11 +764,21 @@ function makeClickable(text) { if (!text) return 'N/A'; if (text.toLowerCase().s
 function showToast(message, type = 'info') { document.getElementById('toastMessage').textContent = message; const toastEl = document.getElementById('toast'); toastEl.className = `show ${type}`; setTimeout(() => toastEl.className = toastEl.className.replace('show', ''), 4000); }
 function formatDateForSheet(dateString) { if (!dateString) return ''; const date = new Date(dateString); return isNaN(date.getTime()) ? dateString : `${String(date.getMonth() + 1).padStart(2, '0')}/${String(date.getDate()).padStart(2, '0')}/${date.getFullYear()}`; }
 
-/**
- * [MODIFIED] Parses multiple date string formats into a reliable, timezone-agnostic Date object.
- * Handles "DD-Mon-YYYY" (e.g., "16-Jul-2025") and "MM/DD/YYYY" (e.g., "07/16/2025").
- * Returns a UTC-based Date object for accurate comparisons.
- */
+function formatDateToDMMMY(dateString) {
+    if (!dateString) return '';
+    const date = parseSheetDate(dateString);
+    if (isNaN(date.getTime()) || date.getTime() === 0) {
+        return '';
+    }
+
+    const day = String(date.getUTCDate()).padStart(2, '0');
+    const year = date.getUTCFullYear();
+    const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    const month = monthNames[date.getUTCMonth()];
+
+    return `${day}-${month}-${year}`;
+}
+
 function parseSheetDate(dateString) {
     // Return an invalid date for null/empty input for safe comparison
     if (!dateString) return new Date(0);
@@ -1042,13 +1071,15 @@ async function handleUpdateTicket(e) {
     const newPaymentMethod = document.getElementById('update_payment_method')?.value.toUpperCase();
     const newPaidDate = document.getElementById('update_paid_date')?.value;
     
-    const formattedNewTravelDate = newTravelDateVal ? formatDateForSheet(newTravelDateVal) : '';
+    // This is needed for the actual sheet update (which expects MM/DD/YYYY)
+    const formattedNewTravelDateForSheet = newTravelDateVal ? formatDateForSheet(newTravelDateVal) : '';
 
     if (newTravelDateVal) {
         const d1 = parseSheetDate(newTravelDateVal);
         const d2 = parseSheetDate(originalTicket.departing_on);
         if (d1.getTime() > 0 && d2.getTime() > 0 && d1.getTime() !== d2.getTime()) {
-            historyDetails.push(`Travel Date: ${originalTicket.departing_on} to ${formattedNewTravelDate}`);
+            const newDateForHistory = formatDateToDMMMY(newTravelDateVal);
+            historyDetails.push(`Travel Date: ${originalTicket.departing_on} to ${newDateForHistory}`);
         }
     }
     if (!isNaN(newBaseFare) && newBaseFare !== originalTicket.base_fare) historyDetails.push(`Base Fare: ${originalTicket.base_fare} to ${newBaseFare}`);
@@ -1057,7 +1088,9 @@ async function handleUpdateTicket(e) {
     if (fees > 0) historyDetails.push(`Added Date Change Fees: ${fees}`);
     if (newPaidStatus && !originalTicket.paid) historyDetails.push(`Payment: Not Paid to Paid`);
     if (newPaymentMethod && newPaymentMethod !== originalTicket.payment_method) historyDetails.push(`Payment Method: ${newPaymentMethod}`);
-    if (newPaidDate && newPaidDate !== originalTicket.paid_date) historyDetails.push(`Paid Date: ${newPaidDate}`);
+    if (newPaidDate && newPaidDate !== originalTicket.paid_date) {
+        historyDetails.push(`Paid Date: ${formatDateToDMMMY(newPaidDate)}`);
+    }
 
 
     const dataForBatchUpdate = ticketsToUpdate.map(ticket => {
@@ -1074,7 +1107,7 @@ async function handleUpdateTicket(e) {
             values: [[
                 ticket.issued_date, ticket.name, ticket.nrc_no, ticket.phone,
                 ticket.account_name, ticket.account_type, ticket.account_link,
-                ticket.departure, ticket.destination, formattedNewTravelDate || ticket.departing_on,
+                ticket.departure, ticket.destination, formattedNewTravelDateForSheet || ticket.departing_on,
                 ticket.airline, finalBaseFare, ticket.booking_reference, finalNetAmount,
                 finalPaid, finalPaymentMethod, finalPaidDate,
                 finalCommission, ticket.remarks, finalExtraFare
@@ -1213,6 +1246,7 @@ async function handleCancelTicket(rowIndex, type, refundAmount = 0) {
 
     let updatedValues = [];
     let historyDetails = '';
+    // [MODIFIED] Reverted to writing a simple remark. The date will be looked up from history.
     if (type === 'refund') {
         updatedValues = [
             ticket.issued_date, ticket.name, ticket.nrc_no, ticket.phone,
@@ -1328,7 +1362,8 @@ function displayModificationHistory(page) {
     tbody.innerHTML = '';
     paginated.forEach(entry => {
         const row = tbody.insertRow();
-        row.innerHTML = `<td>${entry.date}</td><td>${entry.name}</td><td>${entry.booking_ref}</td><td>${entry.details}</td>`;
+        // [MODIFIED] Format the date for display
+        row.innerHTML = `<td>${formatDateToDMMMY(entry.date)}</td><td>${entry.name}</td><td>${entry.booking_ref}</td><td>${entry.details}</td>`;
     });
     setupHistoryPagination('modification', sortedHistory, page);
 }
@@ -1345,7 +1380,8 @@ function displayCancellationHistory(page) {
     tbody.innerHTML = '';
     paginated.forEach(entry => {
         const row = tbody.insertRow();
-        row.innerHTML = `<td>${entry.date}</td><td>${entry.name}</td><td>${entry.booking_ref}</td><td>${entry.details}</td>`;
+        // [MODIFIED] Format the date for display
+        row.innerHTML = `<td>${formatDateToDMMMY(entry.date)}</td><td>${entry.name}</td><td>${entry.booking_ref}</td><td>${entry.details}</td>`;
     });
     setupHistoryPagination('cancellation', sortedHistory, page);
 }

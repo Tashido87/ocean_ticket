@@ -170,6 +170,16 @@ function setupEventListeners() {
     signoutButton.addEventListener('click', handleSignoutClick);
     document.getElementById('searchBtn').addEventListener('click', performSearch);
     document.getElementById('clearBtn').addEventListener('click', clearSearch);
+    
+    // Add event listeners for Enter key on search inputs
+    ['searchName', 'searchBooking', 'searchTravelDate'].forEach(id => {
+        document.getElementById(id).addEventListener('keyup', (e) => {
+            if (e.key === 'Enter') {
+                performSearch();
+            }
+        });
+    });
+
     document.getElementById('sellForm').addEventListener('submit', handleSellTicket);
     document.getElementById('airline').addEventListener('change', handleAirlineChange);
     document.getElementById('base_fare').addEventListener('input', calculateCommission);

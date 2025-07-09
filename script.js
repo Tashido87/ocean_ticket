@@ -6,22 +6,28 @@ const CONFIG = {
     SCOPES: 'https://www.googleapis.com/auth/spreadsheets',
     DISCOVERY_DOC: 'https://sheets.googleapis.com/$discovery/rest?version=v4',
     SHEET_NAME: '2025',
-    BOOKING_SHEET_NAME: 'booking' // New configuration for the booking tab
+    BOOKING_SHEET_NAME: 'booking',
+    MODIFICATION_HISTORY_SHEET: 'modification_history', // New Sheet
+    CANCELLATION_HISTORY_SHEET: 'cancellation_history' // New Sheet
 };
 
 // Global variables
 let allTickets = [];
 let filteredTickets = [];
-let allBookings = []; // For storing booking data
-let filteredBookings = []; // For displaying sorted/filtered booking data
+let allBookings = [];
+let filteredBookings = [];
+let modificationHistory = [];
+let cancellationHistory = [];
 let charts = {};
 let tokenClient;
 let gapiInited = false;
 let gisInited = false;
-let isSubmitting = false; 
+let isSubmitting = false;
 const rowsPerPage = 10;
 let currentPage = 1;
-let bookingCurrentPage = 1; // Pagination for booking table
+let bookingCurrentPage = 1;
+let modHistoryPage = 1;
+let cancelHistoryPage = 1;
 let searchTimeout;
 
 
@@ -39,7 +45,6 @@ const cancelModalBody = document.getElementById('cancelModalBody');
 const toast = document.getElementById('toast');
 const authorizeButton = document.getElementById('authorize_button');
 const signoutButton = document.getElementById('signout_button');
-// New Booking-related DOM elements
 const bookingDetailModal = document.getElementById('bookingDetailModal');
 const bookingDetailModalBody = document.getElementById('bookingDetailModalBody');
 const bookingConfirmModal = document.getElementById('bookingConfirmModal');
@@ -53,7 +58,6 @@ window.onload = async () => {
     initializeBackgroundChanger();
     if (typeof gapi === 'undefined' || !google.accounts) { showToast('Google API scripts not loaded.', 'error'); return; }
     try {
-        // These will now trigger the automatic sign-in check upon completion
         await Promise.all([loadGapiClient(), loadGisClient()]);
     } catch (error) {
         showToast('Failed to load Google APIs. Please refresh.', 'error');
@@ -76,7 +80,7 @@ async function loadGapiClient() {
             try {
                 await gapi.client.init({ apiKey: CONFIG.API_KEY, discoveryDocs: [CONFIG.DISCOVERY_DOC] });
                 gapiInited = true;
-                tryAutoSignIn(); // Attempt to sign in once GAPI is ready
+                tryAutoSignIn();
                 resolve();
             } catch (error) { reject(error); }
         });
@@ -90,16 +94,12 @@ async function loadGisClient() {
                 client_id: CONFIG.CLIENT_ID,
                 scope: CONFIG.SCOPES,
                 callback: async (tokenResponse) => {
-                    // This single callback handles all token responses
                     if (tokenResponse.error) {
-                        // This can happen if silent sign-in fails, which is expected
-                        // if the user isn't logged in. We just show the sign-in button.
                         console.log('Token request failed:', tokenResponse.error);
                         authorizeButton.style.display = 'block';
                         loading.style.display = 'none';
                         return;
                     }
-                    // On success, set the token and initialize the app
                     gapi.client.setToken(tokenResponse);
                     authorizeButton.style.display = 'none';
                     signoutButton.style.display = 'block';
@@ -107,28 +107,20 @@ async function loadGisClient() {
                 },
             });
             gisInited = true;
-            tryAutoSignIn(); // Attempt to sign in once GIS is ready
+            tryAutoSignIn();
             resolve();
         } catch (error) { reject(error); }
     });
 }
 
 // --- AUTHENTICATION ---
-
-// New function to attempt a silent sign-in on page load
 function tryAutoSignIn() {
-    // We can only attempt this if both Google libraries are fully loaded
     if (gapiInited && gisInited) {
-        // The prompt: '' option attempts to get a token without showing a popup.
-        // It will succeed if the user is signed in and has previously given consent.
         tokenClient.requestAccessToken({ prompt: '' });
     }
 }
 
-// This function is now only for the manual "Sign In" button click
 function handleAuthClick() {
-    // If the user clicks, it means silent sign-in failed.
-    // We use prompt: 'consent' to force the Google sign-in popup.
     if (gapi.client.getToken() === null) {
         tokenClient.requestAccessToken({ prompt: 'consent' });
     } else {
@@ -143,13 +135,14 @@ function handleSignoutClick() {
             console.log('Token revoked.');
         });
         gapi.client.setToken('');
-        // Reset the UI to the signed-out state
         authorizeButton.style.display = 'block';
         signoutButton.style.display = 'none';
         dashboardContent.style.display = 'none';
         loading.style.display = 'block';
         allTickets = [];
-        allBookings = []; // Clear booking data on signout
+        allBookings = [];
+        modificationHistory = [];
+        cancellationHistory = [];
         document.getElementById('resultsBody').innerHTML = '';
         document.getElementById('bookingTableBody').innerHTML = '';
     }
@@ -159,7 +152,9 @@ async function initializeApp() {
     try {
         await Promise.all([
             loadTicketData(),
-            loadBookingData()
+            loadBookingData(),
+            loadModificationHistory(),
+            loadCancellationHistory()
         ]);
     } catch (error) {
         console.error("Initialization failed:", error);
@@ -176,6 +171,7 @@ function setupEventListeners() {
     document.getElementById('searchBtn').addEventListener('click', performSearch);
     document.getElementById('clearBtn').addEventListener('click', clearSearch);
     document.getElementById('sellForm').addEventListener('submit', handleSellTicket);
+    document.getElementById('airline').addEventListener('change', handleAirlineChange);
     document.getElementById('base_fare').addEventListener('input', calculateCommission);
     document.getElementById('extra_fare').addEventListener('input', calculateCommission);
     document.getElementById('findTicketBtn').addEventListener('click', findTicketForModify);
@@ -183,7 +179,13 @@ function setupEventListeners() {
     document.getElementById('findCancelBtn').addEventListener('click', findTicketForCancel);
     document.getElementById('clearCancelBtn').addEventListener('click', clearCancelResults);
     
-    // New Booking Event Listeners
+    document.getElementById('modifyPnr').addEventListener('keyup', (e) => {
+        if (e.key === 'Enter') document.getElementById('findTicketBtn').click();
+    });
+    document.getElementById('cancelPnr').addEventListener('keyup', (e) => {
+        if (e.key === 'Enter') document.getElementById('findCancelBtn').click();
+    });
+    
     document.getElementById('newBookingBtn').addEventListener('click', showNewBookingForm);
     document.getElementById('cancelNewBookingBtn').addEventListener('click', hideNewBookingForm);
     document.getElementById('newBookingForm').addEventListener('submit', handleNewBookingSubmit);
@@ -223,14 +225,15 @@ async function loadTicketData() {
     try {
         loading.style.display = 'block';
         dashboardContent.style.display = 'none';
-        const response = await gapi.client.sheets.spreadsheets.values.get({ 
-            spreadsheetId: CONFIG.SHEET_ID, 
-            range: `${CONFIG.SHEET_NAME}!A:T` 
+        const response = await gapi.client.sheets.spreadsheets.values.get({
+            spreadsheetId: CONFIG.SHEET_ID,
+            range: `${CONFIG.SHEET_NAME}!A:T`
         });
         
         if (response.result.values && response.result.values.length > 1) {
             allTickets = parseTicketData(response.result.values);
             updateDashboardData();
+            populateSearchAirlines();
             displayAllTickets();
         }
         loading.style.display = 'none';
@@ -288,7 +291,7 @@ function parseBookingData(values) {
             const value = row[j] || '';
             booking[h] = typeof value === 'string' ? value.trim() : value;
         });
-        booking.rowIndex = i + 2; // Sheet rows are 1-indexed, and we have a header
+        booking.rowIndex = i + 2;
         return booking;
     });
 }
@@ -299,28 +302,25 @@ function displayBookings(bookingsToDisplay) {
     
     let bookings;
     if (bookingsToDisplay) {
-        // If a specific set of bookings is provided (e.g., from search), use it
         bookings = bookingsToDisplay;
     } else {
-        // Otherwise, show the default view (current, non-actioned bookings)
         const today = new Date();
         today.setHours(0, 0, 0, 0);
 
         bookings = allBookings.filter(b => {
-            const hasNoAction = !b.remark || String(b.remark).trim() === '';
+            const hasNoAction = !b.remarks || String(b.remarks).trim() === '';
             const travelDate = parseSheetDate(b.departing_on);
             return hasNoAction && travelDate >= today;
         });
     }
 
-    // Sort whatever list of bookings we're displaying
     bookings.sort((a, b) => {
         const dateA = parseSheetDate(a.departing_on);
         const dateB = parseSheetDate(b.departing_on);
         return dateA - dateB;
     });
 
-    filteredBookings = bookings; // Store the currently displayed set for pagination
+    filteredBookings = bookings;
 
     if (filteredBookings.length === 0) {
         tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;">No bookings found.</td></tr>`;
@@ -328,7 +328,6 @@ function displayBookings(bookingsToDisplay) {
         return;
     }
     
-    // Paginate and Render
     bookingCurrentPage = 1;
     renderBookingPage(1);
 }
@@ -368,7 +367,7 @@ function handleCancelBooking(rowIndex) {
     showBookingConfirmModal(message, () => updateBookingStatus(rowIndex, 'Canceled'));
 }
 
-async function updateBookingStatus(rowIndex, remark) {
+async function updateBookingStatus(rowIndex, remarks) {
     try {
         isSubmitting = true;
         showToast('Updating booking status...', 'info');
@@ -378,7 +377,7 @@ async function updateBookingStatus(rowIndex, remark) {
             range: range,
             valueInputOption: 'USER_ENTERED',
             resource: {
-                values: [[remark]]
+                values: [[remarks]]
             }
         });
         showToast('Booking updated successfully!', 'success');
@@ -408,7 +407,7 @@ function showBookingDetails(rowIndex) {
             <hr style="border-color: rgba(255,255,255,0.2); margin: 1rem 0;">
             <p><strong>Route:</strong> ${booking.departure || 'N/A'} → ${booking.destination || 'N/A'}</p>
             <p><strong>Travel Date:</strong> ${booking.departing_on || 'N/A'}</p>
-            <p><strong>Remark:</strong> ${booking.remark || 'N/A'}</p>
+            <p><strong>Remarks:</strong> ${booking.remarks || 'N/A'}</p>
             <div style="text-align: center; margin-top: 1.5rem;">
                 <button class="btn btn-secondary" onclick="bookingDetailModal.style.display='none'">Close</button>
             </div>
@@ -456,10 +455,10 @@ async function handleNewBookingSubmit(e) {
         const values = [[
             bookingData.name, bookingData.nrc_no, bookingData.phone,
             bookingData.account_name, bookingData.account_type, bookingData.account_link,
-            bookingData.departure, bookingData.destination, 
+            bookingData.departure, bookingData.destination,
             formatDateForSheet(bookingData.departing_on),
-            bookingData.pax_no, 
-            '' 
+            bookingData.pax_no,
+            ''
         ]];
 
         await gapi.client.sheets.spreadsheets.values.append({
@@ -524,16 +523,15 @@ function showBookingConfirmModal(message, onConfirm) {
     };
 }
 
-// --- NEW BOOKING SEARCH FUNCTIONS ---
 function populateBookingSearchOptions() {
     const select = document.getElementById('bookingSearchRoute');
-    select.innerHTML = '<option value="">-- SEARCH BY ROUTE --</option>'; // Reset
+    select.innerHTML = '<option value="">-- SEARCH BY ROUTE --</option>';
 
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
     const activeBookings = allBookings.filter(b => {
-        const hasNoAction = !b.remark || String(b.remark).trim() === '';
+        const hasNoAction = !b.remarks || String(b.remarks).trim() === '';
         const travelDate = parseSheetDate(b.departing_on);
         return hasNoAction && travelDate >= today;
     });
@@ -543,7 +541,7 @@ function populateBookingSearchOptions() {
     routes.sort().forEach(route => {
         const option = document.createElement('option');
         option.value = route;
-        option.textContent = route.replace(/ \([^)]*\)/g, ''); // Clean display like RGN→MDL
+        option.textContent = route.replace(/ \([^)]*\)/g, '');
         select.appendChild(option);
     });
 }
@@ -560,7 +558,7 @@ function performBookingSearch() {
 
     const searchResults = allBookings.filter(b => {
         const route = `${b.departure || ''}→${b.destination || ''}`;
-        const hasNoAction = !b.remark || String(b.remark).trim() === '';
+        const hasNoAction = !b.remarks || String(b.remarks).trim() === '';
         const travelDate = parseSheetDate(b.departing_on);
 
         return hasNoAction && travelDate >= today && route === routeQuery;
@@ -571,7 +569,7 @@ function performBookingSearch() {
 
 function clearBookingSearch() {
     document.getElementById('bookingSearchRoute').value = '';
-    displayBookings(); // Display default list of current bookings
+    displayBookings();
 }
 
 // --- BACKGROUND CHANGER ---
@@ -636,22 +634,40 @@ function closeDetailsModal() { document.getElementById('modal').style.display = 
 function showDetails(rowIndex) {
     const ticket = allTickets.find(t => t.rowIndex === rowIndex);
     if (ticket) {
-        const statusHtml = ticket.canceled ? `<p><strong>Status:</strong> <span class="status-badge canceled">Canceled</span></p>` : '';
+        const paidStatusHtml = ticket.paid
+            ? `<span class="status-badge paid">PAID</span>`
+            : `<span class="status-badge not-paid">NOT PAID</span>`;
+
+        let statusHtml = '';
+        if (ticket.remarks) {
+            const lowerRemarks = ticket.remarks.toLowerCase();
+            if (lowerRemarks.includes('refund')) {
+                statusHtml = `<p style="margin-top: 1rem; font-weight: bold; color: #F85149;">Status: Fully Refunded</p>`;
+            } else if (lowerRemarks.includes('cancel')) {
+                statusHtml = `<p style="margin-top: 1rem; font-weight: bold; color: #F85149;">Status: Canceled</p>`;
+            }
+        }
+
         detailsModalBody.innerHTML = `
             <h3>Client & Booking Details</h3>
-            <p><strong>Name:</strong> ${ticket.name || 'N/A'}</p>
-            <p><strong>Phone:</strong> ${makeClickable(ticket.phone)}</p>
-            <p><strong>Account Name:</strong> ${ticket.account_name || 'N/A'}</p>
-            <p><strong>Account Type:</strong> ${ticket.account_type || 'N/A'}</p>
-            <p><strong>Account Link:</strong> ${makeClickable(ticket.account_link) || 'N/A'}</p>
+            <div class="detail-grid">
+                <p><strong>Name:</strong> ${ticket.name || 'N/A'}</p>
+                <p><strong>Phone:</strong> ${makeClickable(ticket.phone)}</p>
+                <p><strong>Account Name:</strong> ${ticket.account_name || 'N/A'}</p>
+                <p><strong>Account Type:</strong> ${ticket.account_type || 'N/A'}</p>
+                <p><strong>Account Link:</strong> ${makeClickable(ticket.account_link) || 'N/A'}</p>
+            </div>
             <hr style="border-color: rgba(255,255,255,0.2); margin: 1rem 0;">
-            <p><strong>PNR:</strong> ${ticket.booking_reference || 'N/A'}</p>
-            <p><strong>Route:</strong> ${ticket.departure || 'N/A'} → ${ticket.destination || 'N/A'}</p>
-            <p><strong>Airline:</strong> ${ticket.airline || 'N/A'}</p>
-            <p><strong>Travel Date:</strong> ${ticket.departing_on || 'N/A'}</p>
-            <p><strong>Net Amount:</strong> ${(ticket.net_amount || 0).toLocaleString()} MMK</p>
-            <p><strong>Commission:</strong> ${(ticket.commission || 0).toLocaleString()} MMK</p>
-            <p><strong>Extra Fare:</strong> ${(ticket.extra_fare || 0).toLocaleString()} MMK</p>
+            <div class="detail-grid">
+                <p><strong>PNR:</strong> ${ticket.booking_reference || 'N/A'}</p>
+                <p><strong>Route:</strong> ${ticket.departure || 'N/A'} → ${ticket.destination || 'N/A'}</p>
+                <p><strong>Airline:</strong> ${ticket.airline || 'N/A'}</p>
+                <p><strong>Travel Date:</strong> ${ticket.departing_on || 'N/A'}</p>
+                <p><strong>Net Amount:</strong> ${(ticket.net_amount || 0).toLocaleString()} MMK</p>
+                <p><strong>Commission:</strong> ${(ticket.commission || 0).toLocaleString()} MMK</p>
+                <p><strong>Extra Fare:</strong> ${(ticket.extra_fare || 0).toLocaleString()} MMK</p>
+                <p><strong>Payment Status:</strong> ${paidStatusHtml}</p>
+            </div>
             ${statusHtml}
             <div style="text-align: center; margin-top: 1.5rem;">
                 <button class="btn btn-secondary" onclick="closeDetailsModal()">Close</button>
@@ -660,6 +676,7 @@ function showDetails(rowIndex) {
         detailsModal.style.display = 'block';
     }
 }
+
 
 // --- DASHBOARD DATA & CHARTS ---
 function updateDashboardData() {
@@ -720,9 +737,9 @@ function formatDateForSheet(dateString) { if (!dateString) return ''; const date
 
 function parseSheetDate(dateString) {
     if (!dateString) return new Date(0);
-    const safeDateString = String(dateString); 
+    const safeDateString = String(dateString);
     const monthMap = { 'JAN':0,'FEB':1,'MAR':2,'APR':3,'MAY':4,'JUN':5,'JUL':6,'AUG':7,'SEP':8,'OCT':9,'NOV':10,'DEC':11 };
-    const parts = safeDateString.split('-');
+    const parts = safeDateString.split(/[-\/]/);
     if (parts.length === 3 && isNaN(parseInt(parts[1], 10))) {
         return new Date(parseInt(parts[2], 10), monthMap[parts[1].toUpperCase()], parseInt(parts[0], 10));
     }
@@ -730,13 +747,13 @@ function parseSheetDate(dateString) {
     if (!isNaN(date.getTime())) {
         return date;
     }
-    return new Date(0); 
+    return new Date(0);
 }
 
 
-function calculateCommission() { 
+function calculateCommission() {
     const baseFare = parseFloat(document.getElementById('base_fare').value) || 0;
-    document.getElementById('commission').value = Math.round((baseFare * 0.05) * 0.60); 
+    document.getElementById('commission').value = Math.round((baseFare * 0.05) * 0.60);
 }
 
 // --- SEARCH & PAGINATION ---
@@ -747,24 +764,23 @@ function performSearch() {
     const departure = document.getElementById('searchDeparture')?.value.toUpperCase();
     const destination = document.getElementById('searchDestination')?.value.toUpperCase();
     const airline = document.getElementById('searchAirline')?.value.toUpperCase();
+    const notPaidOnly = document.getElementById('searchNotPaidToggle')?.checked;
 
     let searchTravelDate = travelDateVal ? new Date(travelDateVal) : null;
 
     const results = allTickets.filter(t => {
         const travelDate = parseSheetDate(t.departing_on);
-        const isTravelDateMatch = !searchTravelDate || (travelDate.getDate() === searchTravelDate.getDate() && travelDate.getMonth() === searchTravelDate.getMonth() && travelDate.getFullYear() === searchTravelDate.getFullYear());
+        
+        const nameMatch = !name || t.name.toUpperCase().includes(name);
+        const bookRefMatch = !bookRef || t.booking_reference.toUpperCase().includes(bookRef);
+        const travelDateMatch = !searchTravelDate || (travelDate.getDate() === searchTravelDate.getDate() && travelDate.getMonth() === searchTravelDate.getMonth() && travelDate.getFullYear() === searchTravelDate.getFullYear());
+        const departureMatch = !departure || (t.departure && t.departure.toUpperCase() === departure);
+        const destinationMatch = !destination || (t.destination && t.destination.toUpperCase() === destination);
+        const airlineMatch = !airline || (t.airline && t.airline.toUpperCase() === airline);
+        const paidMatch = !notPaidOnly || !t.paid;
 
-        const isDepartureMatch = !departure || (t.departure && t.departure.toUpperCase() === departure);
-        const isDestinationMatch = !destination || (t.destination && t.destination.toUpperCase() === destination);
-        const isAirlineMatch = !airline || (t.airline && t.airline.toUpperCase() === airline);
-
-        return (!name || t.name.toUpperCase().includes(name)) &&
-            (!bookRef || t.booking_reference.toUpperCase().includes(bookRef)) &&
-            isTravelDateMatch &&
-            isDepartureMatch &&
-            isDestinationMatch &&
-            isAirlineMatch;
-    }).sort((a, b) => parseSheetDate(b.issued_date) - parseSheetDate(a.rowIndex - b.rowIndex) || b.rowIndex - a.rowIndex);
+        return nameMatch && bookRefMatch && travelDateMatch && departureMatch && destinationMatch && airlineMatch && paidMatch;
+    }).sort((a, b) => parseSheetDate(b.issued_date) - parseSheetDate(a.issued_date) || b.rowIndex - a.rowIndex);
 
     filteredTickets = results;
     displayTickets(filteredTickets, 1);
@@ -777,25 +793,26 @@ function clearSearch() {
     document.getElementById('searchDeparture').selectedIndex = 0;
     document.getElementById('searchDestination').selectedIndex = 0;
     document.getElementById('searchAirline').selectedIndex = 0;
+    document.getElementById('searchNotPaidToggle').checked = false;
     displayAllTickets();
 }
 
-function setupPagination(items) { 
-    const container = document.getElementById('pagination'); 
-    container.innerHTML = ''; 
-    const pageCount = Math.ceil(items.length / rowsPerPage); 
-    if (pageCount <= 1) return; 
+function setupPagination(items) {
+    const container = document.getElementById('pagination');
+    container.innerHTML = '';
+    const pageCount = Math.ceil(items.length / rowsPerPage);
+    if (pageCount <= 1) return;
     const btn = (txt, pg, en=true) => {
-        const b = document.createElement('button'); 
-        b.className = 'pagination-btn'; 
-        b.innerHTML=txt; 
-        b.disabled=!en; 
-        if(en) b.onclick=()=>displayTickets(items,pg); 
-        if(pg===currentPage)b.classList.add('active'); 
+        const b = document.createElement('button');
+        b.className = 'pagination-btn';
+        b.innerHTML=txt;
+        b.disabled=!en;
+        if(en) b.onclick=()=>displayTickets(items,pg);
+        if(pg===currentPage)b.classList.add('active');
         return b;
-    }; 
-    container.append(btn('&laquo;', currentPage - 1, currentPage > 1)); 
-    for (let i = 1; i <= pageCount; i++) container.append(btn(i,i)); 
+    };
+    container.append(btn('&laquo;', currentPage - 1, currentPage > 1));
+    for (let i = 1; i <= pageCount; i++) container.append(btn(i,i));
     container.append(btn('&raquo;', currentPage + 1, currentPage < pageCount));
 }
 
@@ -804,7 +821,7 @@ async function handleSellTicket(e) { e.preventDefault(); if (isSubmitting) retur
 
 function collectFormData(form) {
     const data = {};
-    const fields = ['issued_date', 'name', 'nrc_no', 'phone', 'account_name', 'account_type', 'account_link', 'departure', 'destination', 'departing_on', 'airline', 'base_fare', 'booking_reference', 'net_amount', 'paid', 'payment_method', 'paid_date', 'commission', 'remark', 'extra_fare'];
+    const fields = ['issued_date', 'name', 'nrc_no', 'phone', 'account_name', 'account_type', 'account_link', 'departure', 'destination', 'departing_on', 'airline', 'custom_airline', 'base_fare', 'booking_reference', 'net_amount', 'paid', 'payment_method', 'paid_date', 'commission', 'remarks', 'extra_fare'];
     
     fields.forEach(field => {
         const el = form.querySelector(`#${field}`);
@@ -816,25 +833,31 @@ function collectFormData(form) {
             data[field] = value;
         }
     });
+
+    if (data.airline === 'CUSTOM') {
+        data.airline = data.custom_airline;
+    }
+    delete data.custom_airline;
+
     return data;
 }
 
-async function saveTicket(data) { 
-    const values = [[ 
-        formatDateForSheet(data.issued_date), data.name, data.nrc_no, 
-        data.phone, data.account_name, data.account_type, 
-        data.account_link, data.departure, data.destination, 
-        formatDateForSheet(data.departing_on), data.airline, parseFloat(data.base_fare) || 0, 
-        data.booking_reference, parseFloat(data.net_amount) || 0, data.paid, 
-        data.payment_method, formatDateForSheet(data.paid_date), parseFloat(data.commission) || 0, 
-        data.remark, parseFloat(data.extra_fare) || 0 
-    ]]; 
-    await gapi.client.sheets.spreadsheets.values.append({ 
-        spreadsheetId: CONFIG.SHEET_ID, 
-        range: `${CONFIG.SHEET_NAME}!A:T`, 
-        valueInputOption: 'USER_ENTERED', 
-        resource: { values }, 
-    }); 
+async function saveTicket(data) {
+    const values = [[
+        formatDateForSheet(data.issued_date), data.name, data.nrc_no,
+        data.phone, data.account_name, data.account_type,
+        data.account_link, data.departure, data.destination,
+        formatDateForSheet(data.departing_on), data.airline, parseFloat(data.base_fare) || 0,
+        data.booking_reference, parseFloat(data.net_amount) || 0, data.paid,
+        data.payment_method, formatDateForSheet(data.paid_date), parseFloat(data.commission) || 0,
+        data.remarks, parseFloat(data.extra_fare) || 0
+    ]];
+    await gapi.client.sheets.spreadsheets.values.append({
+        spreadsheetId: CONFIG.SHEET_ID,
+        range: `${CONFIG.SHEET_NAME}!A:T`,
+        valueInputOption: 'USER_ENTERED',
+        resource: { values },
+    });
 }
 
 // --- MODIFY & UPDATE TICKET ---
@@ -856,16 +879,30 @@ function displayModifyResults(tickets) {
         container.innerHTML = '<p style="text-align: center; margin-top: 1rem;">No tickets found for this PNR.</p>';
         return;
     }
-    let html = `<div class="table-container"><table><thead><tr><th>Name</th><th>Route</th><th>Travel Date</th><th>Action</th></tr></thead><tbody>`;
+    let html = `<div class="table-container"><table><thead><tr><th>Name</th><th>Route</th><th>Travel Date</th><th>Status / Action</th></tr></thead><tbody>`;
     const today = new Date();
     today.setHours(0, 0, 0, 0);
+
+    const remarkCheck = (r) => {
+        if (!r) return false;
+        const lowerRemark = r.toLowerCase();
+        return lowerRemark.includes('refund') || lowerRemark.includes('cancel');
+    };
 
     tickets.forEach(t => {
         const travelDate = parseSheetDate(t.departing_on);
         const isPast = travelDate < today;
-        const actionButton = isPast ? 
-            `<button class="btn btn-primary" disabled>Date Passed</button>` :
-            (t.base_fare > 0 ? `<button class="btn btn-primary" onclick="openModifyModal(${t.rowIndex})">Modify</button>` : '');
+        let actionButton = '';
+
+        if (remarkCheck(t.remarks)) {
+            const statusText = t.remarks.toLowerCase().includes('refund') ? 'Fully Refunded' : 'Canceled';
+            actionButton = `<button class="btn btn-secondary" disabled>${statusText}</button>`;
+        } else if (isPast) {
+            actionButton = `<button class="btn btn-primary" disabled>Date Passed</button>`;
+        } else {
+            actionButton = `<button class="btn btn-primary" onclick="openModifyModal(${t.rowIndex})">Modify</button>`;
+        }
+        
         html += `<tr><td>${t.name}</td><td>${t.departure.split(' ')[0]}→${t.destination.split(' ')[0]}</td><td>${t.departing_on}</td><td>${actionButton}</td></tr>`;
     });
     container.innerHTML = html + '</tbody></table></div>';
@@ -883,66 +920,117 @@ function openModifyModal(rowIndex) {
         }
     }
 
+    let paymentUpdateHtml = '';
+    if (!ticket.paid) {
+        paymentUpdateHtml = `
+            <hr style="border-color: rgba(255,255,255,0.2); margin: 1.5rem 0;">
+            <h4>Update Payment Status</h4>
+            <div class="form-grid" style="margin-top: 1rem;">
+                <div class="form-group checkbox-group" style="padding-top: 1.5rem;">
+                    <label for="update_paid">Mark as Paid</label>
+                    <input type="checkbox" id="update_paid" name="update_paid" style="width: 20px; height: 20px; -webkit-appearance: checkbox; appearance: checkbox;">
+                </div>
+                <div class="form-group">
+                    <label for="update_payment_method">Payment Method</label>
+                    <select id="update_payment_method" name="update_payment_method">
+                        <option value="">Select Payment Method</option>
+                        <option value="KBZ Pay">KBZ Pay</option>
+                        <option value="Mobile Banking">Mobile Banking</option>
+                        <option value="Aya Pay">Aya Pay</option>
+                        <option value="Cash">Cash</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="update_paid_date">Paid Date</label>
+                    <input type="text" id="update_paid_date" name="update_paid_date" placeholder="MM/DD/YYYY">
+                </div>
+            </div>
+        `;
+    }
+
     modifyModalBody.innerHTML = `
         <h2>Modify Ticket: ${ticket.name}</h2>
         <form id="updateForm" data-pnr="${ticket.booking_reference}" data-master-row-index="${rowIndex}">
-            <div class="form-grid">
+            <h4>Ticket Details</h4>
+            <div class="form-grid" style="margin-top: 1rem;">
                 <div class="form-group"><label>New Travel Date (for all in PNR)</label><input type="text" id="update_departing_on" placeholder="MM/DD/YYYY" value="${travelDateForInput}"></div>
                 <div class="form-group"><label>New Base Fare (Optional)</label><input type="number" id="update_base_fare" placeholder="${(ticket.base_fare||0).toLocaleString()}"></div>
                 <div class="form-group"><label>New Net Amount (Optional)</label><input type="number" id="update_net_amount" placeholder="${(ticket.net_amount||0).toLocaleString()}"></div>
                 <div class="form-group"><label>Date Change Fees (Optional)</label><input type="number" id="date_change_fees"></div>
                 <div class="form-group"><label>Extra Fare (Optional)</label><input type="number" id="update_extra_fare" placeholder="Adds to existing extra fare"></div>
             </div>
-            <div class="form-actions">
+            ${paymentUpdateHtml}
+            <div class="form-actions" style="margin-top: 2rem;">
                 <button type="button" class="btn btn-secondary" onclick="modifyModal.style.display='none'">Cancel</button>
                 <button type="submit" class="btn btn-primary">Update Ticket(s)</button>
             </div>
         </form>`;
     
     new Datepicker(document.getElementById('update_departing_on'), { format: 'mm/dd/yyyy', autohide: true, todayHighlight: true });
+    if (!ticket.paid) {
+        new Datepicker(document.getElementById('update_paid_date'), { format: 'mm/dd/yyyy', autohide: true, todayHighlight: true });
+    }
     modifyModal.style.display = 'block';
     document.getElementById('updateForm').addEventListener('submit', handleUpdateTicket);
 }
+
 
 async function handleUpdateTicket(e) {
     e.preventDefault();
     const form = e.target;
     const pnr = form.dataset.pnr;
-    const masterRowIndex = form.dataset.masterRowIndex;
+    let historyDetails = [];
 
     const ticketsToUpdate = allTickets.filter(t => t.booking_reference === pnr);
+    const originalTicket = allTickets.find(t => t.booking_reference === pnr);
+
     let newTravelDate = document.getElementById('update_departing_on').value;
     const newBaseFare = parseFloat(document.getElementById('update_base_fare').value);
     const newNetAmount = parseFloat(document.getElementById('update_net_amount').value);
     const fees = parseFloat(document.getElementById('date_change_fees').value) || 0;
     const extraFare = parseFloat(document.getElementById('update_extra_fare').value) || 0;
+
+    const updatePaidCheckbox = document.getElementById('update_paid');
+    const newPaidStatus = updatePaidCheckbox ? updatePaidCheckbox.checked : null;
+    const newPaymentMethod = document.getElementById('update_payment_method')?.value.toUpperCase();
+    const newPaidDate = document.getElementById('update_paid_date')?.value;
     
     if (newTravelDate) newTravelDate = formatDateForSheet(newTravelDate);
+    
+    if (newTravelDate) {
+        const d1 = parseSheetDate(newTravelDate).getTime();
+        const d2 = parseSheetDate(originalTicket.departing_on).getTime();
+        if (d1 !== d2) {
+            historyDetails.push(`Travel Date: ${originalTicket.departing_on} to ${newTravelDate}`);
+        }
+    }
+    if (!isNaN(newBaseFare) && newBaseFare !== originalTicket.base_fare) historyDetails.push(`Base Fare: ${originalTicket.base_fare} to ${newBaseFare}`);
+    if (!isNaN(newNetAmount) && newNetAmount !== originalTicket.net_amount) historyDetails.push(`Net Amount: ${originalTicket.net_amount} to ${newNetAmount}`);
+    if (extraFare > 0) historyDetails.push(`Added Extra Fare: ${extraFare}`);
+    if (fees > 0) historyDetails.push(`Added Date Change Fees: ${fees}`);
+    if (newPaidStatus && !originalTicket.paid) historyDetails.push(`Payment: Not Paid to Paid`);
+    if (newPaymentMethod && newPaymentMethod !== originalTicket.payment_method) historyDetails.push(`Payment Method: ${newPaymentMethod}`);
+    if (newPaidDate && newPaidDate !== originalTicket.paid_date) historyDetails.push(`Paid Date: ${newPaidDate}`);
+
 
     const dataForBatchUpdate = ticketsToUpdate.map(ticket => {
-        const isMaster = ticket.rowIndex == masterRowIndex;
-        let finalBaseFare = ticket.base_fare, 
-            finalNetAmount = ticket.net_amount, 
-            finalCommission = ticket.commission,
-            finalExtraFare = ticket.extra_fare;
-
-        if (isMaster) {
-            finalBaseFare = isNaN(newBaseFare) ? ticket.base_fare : newBaseFare;
-            let commissionBase = isNaN(newBaseFare) ? ticket.commission : Math.round((newBaseFare * 0.05) * 0.60);
-            finalCommission = commissionBase;
-            finalExtraFare = (ticket.extra_fare || 0) + extraFare;
-            finalNetAmount = (isNaN(newNetAmount) ? ticket.net_amount : newNetAmount) + fees;
-        }
+        let finalBaseFare = isNaN(newBaseFare) ? ticket.base_fare : newBaseFare;
+        let finalNetAmount = (isNaN(newNetAmount) ? ticket.net_amount : newNetAmount) + fees;
+        let finalCommission = isNaN(newBaseFare) ? ticket.commission : Math.round((newBaseFare * 0.05) * 0.60);
+        let finalExtraFare = (ticket.extra_fare || 0) + extraFare;
+        let finalPaid = newPaidStatus !== null ? newPaidStatus : ticket.paid;
+        let finalPaymentMethod = newPaymentMethod || ticket.payment_method;
+        let finalPaidDate = newPaidDate ? formatDateForSheet(newPaidDate) : ticket.paid_date;
 
         return {
             range: `${CONFIG.SHEET_NAME}!A${ticket.rowIndex}:T${ticket.rowIndex}`,
             values: [[
                 ticket.issued_date, ticket.name, ticket.nrc_no, ticket.phone,
                 ticket.account_name, ticket.account_type, ticket.account_link,
-                ticket.departure, ticket.destination, newTravelDate || ticket.departing_on, 
+                ticket.departure, ticket.destination, newTravelDate || ticket.departing_on,
                 ticket.airline, finalBaseFare, ticket.booking_reference, finalNetAmount,
-                ticket.paid, ticket.payment_method, ticket.paid_date,
-                finalCommission, ticket.remark, finalExtraFare
+                finalPaid, finalPaymentMethod, finalPaidDate,
+                finalCommission, ticket.remarks, finalExtraFare
             ]]
         };
     });
@@ -953,15 +1041,18 @@ async function handleUpdateTicket(e) {
             spreadsheetId: CONFIG.SHEET_ID,
             resource: { valueInputOption: 'USER_ENTERED', data: dataForBatchUpdate }
         });
+        await saveHistory(CONFIG.MODIFICATION_HISTORY_SHEET, originalTicket, historyDetails.join('; '));
         showToast('Tickets updated successfully!', 'success');
         modifyModal.style.display = 'none';
         document.getElementById('modifyResultsContainer').innerHTML = '';
         document.getElementById('modifyPnr').value = '';
         await loadTicketData();
+        await loadModificationHistory();
     } catch (error) {
         showToast(`Update Error: ${error.result?.error?.message || 'Could not update.'}`, 'error');
     }
 }
+
 
 // --- CANCEL TICKET ---
 function findTicketForCancel() {
@@ -985,17 +1076,30 @@ function displayCancelResults(tickets) {
         container.innerHTML = '<p style="text-align: center; margin-top: 1rem;">No tickets found for this PNR.</p>';
         return;
     }
-    let html = `<div class="table-container"><table><thead><tr><th>Name</th><th>Route</th><th>Travel Date</th><th>Actions</th></tr></thead><tbody>`;
+    let html = `<div class="table-container"><table><thead><tr><th>Name</th><th>Route</th><th>Travel Date</th><th>Status / Actions</th></tr></thead><tbody>`;
     const today = new Date();
     today.setHours(0, 0, 0, 0);
+    
+    const remarkCheck = (r) => {
+        if (!r) return false;
+        const lowerRemark = r.toLowerCase();
+        return lowerRemark.includes('refund') || lowerRemark.includes('cancel');
+    };
 
     tickets.forEach(t => {
         const travelDate = parseSheetDate(t.departing_on);
         const isPast = travelDate < today;
-        const actionsHtml = isPast ?
-            `<button class="btn btn-primary" disabled>Date Passed</button>` :
-            `<button class="btn btn-primary" onclick="openCancelModal(${t.rowIndex}, 'refund')">Full Refund</button>
-             <button class="btn btn-secondary" onclick="openCancelModal(${t.rowIndex}, 'cancel')">Cancel</button>`;
+        let actionsHtml = '';
+
+        if (remarkCheck(t.remarks)) {
+             const statusText = t.remarks.toLowerCase().includes('refund') ? 'Fully Refunded' : 'Canceled';
+             actionsHtml = `<button class="btn btn-secondary" disabled>${statusText}</button>`;
+        } else if (isPast) {
+            actionsHtml = `<button class="btn btn-primary" disabled>Date Passed</button>`;
+        } else {
+            actionsHtml = `<button class="btn btn-primary" onclick="openCancelModal(${t.rowIndex}, 'refund')">Full Refund</button>
+                         <button class="btn btn-secondary" onclick="openCancelModal(${t.rowIndex}, 'cancel')">Cancel</button>`;
+        }
 
         html += `
             <tr>
@@ -1024,7 +1128,7 @@ function openCancelModal(rowIndex, type) {
                 <button type="button" class="btn btn-secondary" onclick="cancelModal.style.display='none'">Back</button>
                 <button type="button" class="btn btn-primary" onclick="handleCancelTicket(${rowIndex}, 'refund')">Confirm Refund</button>
             </div>`;
-    } else { // type === 'cancel'
+    } else {
         cancelModalBody.innerHTML = `
             <h2>Cancel Ticket</h2>
             <p>For <strong>${ticket.name}</strong> (PNR: ${ticket.booking_reference})</p>
@@ -1061,25 +1165,28 @@ async function handleCancelTicket(rowIndex, type, refundAmount = 0) {
     }
 
     let updatedValues = [];
+    let historyDetails = '';
     if (type === 'refund') {
         updatedValues = [
             ticket.issued_date, ticket.name, ticket.nrc_no, ticket.phone,
             ticket.account_name, ticket.account_type, ticket.account_link,
-            ticket.departure, ticket.destination, ticket.departing_on, 
+            ticket.departure, ticket.destination, ticket.departing_on,
             ticket.airline, 0, ticket.booking_reference, 0,
             ticket.paid, ticket.payment_method, ticket.paid_date,
             0, "Full Refund", 0
         ];
-    } else { // type === 'cancel'
+        historyDetails = "Full Refund processed.";
+    } else {
         const newNetAmount = (ticket.net_amount || 0) - refundAmount;
         updatedValues = [
             ticket.issued_date, ticket.name, ticket.nrc_no, ticket.phone,
             ticket.account_name, ticket.account_type, ticket.account_link,
-            ticket.departure, ticket.destination, ticket.departing_on, 
+            ticket.departure, ticket.destination, ticket.departing_on,
             ticket.airline, ticket.base_fare, ticket.booking_reference, newNetAmount,
             ticket.paid, ticket.payment_method, ticket.paid_date,
             ticket.commission, `Canceled with ${refundAmount.toLocaleString()} refund`, ticket.extra_fare
         ];
+        historyDetails = `Partial Cancellation. Refunded: ${refundAmount.toLocaleString()} MMK.`;
     }
     
     try {
@@ -1090,15 +1197,177 @@ async function handleCancelTicket(rowIndex, type, refundAmount = 0) {
             valueInputOption: 'USER_ENTERED',
             resource: { values: [updatedValues] }
         });
+        await saveHistory(CONFIG.CANCELLATION_HISTORY_SHEET, ticket, historyDetails);
         showToast('Ticket updated successfully!', 'success');
         cancelModal.style.display = 'none';
         document.getElementById('cancelResultsContainer').innerHTML = '';
         document.getElementById('cancelPnr').value = '';
         await loadTicketData();
+        await loadCancellationHistory();
     } catch (error) {
         showToast(`Cancellation Error: ${error.result?.error?.message || 'Could not update.'}`, 'error');
     }
 }
+
+
+// --- HISTORY FUNCTIONS ---
+async function loadModificationHistory() {
+    try {
+        const response = await gapi.client.sheets.spreadsheets.values.get({
+            spreadsheetId: CONFIG.SHEET_ID,
+            range: `${CONFIG.MODIFICATION_HISTORY_SHEET}!A:D`
+        });
+        modificationHistory = parseHistoryData(response.result.values);
+        displayModificationHistory(1);
+    } catch (error) {
+        showToast('Could not load modification history. Ensure the sheet exists.', 'error');
+        console.error("Modification History Error:", error);
+    }
+}
+
+async function loadCancellationHistory() {
+    try {
+        const response = await gapi.client.sheets.spreadsheets.values.get({
+            spreadsheetId: CONFIG.SHEET_ID,
+            range: `${CONFIG.CANCELLATION_HISTORY_SHEET}!A:D`
+        });
+        cancellationHistory = parseHistoryData(response.result.values);
+        displayCancellationHistory(1);
+    } catch (error) {
+        showToast('Could not load cancellation history. Ensure the sheet exists.', 'error');
+        console.error("Cancellation History Error:", error);
+    }
+}
+
+function parseHistoryData(values) {
+    if (!values || values.length < 2) return [];
+    const headers = values[0].map(h => h.toLowerCase().replace(/\s+/g, '_'));
+    const data = values.slice(1).map((row) => {
+        const entry = {};
+        headers.forEach((h, j) => {
+            entry[h] = row[j] || '';
+        });
+        return entry;
+    });
+    return data.reverse();
+}
+
+async function saveHistory(sheetName, ticket, details) {
+    if (!details) return;
+    const now = new Date();
+    const date = `${String(now.getMonth() + 1).padStart(2, '0')}/${String(now.getDate()).padStart(2, '0')}/${now.getFullYear()}`;
+    const values = [[date, ticket.name, ticket.booking_reference, details]];
+    try {
+        await gapi.client.sheets.spreadsheets.values.append({
+            spreadsheetId: CONFIG.SHEET_ID,
+            range: `${sheetName}!A:D`,
+            valueInputOption: 'USER_ENTERED',
+            resource: { values }
+        });
+    } catch (error) {
+        showToast(`Failed to save history: ${error.result?.error?.message}`, 'error');
+    }
+}
+
+function displayModificationHistory(page) {
+    modHistoryPage = page;
+    const container = document.getElementById('modificationHistoryContainer');
+    const tbody = document.getElementById('modificationHistoryBody');
+    const sortedHistory = modificationHistory;
+
+    if (sortedHistory.length > 0) container.style.display = 'block';
+
+    const paginated = sortedHistory.slice((page - 1) * rowsPerPage, page * rowsPerPage);
+    tbody.innerHTML = '';
+    paginated.forEach(entry => {
+        const row = tbody.insertRow();
+        row.innerHTML = `<td>${entry.date}</td><td>${entry.name}</td><td>${entry.booking_ref}</td><td>${entry.details}</td>`;
+    });
+    setupHistoryPagination('modification', sortedHistory, page);
+}
+
+function displayCancellationHistory(page) {
+    cancelHistoryPage = page;
+    const container = document.getElementById('cancellationHistoryContainer');
+    const tbody = document.getElementById('cancellationHistoryBody');
+    const sortedHistory = cancellationHistory;
+
+    if (sortedHistory.length > 0) container.style.display = 'block';
+
+    const paginated = sortedHistory.slice((page - 1) * rowsPerPage, page * rowsPerPage);
+    tbody.innerHTML = '';
+    paginated.forEach(entry => {
+        const row = tbody.insertRow();
+        row.innerHTML = `<td>${entry.date}</td><td>${entry.name}</td><td>${entry.booking_ref}</td><td>${entry.details}</td>`;
+    });
+    setupHistoryPagination('cancellation', sortedHistory, page);
+}
+
+function setupHistoryPagination(type, items, currentPage) {
+    const containerId = type === 'modification' ? 'modificationHistoryPagination' : 'cancellationHistoryPagination';
+    const renderFn = type === 'modification' ? displayModificationHistory : displayCancellationHistory;
+    const container = document.getElementById(containerId);
+    container.innerHTML = '';
+    const pageCount = Math.ceil(items.length / rowsPerPage);
+    if (pageCount <= 1) return;
+
+    const createBtn = (txt, pg, enabled = true) => {
+        const btn = document.createElement('button');
+        btn.className = 'pagination-btn';
+        btn.innerHTML = txt;
+        btn.disabled = !enabled;
+        if (enabled) {
+            btn.onclick = () => renderFn(pg);
+        }
+        if (pg === currentPage) {
+            btn.classList.add('active');
+        }
+        return btn;
+    };
+    container.append(createBtn('&laquo;', currentPage - 1, currentPage > 1));
+    for (let i = 1; i <= pageCount; i++) {
+        container.append(createBtn(i, i));
+    }
+    container.append(createBtn('&raquo;', currentPage + 1, currentPage < pageCount));
+}
+
+
+// --- CUSTOM AIRLINE FUNCTIONS ---
+function handleAirlineChange(e) {
+    const customAirlineGroup = document.getElementById('custom_airline_group');
+    const customAirlineInput = document.getElementById('custom_airline');
+    if (e.target.value === 'CUSTOM') {
+        customAirlineGroup.style.display = 'flex';
+        customAirlineInput.required = true;
+        customAirlineInput.disabled = false;
+    } else {
+        customAirlineGroup.style.display = 'none';
+        customAirlineInput.required = false;
+        customAirlineInput.disabled = true;
+        customAirlineInput.value = '';
+    }
+}
+
+function populateSearchAirlines() {
+    const searchAirlineSelect = document.getElementById('searchAirline');
+    const defaultAirlines = new Set(["MNA", "MAI", "MANYADANARPON", "AIRTHANWLIN"]);
+
+    const airlinesFromTickets = new Set(allTickets.map(t => t.airline ? t.airline.toUpperCase() : null).filter(Boolean));
+
+    const allAvailableAirlines = new Set([...defaultAirlines, ...airlinesFromTickets]);
+
+    while (searchAirlineSelect.options.length > 1) {
+        searchAirlineSelect.remove(1);
+    }
+
+    Array.from(allAvailableAirlines).sort().forEach(airline => {
+        const option = document.createElement('option');
+        option.value = airline;
+        option.textContent = airline;
+        searchAirlineSelect.appendChild(option);
+    });
+}
+
 
 // --- SHORTCUT TYPING FUNCTION ---
 function handleShortcutTyping(event, elementId) {
@@ -1111,7 +1380,6 @@ function handleShortcutTyping(event, elementId) {
         tempInput.value = '';
     }, 1500);
 
-    // Handle input keys
     if (event.key === 'Backspace') {
         event.preventDefault();
         tempInput.value = tempInput.value.slice(0, -1);
@@ -1119,19 +1387,16 @@ function handleShortcutTyping(event, elementId) {
         event.preventDefault();
         tempInput.value += event.key.toUpperCase();
     } else {
-        // Ignore other keys like Shift, Enter, etc.
         return;
     }
 
     const currentSearch = tempInput.value;
     if (!currentSearch) {
-        // Do nothing if the search string is empty
         return;
     }
 
     let exactMatchFound = false;
 
-    // First, prioritize finding an exact match for the typed code
     for (let i = 0; i < selectElement.options.length; i++) {
         const option = selectElement.options[i];
         const shortcutMatch = option.value.match(/\((.*?)\)/);
@@ -1142,7 +1407,6 @@ function handleShortcutTyping(event, elementId) {
         }
     }
 
-    // If no exact match was found, fall back to a partial "startsWith" search
     if (!exactMatchFound) {
         for (let i = 0; i < selectElement.options.length; i++) {
             const option = selectElement.options[i];

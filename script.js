@@ -68,7 +68,7 @@ window.onload = async () => {
 
 function initializeDatepickers() {
     const options = { format: 'mm/dd/yyyy', autohide: true, todayHighlight: true };
-    ['searchTravelDate', 'issued_date', 'departing_on', 'paid_date', 'booking_departing_on'].forEach(id => {
+    ['searchStartDate', 'searchEndDate', 'searchTravelDate', 'issued_date', 'departing_on', 'paid_date', 'booking_departing_on'].forEach(id => {
         const el = document.getElementById(id);
         if (el) new Datepicker(el, options);
     });
@@ -170,6 +170,7 @@ function setupEventListeners() {
     signoutButton.addEventListener('click', handleSignoutClick);
     document.getElementById('searchBtn').addEventListener('click', performSearch);
     document.getElementById('clearBtn').addEventListener('click', clearSearch);
+    document.getElementById('exportPdfBtn').addEventListener('click', exportToPdf); 
     
     // Add event listeners for Enter key on search inputs
     ['searchName', 'searchBooking', 'searchTravelDate'].forEach(id => {
@@ -237,7 +238,7 @@ async function loadTicketData() {
         dashboardContent.style.display = 'none';
         const response = await gapi.client.sheets.spreadsheets.values.get({
             spreadsheetId: CONFIG.SHEET_ID,
-            range: `${CONFIG.SHEET_NAME}!A:T`
+            range: `${CONFIG.SHEET_NAME}!A:U` 
         });
         
         if (response.result.values && response.result.values.length > 1) {
@@ -263,7 +264,7 @@ function parseTicketData(values) {
             ticket[h] = typeof value === 'string' ? value.trim() : value;
         });
         const safeParse = (val) => parseFloat(String(val).replace(/,/g, '')) || 0;
-        ['base_fare', 'net_amount', 'commission', 'extra_fare'].forEach(key => ticket[key] = safeParse(ticket[key]));
+        ['base_fare', 'net_amount', 'commission', 'extra_fare', 'date_change'].forEach(key => ticket[key] = safeParse(ticket[key]));
         ticket.paid = ticket.paid === 'TRUE';
         ticket.rowIndex = i + 2;
         return ticket;
@@ -663,7 +664,6 @@ function showDetails(rowIndex) {
         if (ticket.remarks) {
             const lowerRemarks = ticket.remarks.toLowerCase();
             if (lowerRemarks.includes('refund') || lowerRemarks.includes('cancel')) {
-                // [MODIFIED] Look up the date from the history array.
                 const historyEntry = cancellationHistory.find(h => h.booking_ref === ticket.booking_reference);
                 const actionDate = historyEntry ? ` on ${formatDateToDMMMY(historyEntry.date)}` : '';
 
@@ -695,6 +695,7 @@ function showDetails(rowIndex) {
                 <p><strong>Net Amount:</strong> ${(ticket.net_amount || 0).toLocaleString()} MMK</p>
                 <p><strong>Commission:</strong> ${(ticket.commission || 0).toLocaleString()} MMK</p>
                 <p><strong>Extra Fare:</strong> ${(ticket.extra_fare || 0).toLocaleString()} MMK</p>
+                 <p><strong>Date Change Fees:</strong> ${(ticket.date_change || 0).toLocaleString()} MMK</p>
                 <p><strong>Payment Status:</strong> ${paidStatusHtml}</p>
             </div>
             ${statusHtml}
@@ -722,7 +723,7 @@ function updateDashboardData() {
     const totalTicketsBox = document.getElementById('total-tickets-box');
     totalTicketsBox.innerHTML = `<h3>Tickets (${monthName})</h3><div class="main-value">${ticketsThisMonth.length}</div><i class="icon fa-solid fa-ticket-simple"></i>`;
 
-    const totalRevenue = ticketsThisMonth.reduce((sum, t) => sum + (t.net_amount || 0), 0);
+    const totalRevenue = ticketsThisMonth.reduce((sum, t) => sum + (t.net_amount || 0) + (t.date_change || 0), 0);
     const revenueBox = document.getElementById('monthly-revenue-box');
     revenueBox.innerHTML = `<h3>Revenue (${monthName})</h3><div class="main-value">${totalRevenue.toLocaleString()}</div><span class="sub-value">MMK</span><i class="icon fa-solid fa-sack-dollar"></i>`;
 
@@ -836,26 +837,40 @@ function calculateCommission() {
 function performSearch() {
     const name = (document.getElementById('searchName')?.value || '').toUpperCase();
     const bookRef = (document.getElementById('searchBooking')?.value || '').toUpperCase();
+    const startDateVal = document.getElementById('searchStartDate')?.value;
+    const endDateVal = document.getElementById('searchEndDate')?.value;
     const travelDateVal = document.getElementById('searchTravelDate')?.value || '';
     const departure = document.getElementById('searchDeparture')?.value.toUpperCase();
     const destination = document.getElementById('searchDestination')?.value.toUpperCase();
     const airline = document.getElementById('searchAirline')?.value.toUpperCase();
     const notPaidOnly = document.getElementById('searchNotPaidToggle')?.checked;
 
-    let searchTravelDate = travelDateVal ? new Date(travelDateVal) : null;
+    let searchStartDate = startDateVal ? parseSheetDate(startDateVal) : null;
+    let searchEndDate = endDateVal ? parseSheetDate(endDateVal) : null;
+    if (searchStartDate) searchStartDate.setHours(0, 0, 0, 0);
+    if (searchEndDate) searchEndDate.setHours(23, 59, 59, 999);
+
+    let searchTravelDate = travelDateVal ? parseSheetDate(travelDateVal) : null;
+    if (searchTravelDate) searchTravelDate.setHours(0, 0, 0, 0);
+
 
     const results = allTickets.filter(t => {
+        const issuedDate = parseSheetDate(t.issued_date);
         const travelDate = parseSheetDate(t.departing_on);
         
         const nameMatch = !name || t.name.toUpperCase().includes(name);
         const bookRefMatch = !bookRef || t.booking_reference.toUpperCase().includes(bookRef);
-        const travelDateMatch = !searchTravelDate || (travelDate.getDate() === searchTravelDate.getDate() && travelDate.getMonth() === searchTravelDate.getMonth() && travelDate.getFullYear() === searchTravelDate.getFullYear());
+
+        const issuedDateMatch = (!searchStartDate || issuedDate >= searchStartDate) && (!searchEndDate || issuedDate <= searchEndDate);
+        
+        const travelDateMatch = !searchTravelDate || (travelDate.getTime() === searchTravelDate.getTime());
+
         const departureMatch = !departure || (t.departure && t.departure.toUpperCase() === departure);
         const destinationMatch = !destination || (t.destination && t.destination.toUpperCase() === destination);
         const airlineMatch = !airline || (t.airline && t.airline.toUpperCase() === airline);
         const paidMatch = !notPaidOnly || !t.paid;
 
-        return nameMatch && bookRefMatch && travelDateMatch && departureMatch && destinationMatch && airlineMatch && paidMatch;
+        return nameMatch && bookRefMatch && issuedDateMatch && travelDateMatch && departureMatch && destinationMatch && airlineMatch && paidMatch;
     }).sort((a, b) => parseSheetDate(b.issued_date) - parseSheetDate(a.issued_date) || b.rowIndex - a.rowIndex);
 
     filteredTickets = results;
@@ -865,6 +880,8 @@ function performSearch() {
 function clearSearch() {
     document.getElementById('searchName').value = '';
     document.getElementById('searchBooking').value = '';
+    document.getElementById('searchStartDate').value = '';
+    document.getElementById('searchEndDate').value = '';
     document.getElementById('searchTravelDate').value = '';
     document.getElementById('searchDeparture').selectedIndex = 0;
     document.getElementById('searchDestination').selectedIndex = 0;
@@ -872,6 +889,7 @@ function clearSearch() {
     document.getElementById('searchNotPaidToggle').checked = false;
     displayAllTickets();
 }
+
 
 function setupPagination(items) {
     const container = document.getElementById('pagination');
@@ -897,7 +915,7 @@ async function handleSellTicket(e) { e.preventDefault(); if (isSubmitting) retur
 
 function collectFormData(form) {
     const data = {};
-    const fields = ['issued_date', 'name', 'nrc_no', 'phone', 'account_name', 'account_type', 'account_link', 'departure', 'destination', 'departing_on', 'airline', 'custom_airline', 'base_fare', 'booking_reference', 'net_amount', 'paid', 'payment_method', 'paid_date', 'commission', 'remarks', 'extra_fare'];
+    const fields = ['issued_date', 'name', 'nrc_no', 'phone', 'account_name', 'account_type', 'account_link', 'departure', 'destination', 'departing_on', 'airline', 'custom_airline', 'base_fare', 'booking_reference', 'net_amount', 'paid', 'payment_method', 'paid_date', 'commission', 'remarks', 'extra_fare', 'date_change'];
     
     fields.forEach(field => {
         const el = form.querySelector(`#${field}`);
@@ -926,11 +944,12 @@ async function saveTicket(data) {
         formatDateForSheet(data.departing_on), data.airline, parseFloat(data.base_fare) || 0,
         data.booking_reference, parseFloat(data.net_amount) || 0, data.paid,
         data.payment_method, formatDateForSheet(data.paid_date), parseFloat(data.commission) || 0,
-        data.remarks, parseFloat(data.extra_fare) || 0
+        data.remarks, parseFloat(data.extra_fare) || 0,
+        parseFloat(data.date_change) || 0 
     ]];
     await gapi.client.sheets.spreadsheets.values.append({
         spreadsheetId: CONFIG.SHEET_ID,
-        range: `${CONFIG.SHEET_NAME}!A:T`,
+        range: `${CONFIG.SHEET_NAME}!A:U`, 
         valueInputOption: 'USER_ENTERED',
         resource: { values },
     });
@@ -1063,7 +1082,7 @@ async function handleUpdateTicket(e) {
     let newTravelDateVal = document.getElementById('update_departing_on').value;
     const newBaseFare = parseFloat(document.getElementById('update_base_fare').value);
     const newNetAmount = parseFloat(document.getElementById('update_net_amount').value);
-    const fees = parseFloat(document.getElementById('date_change_fees').value) || 0;
+    const dateChangeFees = parseFloat(document.getElementById('date_change_fees').value) || 0;
     const extraFare = parseFloat(document.getElementById('update_extra_fare').value) || 0;
 
     const updatePaidCheckbox = document.getElementById('update_paid');
@@ -1071,7 +1090,6 @@ async function handleUpdateTicket(e) {
     const newPaymentMethod = document.getElementById('update_payment_method')?.value.toUpperCase();
     const newPaidDate = document.getElementById('update_paid_date')?.value;
     
-    // This is needed for the actual sheet update (which expects MM/DD/YYYY)
     const formattedNewTravelDateForSheet = newTravelDateVal ? formatDateForSheet(newTravelDateVal) : '';
 
     if (newTravelDateVal) {
@@ -1085,32 +1103,32 @@ async function handleUpdateTicket(e) {
     if (!isNaN(newBaseFare) && newBaseFare !== originalTicket.base_fare) historyDetails.push(`Base Fare: ${originalTicket.base_fare} to ${newBaseFare}`);
     if (!isNaN(newNetAmount) && newNetAmount !== originalTicket.net_amount) historyDetails.push(`Net Amount: ${originalTicket.net_amount} to ${newNetAmount}`);
     if (extraFare > 0) historyDetails.push(`Added Extra Fare: ${extraFare}`);
-    if (fees > 0) historyDetails.push(`Added Date Change Fees: ${fees}`);
+    if (dateChangeFees > 0) historyDetails.push(`Added Date Change Fees: ${dateChangeFees}`);
     if (newPaidStatus && !originalTicket.paid) historyDetails.push(`Payment: Not Paid to Paid`);
     if (newPaymentMethod && newPaymentMethod !== originalTicket.payment_method) historyDetails.push(`Payment Method: ${newPaymentMethod}`);
     if (newPaidDate && newPaidDate !== originalTicket.paid_date) {
         historyDetails.push(`Paid Date: ${formatDateToDMMMY(newPaidDate)}`);
     }
 
-
     const dataForBatchUpdate = ticketsToUpdate.map(ticket => {
         let finalBaseFare = isNaN(newBaseFare) ? ticket.base_fare : newBaseFare;
-        let finalNetAmount = (isNaN(newNetAmount) ? ticket.net_amount : newNetAmount) + fees;
+        let finalNetAmount = isNaN(newNetAmount) ? ticket.net_amount : newNetAmount;
         let finalCommission = isNaN(newBaseFare) ? ticket.commission : Math.round((newBaseFare * 0.05) * 0.60);
         let finalExtraFare = (ticket.extra_fare || 0) + extraFare;
+        let finalDateChangeFees = (ticket.date_change || 0) + dateChangeFees;
         let finalPaid = newPaidStatus !== null ? newPaidStatus : ticket.paid;
         let finalPaymentMethod = newPaymentMethod || ticket.payment_method;
         let finalPaidDate = newPaidDate ? formatDateForSheet(newPaidDate) : ticket.paid_date;
 
         return {
-            range: `${CONFIG.SHEET_NAME}!A${ticket.rowIndex}:T${ticket.rowIndex}`,
+            range: `${CONFIG.SHEET_NAME}!A${ticket.rowIndex}:U${ticket.rowIndex}`, 
             values: [[
                 ticket.issued_date, ticket.name, ticket.nrc_no, ticket.phone,
                 ticket.account_name, ticket.account_type, ticket.account_link,
                 ticket.departure, ticket.destination, formattedNewTravelDateForSheet || ticket.departing_on,
                 ticket.airline, finalBaseFare, ticket.booking_reference, finalNetAmount,
                 finalPaid, finalPaymentMethod, finalPaidDate,
-                finalCommission, ticket.remarks, finalExtraFare
+                finalCommission, ticket.remarks, finalExtraFare, finalDateChangeFees 
             ]]
         };
     });
@@ -1246,7 +1264,6 @@ async function handleCancelTicket(rowIndex, type, refundAmount = 0) {
 
     let updatedValues = [];
     let historyDetails = '';
-    // [MODIFIED] Reverted to writing a simple remark. The date will be looked up from history.
     if (type === 'refund') {
         updatedValues = [
             ticket.issued_date, ticket.name, ticket.nrc_no, ticket.phone,
@@ -1254,7 +1271,7 @@ async function handleCancelTicket(rowIndex, type, refundAmount = 0) {
             ticket.departure, ticket.destination, ticket.departing_on,
             ticket.airline, 0, ticket.booking_reference, 0,
             ticket.paid, ticket.payment_method, ticket.paid_date,
-            0, "Full Refund", 0
+            0, "Full Refund", 0, 0 
         ];
         historyDetails = "Full Refund processed.";
     } else {
@@ -1265,7 +1282,8 @@ async function handleCancelTicket(rowIndex, type, refundAmount = 0) {
             ticket.departure, ticket.destination, ticket.departing_on,
             ticket.airline, ticket.base_fare, ticket.booking_reference, newNetAmount,
             ticket.paid, ticket.payment_method, ticket.paid_date,
-            ticket.commission, `Canceled with ${refundAmount.toLocaleString()} refund`, ticket.extra_fare
+            ticket.commission, `Canceled with ${refundAmount.toLocaleString()} refund`, ticket.extra_fare,
+            ticket.date_change 
         ];
         historyDetails = `Partial Cancellation. Refunded: ${refundAmount.toLocaleString()} MMK.`;
     }
@@ -1274,7 +1292,7 @@ async function handleCancelTicket(rowIndex, type, refundAmount = 0) {
         showToast('Processing cancellation...', 'info');
         await gapi.client.sheets.spreadsheets.values.update({
             spreadsheetId: CONFIG.SHEET_ID,
-            range: `${CONFIG.SHEET_NAME}!A${rowIndex}:T${rowIndex}`,
+            range: `${CONFIG.SHEET_NAME}!A${rowIndex}:U${rowIndex}`, 
             valueInputOption: 'USER_ENTERED',
             resource: { values: [updatedValues] }
         });
@@ -1362,7 +1380,6 @@ function displayModificationHistory(page) {
     tbody.innerHTML = '';
     paginated.forEach(entry => {
         const row = tbody.insertRow();
-        // [MODIFIED] Format the date for display
         row.innerHTML = `<td>${formatDateToDMMMY(entry.date)}</td><td>${entry.name}</td><td>${entry.booking_ref}</td><td>${entry.details}</td>`;
     });
     setupHistoryPagination('modification', sortedHistory, page);
@@ -1380,7 +1397,6 @@ function displayCancellationHistory(page) {
     tbody.innerHTML = '';
     paginated.forEach(entry => {
         const row = tbody.insertRow();
-        // [MODIFIED] Format the date for display
         row.innerHTML = `<td>${formatDateToDMMMY(entry.date)}</td><td>${entry.name}</td><td>${entry.booking_ref}</td><td>${entry.details}</td>`;
     });
     setupHistoryPagination('cancellation', sortedHistory, page);
@@ -1500,4 +1516,124 @@ function handleShortcutTyping(event, elementId) {
             }
         }
     }
+}
+
+// --- PDF EXPORT FUNCTION ---
+function exportToPdf() {
+    if (filteredTickets.length === 0) {
+        showToast('No search results to export.', 'info');
+        return;
+    }
+
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({ orientation: 'landscape' });
+
+    if (typeof doc.autoTable !== 'function') {
+        showToast('PDF library not loaded yet. Please try again.', 'error');
+        console.error('jsPDF autoTable plugin is not loaded.');
+        return;
+    }
+
+    // MODIFIED: Sort by oldest issue date first for the report
+    const sortedTickets = [...filteredTickets].sort((a, b) => 
+        parseSheetDate(a.issued_date) - parseSheetDate(b.issued_date)
+    );
+
+    const tableColumns = ["Issued Date", "Name", "Booking Ref", "Route", "Airline", "Net Amount", "Date Change", "Commission"];
+    const tableRows = [];
+
+    // MODIFIED: Initialize totals
+    let totalNetAmount = 0;
+    let totalDateChange = 0;
+    let totalCommission = 0;
+
+    sortedTickets.forEach(ticket => {
+        // MODIFIED: Sum up totals
+        totalNetAmount += ticket.net_amount || 0;
+        totalDateChange += ticket.date_change || 0;
+        totalCommission += ticket.commission || 0;
+
+        const ticketData = [
+            formatDateToDMMMY(ticket.issued_date) || '', // Use consistent date format
+            ticket.name || '',
+            ticket.booking_reference || '',
+            // MODIFIED: Use a hyphen and full names for the route
+            ticket.departure && ticket.destination ? `${ticket.departure} - ${ticket.destination}` : 'N/A',
+            ticket.airline || '',
+            (ticket.net_amount || 0).toLocaleString(),
+            (ticket.date_change || 0).toLocaleString(),
+            (ticket.commission || 0).toLocaleString()
+        ];
+        tableRows.push(ticketData);
+    });
+
+    // MODIFIED: Create a formatted footer row for totals
+    const footerRow = [
+        { 
+            content: 'Total', 
+            colSpan: 5, 
+            styles: { halign: 'right', fontStyle: 'bold' } 
+        },
+        { content: totalNetAmount.toLocaleString(), styles: { halign: 'right', fontStyle: 'bold' } },
+        { content: totalDateChange.toLocaleString(), styles: { halign: 'right', fontStyle: 'bold' } },
+        { content: totalCommission.toLocaleString(), styles: { halign: 'right', fontStyle: 'bold' } }
+    ];
+
+    const now = new Date();
+    const currentMonth = now.toLocaleString('default', { month: 'long' });
+    const title = `Ocean Air Ticket (${currentMonth} Report)`;
+    const exportedDate = `Exported on: ${now.toLocaleDateString('en-US')}`;
+
+    doc.autoTable({
+        head: [tableColumns],
+        body: tableRows,
+        foot: [footerRow], // MODIFIED: Add the footer data
+        startY: 25,
+        theme: 'grid',
+        headStyles: {
+            fillColor: [33, 38, 45], 
+            textColor: [230, 237, 243]
+        },
+        footStyles: {
+            fillColor: [220, 220, 220],
+            textColor: [0, 0, 0],
+            fontStyle: 'bold'
+        },
+        // MODIFIED: Use standard font and adjust styles for better fit
+        styles: {
+            font: 'helvetica',
+            fontSize: 7.5,
+            cellPadding: 2,
+            valign: 'middle'
+        },
+        // MODIFIED: Re-adjusted column widths for perfect fit
+        columnStyles: {
+            0: { cellWidth: 22 }, // Issued Date
+            1: { cellWidth: 40 }, // Name
+            2: { cellWidth: 25 }, // Booking Ref
+            3: { cellWidth: 75 }, // Route (Expanded)
+            4: { cellWidth: 28 }, // Airline
+            5: { halign: 'right', cellWidth: 23 }, // Net Amount
+            6: { halign: 'right', cellWidth: 23 }, // Date Change
+            7: { halign: 'right', cellWidth: 23 }  // Commission
+        },
+        didDrawPage: function (data) {
+            // Header
+            doc.setFontSize(18);
+            doc.setTextColor(40);
+            doc.text(title, data.settings.margin.left, 15);
+
+            doc.setFontSize(11);
+            doc.setTextColor(100);
+            doc.text(exportedDate, data.settings.margin.left, 20);
+            
+            // Footer
+            const pageCount = doc.internal.getNumberOfPages();
+            doc.setFontSize(10);
+            doc.text("Page " + String(data.pageNumber) + " of " + String(pageCount), data.settings.margin.left, doc.internal.pageSize.height - 10);
+        }
+    });
+
+    doc.save(`Ocean_Air_Report_${now.getFullYear()}-${String(now.getMonth()+1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}.pdf`);
+    showToast('Report exported successfully!', 'success');
 }

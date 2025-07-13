@@ -57,9 +57,33 @@ body {
     z-index: 1000;
     background: rgba(13, 17, 23, 0.6);
     backdrop-filter: blur(15px);
+    -webkit-backdrop-filter: blur(15px);
     border-bottom: 1px solid var(--border-color);
     padding: 1rem 2rem;
     display: flex; align-items: center; justify-content: space-between; gap: 1rem;
+    transition: background 0.3s ease, box-shadow 0.3s ease;
+    overflow: hidden; /* Needed for the pseudo-element */
+}
+.header::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -150%;
+    width: 75%;
+    height: 100%;
+    background: linear-gradient(
+        90deg,
+        transparent,
+        rgba(255, 255, 255, 0.1),
+        transparent
+    );
+    transform: skewX(-30deg);
+    transition: left 0.6s cubic-bezier(0.23, 1, 0.32, 1);
+    z-index: -1;
+}
+
+.header:hover::before {
+    left: 150%;
 }
 
 .main-content {
@@ -166,12 +190,27 @@ body {
 }
 .results-section { height: auto; }
 
-.search-section h3, .results-section h3 {
+.search-section h3 {
     margin-top: 0.5rem;
     margin-bottom: 1.5rem;
 }
-.results-section h3 {
+
+/* MODIFIED: New styles for the results header */
+.results-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1.5rem;
+}
+
+.results-header h3 {
+    margin: 0;
     padding-left: 0.5rem;
+}
+
+#exportPdfBtn {
+    font-size: 0.8rem;
+    padding: 0.5rem 0.8rem;
 }
 
 .search-inputs {
@@ -208,6 +247,16 @@ body {
 .search-inputs select:invalid {
     color: var(--text-secondary);
 }
+
+.date-range-group {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.date-range-group input {
+    width: 50%;
+}
+
 
 .search-buttons { display: flex; gap: 1rem; margin-top: auto; }
 .table-container { overflow-x: auto; flex-grow: 1; }
@@ -408,6 +457,7 @@ td .action-checkbox {
     .info-grid { grid-template-columns: repeat(2, 1fr); }
     #sell-view .form-grid { grid-template-columns: 1fr; }
     .table-header { flex-direction: column; align-items: stretch; }
+    #exportPdfBtn span { display: none; } /* Hide text on small screens */
 }
 
 /* --- ADDED: Full Datepicker Theme Fix --- */

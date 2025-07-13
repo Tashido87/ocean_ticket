@@ -11,6 +11,9 @@
     <script src="https://cdn.jsdelivr.net/npm/vanillajs-datepicker@1.3.4/dist/js/datepicker-full.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
     
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://unpkg.com/jspdf-autotable@3.8.2/dist/jspdf.plugin.autotable.js"></script>
+    
     <script src="https://accounts.google.com/gsi/client" async defer></script>
     <script src="https://apis.google.com/js/api.js" async defer></script>
 </head>
@@ -67,6 +70,10 @@
                             <div class="search-inputs">
                                 <input type="text" id="searchName" placeholder="Client Name">
                                 <input type="text" id="searchBooking" placeholder="Booking Reference">
+                                <div class="date-range-group">
+                                    <input type="text" id="searchStartDate" placeholder="Start Date">
+                                    <input type="text" id="searchEndDate" placeholder="End Date">
+                                </div>
                                 <input type="text" id="searchTravelDate" placeholder="Travel Date (MM/DD/YYYY)">
                                 <select id="searchDeparture" required>
                                     <option value="" disabled selected>DEPARTURE</option>
@@ -233,7 +240,13 @@
                         </div>
 
                         <div class="results-section glass-card">
-                            <h3>Search Results</h3>
+                            <div class="results-header">
+                                <h3>Search Results</h3>
+                                <button id="exportPdfBtn" class="btn btn-secondary" title="Export Results to PDF">
+                                    <i class="fa-solid fa-file-pdf"></i>
+                                    <span>Export PDF</span>
+                                </button>
+                            </div>
                             <div class="table-container">
                                 <table id="resultsTable">
                                     <thead>

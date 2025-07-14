@@ -1,3 +1,5 @@
+/* ----------  iOS-26 LIQUID-GLASS THEME  ---------- */
+
 /* --- UNIVERSAL & ROOT STYLES --- */
 * {
     margin: 0;
@@ -13,10 +15,18 @@
     --text-primary: #e6edf3;
     --text-secondary: #cecece;
     --border-color: rgba(255, 255, 255, 0.1);
-    --glass-bg: rgba(30, 41, 59, 0.3);
-    --glass-bg-hover: rgba(66, 74, 86, 0.5);
+    --glass-bg: rgba(30, 41, 59, 0.2);
+    --glass-bg-hover: rgba(66, 74, 86, 0.4);
     --glass-border: rgba(255, 255, 255, 0.15);
     --shadow: rgba(0, 0, 0, 0.3);
+
+    /* Liquid-glass additions */
+    --blur-amount: 20px;
+    --blur-amount-hover: 40px;
+    --liquid-radius: 28px;
+    --liquid-border: 0.5px solid rgba(255, 255, 255, 0.25);
+    --liquid-shadow: 0 8px 32px rgba(0, 0, 0, 0.15),
+                      0 0 0 0.75px rgba(255, 255, 255, 0.08) inset;
 }
 
 body {
@@ -32,37 +42,42 @@ body {
     transition: background-image 0.5s ease-in-out;
 }
 
-/* --- GLASSMORPHISM EFFECT --- */
+/* --- LIQUID-GLASS EFFECT --- */
 .glass-card {
+    /* Base glassmorphism kept for fallback */
     background: var(--glass-bg);
-    backdrop-filter: blur(25px);
-    -webkit-backdrop-filter: blur(25px);
-    border-radius: 16px;
-    border: 1px solid var(--glass-border);
-    box-shadow: 0 8px 32px var(--shadow);
+    backdrop-filter: blur(var(--blur-amount));
+    -webkit-backdrop-filter: blur(var(--blur-amount));
+    border-radius: var(--liquid-radius);
+    border: var(--liquid-border);
+    box-shadow: var(--liquid-shadow);
     transition: all 0.3s ease;
     padding: 1.25rem;
 }
 
 .glass-card:hover {
+    backdrop-filter: blur(var(--blur-amount-hover));
+    -webkit-backdrop-filter: blur(var(--blur-amount-hover));
     transform: translateY(-4px);
-    box-shadow: 0 12px 40px rgba(0,0,0,0.5);
+    box-shadow: 0 12px 48px rgba(0, 0, 0, 0.25),
+                0 0 0 0.75px rgba(255, 255, 255, 0.12) inset;
     background: var(--glass-bg-hover);
-    border-color: rgba(255, 255, 255, 0.25);
 }
 
 /* --- LAYOUT --- */
 .header {
     position: fixed; top: 0; left: 0; right: 0;
     z-index: 1000;
-    background: rgba(13, 17, 23, 0.6);
-    backdrop-filter: blur(15px);
-    -webkit-backdrop-filter: blur(15px);
-    border-bottom: 1px solid var(--border-color);
+    background: rgba(13, 17, 23, 0.30);
+    backdrop-filter: blur(25px);
+    -webkit-backdrop-filter: blur(25px);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
     padding: 1rem 2rem;
     display: flex; align-items: center; justify-content: space-between; gap: 1rem;
     transition: background 0.3s ease, box-shadow 0.3s ease;
-    overflow: hidden; /* Needed for the pseudo-element */
+    overflow: hidden;
+    box-shadow: 0 4px 32px rgba(0, 0, 0, 0.15),
+                0 0 0 0.5px rgba(255, 255, 255, 0.08) inset;
 }
 .header::before {
     content: '';
@@ -74,14 +89,13 @@ body {
     background: linear-gradient(
         90deg,
         transparent,
-        rgba(255, 255, 255, 0.1),
+        rgba(255, 255, 255, 0.08),
         transparent
     );
     transform: skewX(-30deg);
     transition: left 0.6s cubic-bezier(0.23, 1, 0.32, 1);
     z-index: -1;
 }
-
 .header:hover::before {
     left: 150%;
 }
@@ -100,24 +114,32 @@ body {
 .nav-btn {
     background: transparent; border: none;
     color: var(--text-secondary); font-size: 0.9rem; font-weight: 500;
-    padding: 0.6rem 1.2rem; border-radius: 8px; cursor: pointer;
+    padding: 0.6rem 1.2rem; border-radius: 12px; cursor: pointer;
     transition: all 0.2s ease;
     display: flex; align-items: center; gap: 0.5rem;
+    backdrop-filter: blur(8px);
 }
-.nav-btn:hover { background-color: var(--glass-border); color: var(--text-primary); }
-.nav-btn.active { background-color: var(--primary-accent); color: var(--bg-color); font-weight: 700; }
+.nav-btn:hover {
+    background-color: rgba(255, 255, 255, 0.08);
+    color: var(--text-primary);
+}
+.nav-btn.active {
+    background-color: var(--primary-accent);
+    color: var(--bg-color);
+    font-weight: 700;
+}
 .header-right { display: flex; align-items: center; gap: 1rem; }
 .settings-buttons, .auth-buttons { display: flex; gap: 0.5rem; }
 
 /* --- VIEWS & LOADING (THE FIX) --- */
 .view {
     display: none;
-    opacity: 0; /* Set initial state to transparent */
+    opacity: 0;
     transition: opacity 0.4s ease-in-out;
 }
 .view.active {
     display: block;
-    opacity: 1; /* Fade in to full opacity */
+    opacity: 1;
 }
 
 .loading-indicator {text-align: center; padding: 4rem;}
@@ -187,15 +209,20 @@ body {
     height: auto;
     display: flex;
     flex-direction: column;
+    position: relative; /* Add this */
+    z-index: 10;      /* Add this */
 }
-.results-section { height: auto; }
+.results-section { 
+    height: auto; 
+    position: relative; /* Add this */
+    z-index: 5;       /* Add this */
+}
 
 .search-section h3 {
     margin-top: 0.5rem;
     margin-bottom: 1.5rem;
 }
 
-/* MODIFIED: New styles for the results header */
 .results-header {
     display: flex;
     justify-content: space-between;
@@ -225,14 +252,15 @@ body {
     font-size: 0.85rem;
     padding: 0.5rem 0.7rem;
     border: 1px solid var(--border-color);
-    border-radius: 8px;
-    background: #0d1117;
+    border-radius: var(--liquid-radius);
+    background: rgba(13, 17, 23, 0.6);
     color: var(--text-primary);
     transition: all 0.2s ease;
     -webkit-appearance: none;
     -moz-appearance: none;
     appearance: none;
     text-transform: uppercase;
+    backdrop-filter: blur(6px);
 }
 .search-inputs select {
     background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3e%3cpath fill='none' stroke='%23e6edf3' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M2 5l6 6 6-6'/%3e%3c/svg%3e");
@@ -265,7 +293,6 @@ th, td { padding: 0.75rem 1rem; text-align: left; border-bottom: 1px solid var(-
 th { font-weight: 600; color: var(--text-secondary); background: rgba(0,0,0,0.2); text-transform: uppercase; }
 tbody tr:hover { background-color: var(--glass-bg-hover); }
 
-/* Style for canceled/refunded rows */
 .canceled-row {
     background-color: rgba(70, 70, 70, 0.4) !important;
     color: #a0a0a0 !important;
@@ -274,7 +301,6 @@ tbody tr:hover { background-color: var(--glass-bg-hover); }
 .canceled-row:hover {
     background-color: rgba(85, 85, 85, 0.5) !important;
 }
-
 
 /* --- FORMS --- */
 .form-container {padding: 2.5rem; max-width: 1000px; margin: 0 auto;}
@@ -286,8 +312,8 @@ tbody tr:hover { background-color: var(--glass-bg-hover); }
 .form-group input, .form-group select, .form-group textarea {
     padding: 0.75rem 1rem; 
     border: 1px solid var(--border-color); 
-    border-radius: 8px; 
-    background: #0d1117; 
+    border-radius: var(--liquid-radius); 
+    background: rgba(13, 17, 23, 0.6); 
     color: var(--text-primary); 
     font-size: 1rem; 
     transition: all 0.2s ease; 
@@ -296,6 +322,7 @@ tbody tr:hover { background-color: var(--glass-bg-hover); }
     -moz-appearance: none;
     appearance: none;
     resize: none;
+    backdrop-filter: blur(6px);
 }
 .form-group select {
     background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3e%3cpath fill='none' stroke='%23e6edf3' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M2 5l6 6 6-6'/%3e%3c/svg%3e");
@@ -417,27 +444,130 @@ td .action-checkbox {
 }
 
 /* --- GENERIC STYLES --- */
-.btn {padding: 0.6rem 1.2rem; border-radius: 8px; font-size: 0.9rem; font-weight: 600; cursor: pointer; transition: all 0.2s ease; display: inline-flex; align-items: center; gap: 0.5rem; justify-content: center; border: 1px solid transparent;}
-.btn-primary {background: var(--primary-accent); color: var(--bg-color); border-color: var(--primary-accent);}
-.btn-primary:hover {background: var(--primary-accent-dark); border-color: var(--primary-accent-dark); transform: translateY(-1px);}
-.btn-secondary {background: #21262d; color: var(--text-primary); border: 1px solid var(--border-color);}
-.btn-secondary:hover {border-color: var(--text-secondary); transform: translateY(-1px);}
-.icon-btn {background: transparent; color: var(--text-secondary); border: 1px solid transparent; font-size: 1rem; padding: 0.5rem; border-radius: 6px; width: 36px; height: 36px; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; transition: all 0.2s ease;}
-.icon-btn:hover {color: var(--text-primary); background: var(--glass-border);}
-#toast {position: fixed; bottom: 2rem; left: 50%; transform: translateX(-50%); padding: 1rem 1.5rem; border-radius: 8px; font-weight: 500; z-index: 2000; visibility: hidden; opacity: 0; transition: all 0.3s ease;}
+.btn {
+    padding: 0.6rem 1.2rem;
+    border-radius: var(--liquid-radius);
+    font-size: 0.9rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    justify-content: center;
+    border: 1px solid transparent;
+    backdrop-filter: blur(6px);
+}
+.btn-primary {
+    background: var(--primary-accent);
+    color: var(--bg-color);
+    border-color: var(--primary-accent);
+}
+.btn-primary:hover {
+    background: var(--primary-accent-dark);
+    border-color: var(--primary-accent-dark);
+    transform: translateY(-1px);
+}
+.btn-secondary {
+    background: rgba(33, 38, 45, 0.6);
+    color: var(--text-primary);
+    border: 1px solid var(--border-color);
+}
+.btn-secondary:hover {
+    border-color: var(--text-secondary);
+    transform: translateY(-1px);
+}
+.icon-btn {
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--text-secondary);
+    border: 1px solid transparent;
+    font-size: 1rem;
+    padding: 0.5rem;
+    border-radius: 50%;
+    width: 36px;
+    height: 36px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    backdrop-filter: blur(6px);
+}
+.icon-btn:hover {
+    color: var(--text-primary);
+    background: rgba(255, 255, 255, 0.12);
+}
+#toast {
+    position: fixed; bottom: 2rem; left: 50%; transform: translateX(-50%); padding: 1rem 1.5rem; border-radius: var(--liquid-radius); font-weight: 500; z-index: 2000; visibility: hidden; opacity: 0; transition: all 0.3s ease;
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+}
 #toast.show {visibility: visible; opacity: 1;}
-#toast.success {background-color: var(--secondary-accent); color: #FFF;}
-#toast.error {background-color: #F85149; color: #FFF;}
-#toast.info {background-color: var(--primary-accent); color: var(--bg-color);}
-.modal {display: none; position: fixed; z-index: 1001; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.6);}
-.modal-content {margin: 5% auto; padding: 2rem; width: 90%; max-width: 600px; position: relative;}
+#toast.success {background-color: rgba(63, 185, 80, 0.8); color: #FFF;}
+#toast.error {background-color: rgba(248, 81, 73, 0.8); color: #FFF;}
+#toast.info {background-color: rgba(254, 230, 190, 0.8); color: var(--bg-color);}
+.modal {
+    display: none;
+    position: fixed;
+    z-index: 1001;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    overflow: auto;
+    background-color: rgba(0, 0, 0, 0.6);
+}
+.modal-content {
+    margin: 5% auto;
+    padding: 2rem;
+    width: 90%;
+    max-width: 600px;
+    position: relative;
+}
 .modal-content.small-modal { max-width: 450px; }
-.close {color: var(--text-secondary); position: absolute; top: 1rem; right: 1.5rem; font-size: 28px; font-weight: bold; cursor: pointer;}
-.pagination-container {display: flex; justify-content: center; align-items: center; padding: 1.5rem 0 0.5rem 0; flex-wrap: wrap;}
-.pagination-btn {padding: 0.5rem 1rem; margin: 0.25rem; border-radius: 6px; border: 1px solid var(--border-color); background-color: transparent; color: var(--text-secondary); cursor: pointer; transition: all 0.2s ease;}
-.pagination-btn:hover {background-color: var(--border-color); color: var(--text-primary);}
-.pagination-btn.active {background-color: var(--primary-accent); color: var(--bg-color); border-color: var(--primary-accent); font-weight: bold;}
-.pagination-btn:disabled {color: #444; border-color: #444; cursor: not-allowed;}
+.close {
+    color: var(--text-secondary);
+    position: absolute;
+    top: 1rem;
+    right: 1.5rem;
+    font-size: 28px;
+    font-weight: bold;
+    cursor: pointer;
+}
+.pagination-container {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 1.5rem 0 0.5rem 0;
+    flex-wrap: wrap;
+}
+.pagination-btn {
+    padding: 0.5rem 1rem;
+    margin: 0.25rem;
+    border-radius: var(--liquid-radius);
+    border: 1px solid var(--border-color);
+    background-color: rgba(255, 255, 255, 0.05);
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: all 0.2s ease;
+    backdrop-filter: blur(6px);
+}
+.pagination-btn:hover {
+    background-color: rgba(255, 255, 255, 0.12);
+    color: var(--text-primary);
+}
+.pagination-btn.active {
+    background-color: var(--primary-accent);
+    color: var(--bg-color);
+    border-color: var(--primary-accent);
+    font-weight: bold;
+}
+.pagination-btn:disabled {
+    color: #444;
+    border-color: #444;
+    cursor: not-allowed;
+}
 
 /* --- RESPONSIVE DESIGN --- */
 @media (max-width: 1200px) {
@@ -457,14 +587,17 @@ td .action-checkbox {
     .info-grid { grid-template-columns: repeat(2, 1fr); }
     #sell-view .form-grid { grid-template-columns: 1fr; }
     .table-header { flex-direction: column; align-items: stretch; }
-    #exportPdfBtn span { display: none; } /* Hide text on small screens */
+    #exportPdfBtn span { display: none; }
 }
 
-/* --- ADDED: Full Datepicker Theme Fix --- */
+/* --- Full Datepicker Theme Fix (liquid-glass) --- */
 .datepicker-picker {
-    background-color: #21262d;
+    background-color: rgba(33, 38, 45, 0.75);
     border: 1px solid var(--border-color);
-    border-radius: 8px;
+    border-radius: var(--liquid-radius);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    z-index: 1100;
 }
 
 .datepicker-picker .datepicker-header .datepicker-controls .button {
@@ -472,8 +605,8 @@ td .action-checkbox {
     background-color: transparent !important;
 }
 .datepicker-picker .datepicker-header .datepicker-controls .button:hover {
-    background-color: var(--glass-bg-hover) !important;
-    border-radius: 6px;
+    background-color: rgba(255, 255, 255, 0.08) !important;
+    border-radius: var(--liquid-radius);
 }
 .datepicker-view .dow {
     color: var(--text-secondary);
@@ -487,7 +620,7 @@ td .action-checkbox {
     opacity: 0.5;
 }
 .datepicker-view .days .day:not(.disabled):hover {
-    background-color: var(--glass-bg-hover);
+    background-color: rgba(255, 255, 255, 0.08);
     border-radius: 50%;
 }
 .datepicker-view .days .day.selected {
@@ -518,11 +651,11 @@ td .action-checkbox {
     padding: 0 0.5rem;
 }
 .booking-search-section select {
-    width: 350px; /* Set a fixed width for the dropdown */
+    width: 350px;
     padding: 0.75rem 1rem;
     border: 1px solid var(--border-color);
-    border-radius: 8px;
-    background: #0d1117;
+    border-radius: var(--liquid-radius);
+    background: rgba(13, 17, 23, 0.6);
     color: var(--text-primary);
     font-size: 0.9rem;
     transition: all 0.2s ease;
@@ -534,6 +667,7 @@ td .action-checkbox {
     background-repeat: no-repeat;
     background-position: right 0.75rem center;
     background-size: 16px 12px;
+    backdrop-filter: blur(6px);
 }
 .booking-search-section select:focus {
     outline: none;
@@ -594,7 +728,7 @@ td .action-checkbox {
 }
 .status-badge {
     padding: 0.2rem 0.6rem;
-    border-radius: 6px;
+    border-radius: var(--liquid-radius);
     font-weight: 600;
     font-size: 0.8rem;
     color: #FFF;

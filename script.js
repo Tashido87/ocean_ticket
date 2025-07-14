@@ -851,8 +851,7 @@ function performSearch() {
     if (searchEndDate) searchEndDate.setHours(23, 59, 59, 999);
 
     let searchTravelDate = travelDateVal ? parseSheetDate(travelDateVal) : null;
-    if (searchTravelDate) searchTravelDate.setHours(0, 0, 0, 0);
-
+    // if (searchTravelDate) searchTravelDate.setHours(0, 0, 0, 0); // <-- THIS LINE WAS THE BUG AND HAS BEEN REMOVED.
 
     const results = allTickets.filter(t => {
         const issuedDate = parseSheetDate(t.issued_date);

@@ -67,10 +67,31 @@ window.onload = async () => {
 };
 
 function initializeDatepickers() {
-    const options = { format: 'mm/dd/yyyy', autohide: true, todayHighlight: true };
-    ['searchStartDate', 'searchEndDate', 'searchTravelDate', 'issued_date', 'departing_on', 'paid_date', 'booking_departing_on'].forEach(id => {
+    // Options for most datepickers (Search, Booking, etc.)
+    const defaultOptions = { 
+        format: 'mm/dd/yyyy', 
+        autohide: true, 
+        todayHighlight: true 
+    };
+
+    // Options specifically for the Sell Ticket form datepickers
+    const sellTicketOptions = {
+        format: 'mm/dd/yyyy',
+        autohide: true,
+        todayHighlight: true,
+        minDate: 'today' // Disables selection of dates before today
+    };
+
+    // Initialize datepickers that can select past dates
+    ['searchStartDate', 'searchEndDate', 'searchTravelDate', 'booking_departing_on'].forEach(id => {
         const el = document.getElementById(id);
-        if (el) new Datepicker(el, options);
+        if (el) new Datepicker(el, defaultOptions);
+    });
+
+    // Initialize Sell Ticket datepickers with the minDate restriction
+    ['issued_date', 'departing_on', 'paid_date'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) new Datepicker(el, sellTicketOptions);
     });
 }
 

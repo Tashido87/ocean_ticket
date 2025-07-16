@@ -15,14 +15,14 @@
     --text-primary: #e6edf3;
     --text-secondary: #cecece;
     --border-color: rgba(255, 255, 255, 0.1);
-    --glass-bg: rgba(30, 41, 59, 0.2);
-    --glass-bg-hover: rgba(66, 74, 86, 0.4);
+    --glass-bg: rgba(30, 41, 59, 0.1);
+    --glass-bg-hover: rgba(66, 74, 86, 0.3);
     --glass-border: rgba(255, 255, 255, 0.15);
     --shadow: rgba(0, 0, 0, 0.3);
 
     /* Liquid-glass additions */
     --blur-amount: 20px;
-    --blur-amount-hover: 40px;
+    --blur-amount-hover: 30px;
     --liquid-radius: 28px;
     --liquid-border: 0.5px solid rgba(255, 255, 255, 0.25);
     --liquid-shadow: 0 8px 32px rgba(0, 0, 0, 0.15),
@@ -592,42 +592,81 @@ td .action-checkbox {
 
 /* --- Full Datepicker Theme Fix (liquid-glass) --- */
 .datepicker-picker {
-    background-color: rgba(33, 38, 45, 0.75);
-    border: 1px solid var(--border-color);
+    background-color: rgba(20, 25, 35, 0.85); /* Darker, slightly more opaque */
+    border: 1px solid var(--glass-border);
     border-radius: var(--liquid-radius);
-    backdrop-filter: blur(20px);
-    -webkit-backdrop-filter: blur(20px);
+    backdrop-filter: blur(25px);
+    -webkit-backdrop-filter: blur(25px);
+    box-shadow: var(--liquid-shadow);
     z-index: 1100;
 }
 
-.datepicker-picker .datepicker-header .datepicker-controls .button {
+.datepicker-picker .datepicker-header .datepicker-controls .button,
+.datepicker-picker .datepicker-header .datepicker-controls .view-switch {
     color: var(--text-primary);
     background-color: transparent !important;
+    font-weight: 600;
 }
-.datepicker-picker .datepicker-header .datepicker-controls .button:hover {
+.datepicker-picker .datepicker-header .datepicker-controls .button:hover,
+.datepicker-picker .datepicker-header .datepicker-controls .view-switch:hover {
     background-color: rgba(255, 255, 255, 0.08) !important;
-    border-radius: var(--liquid-radius);
+    color: var(--primary-accent);
+    border-radius: 12px;
 }
+
+.datepicker-picker .datepicker-header .datepicker-controls .view-switch {
+    color: var(--primary-accent); /* Make month/year stand out */
+}
+
 .datepicker-view .dow {
     color: var(--text-secondary);
     font-weight: 600;
+    height: 2rem;
+    vertical-align: middle;
 }
+
 .datepicker-view .day:not(.disabled):not(.prev):not(.next) {
     color: var(--text-primary);
 }
+
 .datepicker-view .day.prev, .datepicker-view .day.next {
     color: var(--text-secondary);
-    opacity: 0.5;
+    opacity: 0.5; /* Keep it faded */
 }
-.datepicker-view .days .day:not(.disabled):hover {
-    background-color: rgba(255, 255, 255, 0.08);
+
+.datepicker-view .days .day, .datepicker-view .months .month, .datepicker-view .years .year {
     border-radius: 50%;
+    transition: background-color 0.2s ease;
+    height: 2.2rem;
+    line-height: 2.2rem; /* Center text vertically */
+    width: 2.2rem;
 }
-.datepicker-view .days .day.selected {
+
+.datepicker-view .days .day:not(.disabled):hover,
+.datepicker-view .months .month:not(.disabled):hover,
+.datepicker-view .years .year:not(.disabled):hover {
+    background-color: rgba(254, 230, 190, 0.2); /* Use accent color for hover */
+}
+
+.datepicker-view .days .day.today:not(.selected) {
+    border: 1px solid var(--primary-accent-dark); /* Highlight today's date */
+}
+
+.datepicker-view .days .day.disabled,
+.datepicker-view .months .month.disabled,
+.datepicker-view .years .year.disabled {
+    color: rgba(255, 255, 255, 0.3);
+}
+
+.datepicker-view .days .day.selected,
+.datepicker-view .months .month.selected,
+.datepicker-view .years .year.selected {
     background: var(--primary-accent) !important;
     color: var(--bg-color) !important;
     font-weight: 700;
+    text-shadow: none;
 }
+
 
 /* --- BOOKING VIEW SPECIFIC STYLES --- */
 .table-header {
@@ -751,4 +790,17 @@ td .action-checkbox {
     white-space: normal;
     word-break: break-word;
     max-width: 400px;
+}
+
+/* --- Weekend Highlighting for Datepicker --- */
+.datepicker-view .days .day:not(.disabled):not(.prev):not(.next):nth-child(7n),
+.datepicker-view .days .day:not(.disabled):not(.prev):not(.next):nth-child(7n + 1) {
+    color: #F85149; /* Red color for weekends */
+    font-weight: 600;
+}
+
+/* Ensure selected weekend day text remains readable against the yellow background */
+.datepicker-view .days .day.selected:nth-child(7n),
+.datepicker-view .days .day.selected:nth-child(7n + 1) {
+    color: var(--bg-color) !important;
 }

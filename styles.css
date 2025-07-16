@@ -21,8 +21,8 @@
     --shadow: rgba(0, 0, 0, 0.3);
 
     /* Liquid-glass additions */
-    --blur-amount: 20px;
-    --blur-amount-hover: 30px;
+    --blur-amount: 15px;
+    --blur-amount-hover: 20px;
     --liquid-radius: 28px;
     --liquid-border: 0.5px solid rgba(255, 255, 255, 0.25);
     --liquid-shadow: 0 8px 32px rgba(0, 0, 0, 0.15),

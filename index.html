@@ -4,9 +4,10 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Ocean Air Ticket Management</title>
+    <link rel="stylesheet" href="styles.css">
+    
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/vanillajs-datepicker@1.3.4/dist/css/datepicker.min.css">
-    <link rel="stylesheet" href="styles.css">
     <script src="https://cdn.jsdelivr.net/npm/vanillajs-datepicker@1.3.4/dist/js/datepicker-full.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
     
@@ -38,6 +39,7 @@
                     <input type="file" id="background-uploader" accept="image/*" style="display: none;">
                     <button id="background-upload-btn" class="icon-btn" title="Change Background"><i class="fa-solid fa-image"></i></button>
                     <button id="background-reset-btn" class="icon-btn" title="Reset Background"><i class="fa-solid fa-trash-arrow-up"></i></button>
+                    <button id="settings-btn" class="icon-btn" title="UI Settings"><i class="fa-solid fa-sliders"></i></button>
                 </div>
                 <div class="auth-buttons">
                     <button id="authorize_button" class="btn btn-primary" style="display: none;">Sign In</button>
@@ -712,6 +714,41 @@
         </main>
     </div>
 
+    <div id="settings-panel" class="glass-card settings-panel">
+        <h3 class="settings-title">UI Customization</h3>
+        <div class="settings-grid">
+            <div class="setting-item">
+                <div class="setting-label-group">
+                    <label for="opacity-slider">Opacity</label>
+                    <span id="opacity-value">0.05</span>
+                </div>
+                <input type="range" id="opacity-slider" min="0" max="0.3" step="0.01">
+            </div>
+            <div class="setting-item">
+                <div class="setting-label-group">
+                    <label for="blur-slider">Blur</label>
+                    <span id="blur-value">20</span>
+                </div>
+                <input type="range" id="blur-slider" min="0" max="50" step="1">
+            </div>
+            <div class="setting-item">
+                <div class="setting-label-group">
+                    <label for="overlay-slider">Dark Overlay</label>
+                    <span id="overlay-value">0.5</span>
+                </div>
+                <input type="range" id="overlay-slider" min="0" max="0.9" step="0.01">
+            </div>
+            <div class="setting-item">
+                <div class="setting-label-group">
+                    <label for="glass-slider">Glass Border</label>
+                    <span id="glass-value">0.15</span>
+                </div>
+                <input type="range" id="glass-slider" min="0" max="1" step="0.01">
+            </div>
+        </div>
+        <button id="reset-settings-btn" class="btn btn-secondary">Reset</button>
+    </div>
+    
     <div id="modal" class="modal"><div class="modal-content glass-card"><span class="close" onclick="closeDetailsModal()">&times;</span><div id="modalBody"></div></div></div>
     <div id="modifyModal" class="modal"><div class="modal-content glass-card"><span id="closeModifyModal" class="close">&times;</span><div id="modifyModalBody"></div></div></div>
     <div id="cancelModal" class="modal"><div class="modal-content glass-card"><span class="close">&times;</span><div id="cancelModalBody"></div></div></div>

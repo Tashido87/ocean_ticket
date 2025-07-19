@@ -49,6 +49,7 @@ const bookingDetailModal = document.getElementById('bookingDetailModal');
 const bookingDetailModalBody = document.getElementById('bookingDetailModalBody');
 const bookingConfirmModal = document.getElementById('bookingConfirmModal');
 const bookingConfirmModalBody = document.getElementById('bookingConfirmModalBody');
+const settingsPanel = document.getElementById('settings-panel');
 
 
 // --- INITIALIZATION ---
@@ -56,6 +57,7 @@ window.onload = async () => {
     initializeDatepickers();
     setupEventListeners();
     initializeBackgroundChanger();
+    initializeUISettings();
     if (typeof gapi === 'undefined' || !google.accounts) { showToast('Google API scripts not loaded.', 'error'); return; }
     try {
         await Promise.all([loadGapiClient(), loadGisClient()]);
@@ -82,11 +84,25 @@ function initializeDatepickers() {
         minDate: 'today' // Disables selection of dates before today
     };
 
+    // Options for the search end date
+    const endDateOptions = {
+        format: 'mm/dd/yyyy',
+        autohide: true,
+        todayHighlight: true,
+        maxDate: 'today' // Disables selection of dates after today
+    };
+
     // Initialize datepickers that can select past dates
-    ['searchStartDate', 'searchEndDate', 'searchTravelDate', 'booking_departing_on'].forEach(id => {
+    ['searchStartDate', 'searchTravelDate', 'booking_departing_on'].forEach(id => {
         const el = document.getElementById(id);
         if (el) new Datepicker(el, defaultOptions);
     });
+
+    // Initialize the search end date with the maxDate restriction
+    const searchEndDateEl = document.getElementById('searchEndDate');
+    if (searchEndDateEl) {
+        new Datepicker(searchEndDateEl, endDateOptions);
+    }
 
     // Initialize Sell Ticket datepickers with the minDate restriction
     ['issued_date', 'departing_on', 'paid_date'].forEach(id => {
@@ -94,6 +110,7 @@ function initializeDatepickers() {
         if (el) new Datepicker(el, sellTicketOptions);
     });
 }
+
 
 async function loadGapiClient() {
     return new Promise((resolve, reject) => {
@@ -193,7 +210,6 @@ function setupEventListeners() {
     document.getElementById('clearBtn').addEventListener('click', clearSearch);
     document.getElementById('exportPdfBtn').addEventListener('click', exportToPdf); 
     
-    // Add event listeners for Enter key on search inputs
     ['searchName', 'searchBooking', 'searchTravelDate'].forEach(id => {
         document.getElementById(id).addEventListener('keyup', (e) => {
             if (e.key === 'Enter') {
@@ -223,7 +239,7 @@ function setupEventListeners() {
     document.getElementById('newBookingForm').addEventListener('submit', handleNewBookingSubmit);
     document.getElementById('bookingSearchBtn').addEventListener('click', performBookingSearch);
     document.getElementById('bookingClearBtn').addEventListener('click', clearBookingSearch);
-    bookingDetailModal.querySelector('.close').addEventListener('click', () => bookingDetailModal.style.display = "none");
+    bookingDetailModal.querySelector('.close').addEventListener('click', () => bookingDetailModal.classList.remove('show'));
 
     ['departure', 'destination', 'searchDeparture', 'searchDestination', 'booking_departure', 'booking_destination'].forEach(id => {
         const select = document.getElementById(id);
@@ -235,21 +251,107 @@ function setupEventListeners() {
 
             select.addEventListener('focus', () => {
                 tempInput.focus();
+                select.classList.add('focused');
             });
 
-            tempInput.addEventListener('keyup', (e) => handleShortcutTyping(e, id));
+            tempInput.addEventListener('blur', () => {
+                select.classList.remove('focused');
+            });
+
+            tempInput.addEventListener('keydown', (e) => handleSelectSearchAndTab(e, id));
         }
     });
 
-    modifyModal.querySelector('.close').addEventListener('click', () => modifyModal.style.display = "none");
-    cancelModal.querySelector('.close').addEventListener('click', () => cancelModal.style.display = "none");
+    modifyModal.querySelector('.close').addEventListener('click', () => modifyModal.classList.remove('show'));
+    cancelModal.querySelector('.close').addEventListener('click', () => cancelModal.classList.remove('show'));
     window.addEventListener('click', (event) => {
-        if (event.target == detailsModal) detailsModal.style.display = "none";
-        if (event.target == modifyModal) modifyModal.style.display = "none";
-        if (event.target == cancelModal) cancelModal.style.display = "none";
-        if (event.target == bookingDetailModal) bookingDetailModal.style.display = "none";
-        if (event.target == bookingConfirmModal) bookingConfirmModal.style.display = "none";
+        if (event.target == detailsModal) detailsModal.classList.remove('show');
+        if (event.target == modifyModal) modifyModal.classList.remove('show');
+        if (event.target == cancelModal) cancelModal.classList.remove('show');
+        if (event.target == bookingDetailModal) bookingDetailModal.classList.remove('show');
+        if (event.target == bookingConfirmModal) bookingConfirmModal.classList.remove('show');
+        if (!settingsPanel.contains(event.target) && event.target !== document.getElementById('settings-btn') && !document.getElementById('settings-btn').contains(event.target) ) {
+            settingsPanel.classList.remove('show');
+        }
     });
+}
+
+
+// --- CORRECTED SHORTCUT TYPING & TABBING FUNCTION ---
+function handleSelectSearchAndTab(event, elementId) {
+    const selectElement = document.getElementById(elementId);
+    const tempInput = event.target;
+
+    if (event.key === 'Tab') {
+        event.preventDefault();
+        const tabOrder = {
+            'departure': 'destination',
+            'destination': 'departing_on',
+            'searchDeparture': 'searchDestination',
+            'searchDestination': 'searchAirline',
+            'booking_departure': 'booking_destination',
+            'booking_destination': 'booking_departing_on'
+        };
+        const nextElementId = tabOrder[elementId];
+        if (nextElementId) {
+            const nextElement = document.getElementById(nextElementId);
+            if (nextElement) {
+                const nextTempInput = nextElement.previousElementSibling;
+                if (nextTempInput && nextTempInput.tagName === 'INPUT') {
+                    nextTempInput.focus();
+                } else {
+                    nextElement.focus();
+                }
+            }
+        }
+        return;
+    }
+
+    if (event.key === 'Backspace') {
+        tempInput.value = tempInput.value.slice(0, -1);
+    } else if (event.key.length === 1 && /[a-zA-Z]/.test(event.key)) {
+        if (searchTimeout) clearTimeout(searchTimeout);
+        tempInput.value += event.key.toUpperCase();
+    } else {
+        return;
+    }
+
+    searchTimeout = setTimeout(() => {
+        tempInput.value = '';
+    }, 1500);
+
+    const currentSearch = tempInput.value;
+    if (!currentSearch) {
+        selectElement.value = "";
+        return;
+    }
+
+    let bestMatch = null;
+    let matchLevel = 0; // 0: none, 1: startsWith, 2: exact
+
+    for (const option of selectElement.options) {
+        if (!option.value) continue;
+        const shortcutMatch = option.value.match(/\((.*?)\)/);
+        if (shortcutMatch) {
+            const shortcut = shortcutMatch[1].toUpperCase();
+
+            if (shortcut === currentSearch) {
+                bestMatch = option.value;
+                matchLevel = 2;
+                break; 
+            }
+            if (shortcut.startsWith(currentSearch) && matchLevel < 1) {
+                bestMatch = option.value;
+                matchLevel = 1;
+            }
+        }
+    }
+
+    if (bestMatch) {
+        selectElement.value = bestMatch;
+    } else {
+        selectElement.value = "";
+    }
 }
 
 // --- CORE APP LOGIC (TICKETS) ---
@@ -419,7 +521,7 @@ async function updateBookingStatus(rowIndex, remarks) {
         await loadBookingData();
     } finally {
         isSubmitting = false;
-        bookingConfirmModal.style.display = 'none';
+        bookingConfirmModal.classList.remove('show');
     }
 }
 
@@ -441,10 +543,10 @@ function showBookingDetails(rowIndex) {
             <p><strong>Travel Date:</strong> ${booking.departing_on || 'N/A'}</p>
             <p><strong>Remarks:</strong> ${booking.remarks || 'N/A'}</p>
             <div style="text-align: center; margin-top: 1.5rem;">
-                <button class="btn btn-secondary" onclick="bookingDetailModal.style.display='none'">Close</button>
+                <button class="btn btn-secondary" onclick="document.getElementById('bookingDetailModal').classList.remove('show')">Close</button>
             </div>
         `;
-        bookingDetailModal.style.display = 'block';
+        bookingDetailModal.classList.add('show');
     }
 }
 
@@ -546,11 +648,11 @@ function showBookingConfirmModal(message, onConfirm) {
             <button id="confirmActionBtn" type="button" class="btn btn-primary">Confirm</button>
         </div>
     `;
-    bookingConfirmModal.style.display = 'block';
+    bookingConfirmModal.classList.add('show');
 
     document.getElementById('confirmActionBtn').onclick = onConfirm;
     document.getElementById('confirmCancelBtn').onclick = async () => {
-        bookingConfirmModal.style.display = 'none';
+        bookingConfirmModal.classList.remove('show');
         await loadBookingData();
     };
 }
@@ -629,7 +731,11 @@ function initializeBackgroundChanger() {
         showToast('Background reset.', 'info');
     });
     const savedBg = localStorage.getItem('customBackground');
-    if (savedBg) document.body.style.backgroundImage = `url(${savedBg})`;
+    if (savedBg) {
+        document.body.style.backgroundImage = `url(${savedBg})`;
+    } else {
+        document.body.style.backgroundImage = `url('https://images.unsplash.com/photo-1550684376-efcbd6e3f031?q=80&w=2970&auto=format&fit=crop')`;
+    }
 }
 
 // --- UI & DISPLAY ---
@@ -672,60 +778,135 @@ function displayTickets(tickets, page = 1) {
     setupPagination(tickets);
 }
 
-function closeDetailsModal() { document.getElementById('modal').style.display = 'none'; }
+function closeDetailsModal() { document.getElementById('modal').classList.remove('show'); }
 
+// --- UPDATED AESTHETIC DETAILS VIEW ---
 function showDetails(rowIndex) {
     const ticket = allTickets.find(t => t.rowIndex === rowIndex);
-    if (ticket) {
-        const paidStatusHtml = ticket.paid
-            ? `<span class="status-badge paid">PAID</span>`
-            : `<span class="status-badge not-paid">NOT PAID</span>`;
+    if (!ticket) return;
 
-        let statusHtml = '';
-        if (ticket.remarks) {
-            const lowerRemarks = ticket.remarks.toLowerCase();
-            if (lowerRemarks.includes('refund') || lowerRemarks.includes('cancel')) {
-                const historyEntry = cancellationHistory.find(h => h.booking_ref === ticket.booking_reference);
-                const actionDate = historyEntry ? ` on ${formatDateToDMMMY(historyEntry.date)}` : '';
-
-                let statusText = ticket.remarks;
-                 if (lowerRemarks.includes('full refund')) {
-                    statusText = 'Fully Refunded';
-                } else if (lowerRemarks.includes('cancel')) {
-                     statusText = 'Canceled';
-                }
-                statusHtml = `<p style="margin-top: 1rem; font-weight: bold; color: #F85149;">Status: ${statusText}${actionDate}</p>`;
-            }
+    let statusClass = 'confirmed';
+    let statusText = 'Confirmed';
+    if (ticket.remarks) {
+        const lowerRemarks = ticket.remarks.toLowerCase();
+        if (lowerRemarks.includes('refund') || lowerRemarks.includes('cancel')) {
+            statusClass = 'canceled';
+            statusText = 'Canceled';
         }
-
-        detailsModalBody.innerHTML = `
-            <h3>Client & Booking Details</h3>
-            <div class="detail-grid">
-                <p><strong>Name:</strong> ${ticket.name || 'N/A'}</p>
-                <p><strong>Phone:</strong> ${makeClickable(ticket.phone)}</p>
-                <p><strong>Account Name:</strong> ${ticket.account_name || 'N/A'}</p>
-                <p><strong>Account Type:</strong> ${ticket.account_type || 'N/A'}</p>
-                <p><strong>Account Link:</strong> ${makeClickable(ticket.account_link) || 'N/A'}</p>
-            </div>
-            <hr style="border-color: rgba(255,255,255,0.2); margin: 1rem 0;">
-            <div class="detail-grid">
-                <p><strong>PNR:</strong> ${ticket.booking_reference || 'N/A'}</p>
-                <p><strong>Route:</strong> ${ticket.departure || 'N/A'} → ${ticket.destination || 'N/A'}</p>
-                <p><strong>Airline:</strong> ${ticket.airline || 'N/A'}</p>
-                <p><strong>Travel Date:</strong> ${ticket.departing_on || 'N/A'}</p>
-                <p><strong>Net Amount:</strong> ${(ticket.net_amount || 0).toLocaleString()} MMK</p>
-                <p><strong>Commission:</strong> ${(ticket.commission || 0).toLocaleString()} MMK</p>
-                <p><strong>Extra Fare:</strong> ${(ticket.extra_fare || 0).toLocaleString()} MMK</p>
-                 <p><strong>Date Change Fees:</strong> ${(ticket.date_change || 0).toLocaleString()} MMK</p>
-                <p><strong>Payment Status:</strong> ${paidStatusHtml}</p>
-            </div>
-            ${statusHtml}
-            <div style="text-align: center; margin-top: 1.5rem;">
-                <button class="btn btn-secondary" onclick="closeDetailsModal()">Close</button>
-            </div>
-        `;
-        detailsModal.style.display = 'block';
     }
+
+    detailsModalBody.innerHTML = `
+        <div class="details-header">
+            <div>
+                <div class="client-name">${ticket.name || 'N/A'}</div>
+                <div class="pnr-code">PNR: ${ticket.booking_reference || 'N/A'}</div>
+            </div>
+            <div class="details-status-badge ${statusClass}">${statusText}</div>
+        </div>
+
+        <div class="details-section">
+            <div class="details-section-title">Client Information</div>
+            <div class="details-grid">
+                <div class="details-item">
+                    <i class="fa-solid fa-id-card"></i>
+                    <div class="details-item-content">
+                        <div class="label">NRC No.</div>
+                        <div class="value">${ticket.nrc_no || 'N/A'}</div>
+                    </div>
+                </div>
+                <div class="details-item">
+                    <i class="fa-solid fa-phone"></i>
+                    <div class="details-item-content">
+                        <div class="label">Phone</div>
+                        <div class="value">${makeClickable(ticket.phone) || 'N/A'}</div>
+                    </div>
+                </div>
+                <div class="details-item">
+                     <i class="fa-solid fa-hashtag"></i>
+                    <div class="details-item-content">
+                        <div class="label">Social Media</div>
+                        <div class="value">${ticket.account_name || 'N/A'} (${ticket.account_type || 'N/A'})</div>
+                    </div>
+                </div>
+                <div class="details-item">
+                    <i class="fa-solid fa-link"></i>
+                    <div class="details-item-content">
+                        <div class="label">Account Link</div>
+                        <div class="value">${makeClickable(ticket.account_link) || 'N/A'}</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="details-section">
+            <div class="details-section-title">Flight Details</div>
+            <div class="details-grid">
+                <div class="details-item">
+                    <i class="fa-solid fa-plane-departure"></i>
+                    <div class="details-item-content">
+                        <div class="label">From</div>
+                        <div class="value">${ticket.departure || 'N/A'}</div>
+                    </div>
+                </div>
+                <div class="details-item">
+                    <i class="fa-solid fa-plane-arrival"></i>
+                    <div class="details-item-content">
+                        <div class="label">To</div>
+                        <div class="value">${ticket.destination || 'N/A'}</div>
+                    </div>
+                </div>
+                <div class="details-item">
+                    <i class="fa-solid fa-calendar-days"></i>
+                    <div class="details-item-content">
+                        <div class="label">Travel Date</div>
+                        <div class="value">${ticket.departing_on || 'N/A'}</div>
+                    </div>
+                </div>
+                <div class="details-item">
+                    <i class="fa-solid fa-plane"></i>
+                    <div class="details-item-content">
+                        <div class="label">Airline</div>
+                        <div class="value">${ticket.airline || 'N/A'}</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="details-section">
+            <div class="details-section-title">Financials</div>
+            <div class="details-grid">
+                 <div class="details-item">
+                    <i class="fa-solid fa-receipt"></i>
+                    <div class="details-item-content">
+                        <div class="label">Net Amount</div>
+                        <div class="value">${(ticket.net_amount || 0).toLocaleString()} MMK</div>
+                    </div>
+                </div>
+                 <div class="details-item">
+                    <i class="fa-solid fa-hand-holding-dollar"></i>
+                    <div class="details-item-content">
+                        <div class="label">Commission</div>
+                        <div class="value">${(ticket.commission || 0).toLocaleString()} MMK</div>
+                    </div>
+                </div>
+                <div class="details-item">
+                    <i class="fa-solid fa-money-bill-transfer"></i>
+                    <div class="details-item-content">
+                        <div class="label">Date Change / Extra</div>
+                        <div class="value">${((ticket.date_change || 0) + (ticket.extra_fare || 0)).toLocaleString()} MMK</div>
+                    </div>
+                </div>
+                <div class="details-item">
+                    <i class="fa-solid fa-credit-card"></i>
+                    <div class="details-item-content">
+                        <div class="label">Payment Status</div>
+                        <div class="value">${ticket.paid ? `Paid via ${ticket.payment_method || 'N/A'}` : 'Not Paid'}</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+    detailsModal.classList.add('show');
 }
 
 
@@ -1076,7 +1257,7 @@ function openModifyModal(rowIndex) {
             </div>
             ${paymentUpdateHtml}
             <div class="form-actions" style="margin-top: 2rem;">
-                <button type="button" class="btn btn-secondary" onclick="modifyModal.style.display='none'">Cancel</button>
+                <button type="button" class="btn btn-secondary" onclick="document.getElementById('modifyModal').classList.remove('show')">Cancel</button>
                 <button type="submit" class="btn btn-primary">Update Ticket(s)</button>
             </div>
         </form>`;
@@ -1085,7 +1266,7 @@ function openModifyModal(rowIndex) {
     if (!ticket.paid) {
         new Datepicker(document.getElementById('update_paid_date'), { format: 'mm/dd/yyyy', autohide: true, todayHighlight: true });
     }
-    modifyModal.style.display = 'block';
+    modifyModal.classList.add('show');
     document.getElementById('updateForm').addEventListener('submit', handleUpdateTicket);
 }
 
@@ -1161,7 +1342,7 @@ async function handleUpdateTicket(e) {
         });
         await saveHistory(CONFIG.MODIFICATION_HISTORY_SHEET, originalTicket, historyDetails.join('; '));
         showToast('Tickets updated successfully!', 'success');
-        modifyModal.style.display = 'none';
+        modifyModal.classList.remove('show');
         document.getElementById('modifyResultsContainer').innerHTML = '';
         document.getElementById('modifyPnr').value = '';
         await loadTicketData();
@@ -1243,7 +1424,7 @@ function openCancelModal(rowIndex, type) {
             <p>Are you sure you want to process a full refund for <strong>${ticket.name}</strong> (PNR: ${ticket.booking_reference})?</p>
             <p>This will reset Base Fare, Net Amount, Commission, and Extra Fare to 0, and update the remark.</p>
             <div class="form-actions">
-                <button type="button" class="btn btn-secondary" onclick="cancelModal.style.display='none'">Back</button>
+                <button type="button" class="btn btn-secondary" onclick="document.getElementById('cancelModal').classList.remove('show')">Back</button>
                 <button type="button" class="btn btn-primary" onclick="handleCancelTicket(${rowIndex}, 'refund')">Confirm Refund</button>
             </div>`;
     } else {
@@ -1257,7 +1438,7 @@ function openCancelModal(rowIndex, type) {
                     <input type="number" id="refund_amount" required>
                 </div>
                 <div class="form-actions">
-                    <button type="button" class="btn btn-secondary" onclick="cancelModal.style.display='none'">Back</button>
+                    <button type="button" class="btn btn-secondary" onclick="document.getElementById('cancelModal').classList.remove('show')">Back</button>
                     <button type="submit" class="btn btn-primary">Process Cancellation</button>
                 </div>
             </form>`;
@@ -1272,7 +1453,7 @@ function openCancelModal(rowIndex, type) {
         });
     }
 
-    cancelModal.style.display = 'block';
+    cancelModal.classList.add('show');
 }
 
 async function handleCancelTicket(rowIndex, type, refundAmount = 0) {
@@ -1318,7 +1499,7 @@ async function handleCancelTicket(rowIndex, type, refundAmount = 0) {
         });
         await saveHistory(CONFIG.CANCELLATION_HISTORY_SHEET, ticket, historyDetails);
         showToast('Ticket updated successfully!', 'success');
-        cancelModal.style.display = 'none';
+        cancelModal.classList.remove('show');
         document.getElementById('cancelResultsContainer').innerHTML = '';
         document.getElementById('cancelPnr').value = '';
         await loadTicketData();
@@ -1488,55 +1669,98 @@ function populateSearchAirlines() {
 }
 
 
-// --- SHORTCUT TYPING FUNCTION ---
-function handleShortcutTyping(event, elementId) {
-    const selectElement = document.getElementById(elementId);
-    const tempInput = event.target;
+// --- UI SETTINGS ---
+function initializeUISettings() {
+    const settingsBtn = document.getElementById('settings-btn');
+    const resetBtn = document.getElementById('reset-settings-btn');
+    const opacitySlider = document.getElementById('opacity-slider');
+    const blurSlider = document.getElementById('blur-slider');
+    const overlaySlider = document.getElementById('overlay-slider');
+    const glassSlider = document.getElementById('glass-slider');
+    const opacityValue = document.getElementById('opacity-value');
+    const blurValue = document.getElementById('blur-value');
+    const overlayValue = document.getElementById('overlay-value');
+    const glassValue = document.getElementById('glass-value');
+    const root = document.documentElement;
 
-    clearTimeout(searchTimeout);
+    const defaults = {
+        opacity: 0.05,
+        blur: 20,
+        overlay: 0.5,
+        glass: 0.15
+    };
 
-    searchTimeout = setTimeout(() => {
-        tempInput.value = '';
-    }, 1500);
+    let settings = JSON.parse(localStorage.getItem('uiSettings')) || { ...defaults };
 
-    if (event.key === 'Backspace') {
-        event.preventDefault();
-        tempInput.value = tempInput.value.slice(0, -1);
-    } else if (event.key.length === 1 && /[a-zA-Z]/.test(event.key)) {
-        event.preventDefault();
-        tempInput.value += event.key.toUpperCase();
-    } else {
-        return;
+    function applySettings() {
+        root.style.setProperty('--glass-bg', `rgba(255, 255, 255, ${settings.opacity})`);
+        root.style.setProperty('--blur-amount', `${settings.blur}px`);
+        root.style.setProperty('--overlay-opacity', settings.overlay);
+        root.style.setProperty('--liquid-border', `1px solid rgba(255, 255, 255, ${settings.glass})`);
     }
 
-    const currentSearch = tempInput.value;
-    if (!currentSearch) {
-        return;
+    function updateSlidersAndValues() {
+        opacitySlider.value = settings.opacity;
+        blurSlider.value = settings.blur;
+        overlaySlider.value = settings.overlay;
+        glassSlider.value = settings.glass;
+
+        opacityValue.textContent = Number(settings.opacity).toFixed(2);
+        blurValue.textContent = settings.blur;
+        overlayValue.textContent = Number(settings.overlay).toFixed(2);
+        glassValue.textContent = Number(settings.glass).toFixed(2);
     }
 
-    let exactMatchFound = false;
-
-    for (let i = 0; i < selectElement.options.length; i++) {
-        const option = selectElement.options[i];
-        const shortcutMatch = option.value.match(/\((.*?)\)/);
-        if (shortcutMatch && shortcutMatch[1].toUpperCase() === currentSearch) {
-            selectElement.value = option.value;
-            exactMatchFound = true;
-            break;
-        }
+    function saveSettings() {
+        localStorage.setItem('uiSettings', JSON.stringify(settings));
     }
 
-    if (!exactMatchFound) {
-        for (let i = 0; i < selectElement.options.length; i++) {
-            const option = selectElement.options[i];
-            const shortcutMatch = option.value.match(/\((.*?)\)/);
-            if (shortcutMatch && shortcutMatch[1].toUpperCase().startsWith(currentSearch)) {
-                selectElement.value = option.value;
-                break;
-            }
-        }
-    }
+    settingsBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        settingsPanel.classList.toggle('show');
+    });
+
+    opacitySlider.addEventListener('input', (e) => {
+        settings.opacity = e.target.value;
+        opacityValue.textContent = Number(settings.opacity).toFixed(2);
+        applySettings();
+        saveSettings();
+    });
+
+    blurSlider.addEventListener('input', (e) => {
+        settings.blur = e.target.value;
+        blurValue.textContent = settings.blur;
+        applySettings();
+        saveSettings();
+    });
+
+    overlaySlider.addEventListener('input', (e) => {
+        settings.overlay = e.target.value;
+        overlayValue.textContent = Number(settings.overlay).toFixed(2);
+        applySettings();
+        saveSettings();
+    });
+    
+    glassSlider.addEventListener('input', (e) => {
+        settings.glass = e.target.value;
+        glassValue.textContent = Number(settings.glass).toFixed(2);
+        applySettings();
+        saveSettings();
+    });
+    
+    resetBtn.addEventListener('click', () => {
+        settings = { ...defaults };
+        applySettings();
+        updateSlidersAndValues();
+        saveSettings();
+        showToast('UI settings have been reset.', 'info');
+    });
+    
+    // Apply and update on load
+    applySettings();
+    updateSlidersAndValues();
 }
+
 
 // --- PDF EXPORT FUNCTION ---
 function exportToPdf() {

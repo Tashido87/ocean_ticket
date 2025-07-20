@@ -44,7 +44,6 @@ const cancelModal = document.getElementById('cancelModal');
 const cancelModalBody = document.getElementById('cancelModalBody');
 const toast = document.getElementById('toast');
 const authorizeButton = document.getElementById('authorize_button');
-const signoutButton = document.getElementById('signout_button');
 const bookingDetailModal = document.getElementById('bookingDetailModal');
 const bookingDetailModalBody = document.getElementById('bookingDetailModalBody');
 const bookingConfirmModal = document.getElementById('bookingConfirmModal');
@@ -76,14 +75,6 @@ function initializeDatepickers() {
         todayHighlight: true 
     };
 
-    // Options specifically for the Sell Ticket form datepickers
-    const sellTicketOptions = {
-        format: 'mm/dd/yyyy',
-        autohide: true,
-        todayHighlight: true,
-        minDate: 'today' // Disables selection of dates before today
-    };
-
     // Options for the search end date
     const endDateOptions = {
         format: 'mm/dd/yyyy',
@@ -93,7 +84,7 @@ function initializeDatepickers() {
     };
 
     // Initialize datepickers that can select past dates
-    ['searchStartDate', 'searchTravelDate', 'booking_departing_on'].forEach(id => {
+    ['searchStartDate', 'searchTravelDate', 'booking_departing_on', 'issued_date', 'departing_on', 'paid_date'].forEach(id => {
         const el = document.getElementById(id);
         if (el) new Datepicker(el, defaultOptions);
     });
@@ -103,12 +94,6 @@ function initializeDatepickers() {
     if (searchEndDateEl) {
         new Datepicker(searchEndDateEl, endDateOptions);
     }
-
-    // Initialize Sell Ticket datepickers with the minDate restriction
-    ['issued_date', 'departing_on', 'paid_date'].forEach(id => {
-        const el = document.getElementById(id);
-        if (el) new Datepicker(el, sellTicketOptions);
-    });
 }
 
 
@@ -140,7 +125,6 @@ async function loadGisClient() {
                     }
                     gapi.client.setToken(tokenResponse);
                     authorizeButton.style.display = 'none';
-                    signoutButton.style.display = 'block';
                     await initializeApp();
                 },
             });
@@ -166,26 +150,6 @@ function handleAuthClick() {
     }
 }
 
-function handleSignoutClick() {
-    const token = gapi.client.getToken();
-    if (token) {
-        google.accounts.oauth2.revoke(token.access_token, () => {
-            console.log('Token revoked.');
-        });
-        gapi.client.setToken('');
-        authorizeButton.style.display = 'block';
-        signoutButton.style.display = 'none';
-        dashboardContent.style.display = 'none';
-        loading.style.display = 'block';
-        allTickets = [];
-        allBookings = [];
-        modificationHistory = [];
-        cancellationHistory = [];
-        document.getElementById('resultsBody').innerHTML = '';
-        document.getElementById('bookingTableBody').innerHTML = '';
-    }
-}
-
 async function initializeApp() {
     try {
         await Promise.all([
@@ -205,7 +169,6 @@ async function initializeApp() {
 function setupEventListeners() {
     navBtns.forEach(btn => btn.addEventListener('click', (e) => showView(e.currentTarget.dataset.view)));
     authorizeButton.addEventListener('click', handleAuthClick);
-    signoutButton.addEventListener('click', handleSignoutClick);
     document.getElementById('searchBtn').addEventListener('click', performSearch);
     document.getElementById('clearBtn').addEventListener('click', clearSearch);
     document.getElementById('exportPdfBtn').addEventListener('click', exportToPdf); 

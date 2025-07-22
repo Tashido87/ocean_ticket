@@ -225,7 +225,7 @@ body::before {
 
 .info-grid {
     display: grid;
-    grid-template-columns: repeat(6, 1fr);
+    grid-template-columns: repeat(5, 1fr);
     gap: 1.5rem;
 }
 
@@ -233,39 +233,68 @@ body::before {
     display: grid;
     grid-template-columns: 320px 1fr;
     gap: 1.5rem;
-    margin-top: 1.5rem;
+    margin-top: 1rem;
     align-items: start;
 }
 
-/* --- DASHBOARD CARDS --- */
+/* --- DASHBOARD CARDS & CHARTS (MODIFIED) --- */
 .info-card {
     display: flex;
     flex-direction: column;
-    justify-content: space-between;
-    padding: 1rem;
-    height: 155px;
+    padding: 1.25rem;
+    height: 180px;
     position: relative;
     overflow: hidden;
 }
 
-.info-card::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: -100%;
-    width: 100%;
-    height: 100%;
-    background: linear-gradient(120deg,
-        transparent,
-        rgba(255, 255, 255, 0.1),
-        transparent
-    );
-    transition: left 0.6s ease;
+#total-tickets-box {
+    justify-content: flex-start;
+    padding: 0.75rem;
 }
 
-.info-card:hover::before {
-    left: 100%;
+.info-card-content {
+    flex-grow: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    text-align: center;
+    position: relative;
 }
+
+.dashboard-controls {
+    width: 100%;
+    display: flex;
+    justify-content: center;
+    margin-bottom: 0.75rem;
+}
+
+.date-selectors {
+    display: flex;
+    gap: 0.5rem;
+    background: rgba(0,0,0,0.2);
+    padding: 0.25rem;
+    border-radius: 10px;
+}
+
+.date-selectors select {
+    font-size: 0.8rem;
+    font-weight: 500;
+    padding: 0.4rem 0.6rem;
+    border: none;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--text-secondary);
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    appearance: none;
+    cursor: pointer;
+    transition: color 0.3s ease;
+}
+.date-selectors select:hover {
+    color: var(--text-primary);
+}
+
 
 .info-card h3 {
     font-size: 0.9rem;
@@ -274,28 +303,48 @@ body::before {
     margin-bottom: 0.5rem;
 }
 .info-card .main-value {
-    font-size: clamp(1.1rem, 2.5vw, 1.6rem);
+    font-size: clamp(1.4rem, 2.5vw, 1.8rem);
     font-weight: 700;
     color: var(--primary-accent);
     line-height: 1.1;
     word-wrap: break-word;
-    text-shadow: 0 2px 8px rgba(254, 230, 190, 0.3);
 }
-.info-card .main-value.long-text {
-    font-size: clamp(0.9rem, 2.5vw, 1.3rem);
-}
+
 .info-card .sub-value {
     font-size: 1rem;
     font-weight: 600;
     color: var(--text-primary);
     line-height: 1.2;
 }
+
+/* CORRECTED ICON STYLES */
 .info-card .icon {
-    font-size: 1.4rem;
+    font-size: 1.6rem;
     color: var(--primary-accent);
-    opacity: 0.5;
-    align-self: flex-end;
+    opacity: 0.3;
+    position: absolute;
+    bottom: -0.25rem; /* Adjusted positioning */
+    right: 0;
 }
+
+.chart-card {
+    padding: 0.75rem;
+    justify-content: space-between;
+}
+
+.chart-card h3 {
+    text-align: center;
+    padding: 0;
+    margin: 0;
+}
+
+.chart-container {
+    flex-grow: 1;
+    position: relative;
+    width: 100%;
+    height: 100%;
+}
+
 
 /* --- SEARCH & RESULTS --- */
 .search-section {
@@ -417,7 +466,45 @@ tbody tr:hover { background-color: var(--glass-bg-hover); }
     max-width: 1200px;
     margin: 0 auto;
 }
-.form-container h2 {margin-bottom: 2rem; text-align: center; font-weight: 600; display: flex; align-items: center; justify-content: center; gap: 1rem;}
+
+.form-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 2rem;
+    gap: 1rem;
+    flex-wrap: wrap;
+}
+
+.form-header h2 {
+    margin: 0;
+    text-align: left;
+    display: flex; 
+    align-items: center; 
+    gap: 1rem;
+}
+
+.flight-type-toggle {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    font-size: 0.9rem;
+    font-weight: 500;
+    background-color: rgba(0,0,0,0.2);
+    padding: 0.25rem 0.75rem;
+    border-radius: var(--liquid-radius);
+}
+
+.flight-type-toggle span {
+    transition: color 0.3s ease-in-out;
+}
+
+.flight-type-toggle span.active {
+    color: var(--secondary-accent);
+    font-weight: 700;
+}
+
+
 .form-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
@@ -877,8 +964,9 @@ td .action-checkbox {
     padding: 0.4rem 0.8rem; /* Compact */
     border-radius: 10px;
     font-weight: 700;
-    font-size: 0.8rem; /* Compact */
+    font-size: 0.75rem; /* MODIFIED: Adjusted font size */
     text-transform: uppercase;
+    text-align: center;
 }
 
 .details-status-badge.confirmed {
@@ -961,13 +1049,6 @@ td .action-checkbox {
     visibility: hidden;
     transform: translateY(-20px) scale(0.95);
     transition: all 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94);
-    background-color: #2E2E2E !important;
-    border: 1px solid var(--glass-border) !important;
-    border-radius: 20px !important;
-    box-shadow: var(--liquid-shadow) !important;
-    backdrop-filter: none !important;
-    -webkit-backdrop-filter: none !important;
-    padding: 1.5rem;
 }
 
 .settings-panel.show {
@@ -975,6 +1056,14 @@ td .action-checkbox {
     visibility: visible;
     transform: translateY(0) scale(1);
 }
+
+.settings-panel.solid-bg {
+    background: #2E2E2E;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    border: 1px solid var(--glass-border);
+}
+
 
 .settings-title {
     text-align: center;
@@ -1106,6 +1195,16 @@ td .action-checkbox {
 
 
 /* --- RESPONSIVE DESIGN --- */
+@media (max-width: 1200px) {
+    .actions-grid {
+        grid-template-columns: 1fr;
+    }
+    .info-grid {
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    }
+}
+
+
 @media (max-width: 768px) {
     .header {
         padding: 1rem;
@@ -1124,20 +1223,10 @@ td .action-checkbox {
     }
     
     .main-content {
-        margin-top: 120px;
+        margin-top: 180px; /* Adjusted for taller header */
         padding: 1rem;
     }
-    
-    .info-grid {
-        grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-        gap: 1rem;
-    }
-    
-    .actions-grid {
-        grid-template-columns: 1fr;
-        gap: 1rem;
-    }
-    
+        
     .form-grid {
         grid-template-columns: 1fr;
         gap: 1rem;
@@ -1168,17 +1257,19 @@ td .action-checkbox {
         padding: 1.5rem;
         margin: 1rem;
     }
-    
-    .modal-footer {
-        flex-direction: column;
-    }
-    
+        
     .settings-panel {
         right: 1rem;
         width: calc(100% - 2rem);
     }
 
     .details-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (max-width: 576px) {
+    .info-grid {
         grid-template-columns: 1fr;
     }
 }
@@ -1192,11 +1283,7 @@ td .action-checkbox {
         font-size: 0.8rem;
         padding: 0.5rem 1rem;
     }
-    
-    .info-grid {
-        grid-template-columns: 1fr;
-    }
-    
+        
     .info-card {
         height: auto;
         min-height: 120px;

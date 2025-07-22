@@ -55,188 +55,206 @@
                 </div>
                 
                 <div class="dashboard-content-wrapper" id="dashboard-content" style="display: none;">
-                    <div class="info-grid">
-                        <div id="total-tickets-box" class="info-card glass-card"></div>
+                     <div class="info-grid">
+                        <div id="total-tickets-box" class="info-card glass-card">
+                             <div class="dashboard-controls">
+                                <div class="date-selectors">
+                                    <select id="dashboard-month"></select>
+                                    <select id="dashboard-year"></select>
+                                </div>
+                            </div>
+                            <div class="info-card-content">
+                                <h3>Total Tickets</h3>
+                                <div class="main-value" id="total-tickets-value"></div>
+                                <i class="icon fa-solid fa-ticket-simple"></i>
+                            </div>
+                        </div>
                         <div id="monthly-revenue-box" class="info-card glass-card"></div>
                         <div id="monthly-commission-box" class="info-card glass-card"></div>
                         <div id="monthly-extra-fare-box" class="info-card glass-card"></div>
-                        <div id="top-airline-box" class="info-card glass-card"></div>
-                        <div id="top-route-box" class="info-card glass-card"></div>
+                        <div id="airline-chart-box" class="info-card chart-card glass-card">
+                             <h3>Sales by Airline</h3>
+                             <div class="chart-container">
+                                <canvas id="airline-chart"></canvas>
+                            </div>
+                        </div>
                     </div>
 
                     <div class="actions-grid">
                         <div class="search-section glass-card">
                             <h3><i class="fa-solid fa-magnifying-glass"></i> Search Tickets</h3>
-                            <div class="search-inputs">
-                                <input type="text" id="searchName" placeholder="Client Name">
-                                <input type="text" id="searchBooking" placeholder="Booking Reference">
-                                <div class="date-range-group">
-                                    <input type="text" id="searchStartDate" placeholder="Start Date">
-                                    <input type="text" id="searchEndDate" placeholder="End Date">
+                            <form id="searchForm" onsubmit="return false;">
+                                <div class="search-inputs">
+                                    <input type="text" id="searchName" placeholder="Client Name">
+                                    <input type="text" id="searchBooking" placeholder="Booking Reference">
+                                    <div class="date-range-group">
+                                        <input type="text" id="searchStartDate" placeholder="Start Date">
+                                        <input type="text" id="searchEndDate" placeholder="End Date">
+                                    </div>
+                                    <input type="text" id="searchTravelDate" placeholder="Travel Date (MM/DD/YYYY)">
+                                    <select id="searchDeparture">
+                                        <option value="" disabled selected>DEPARTURE</option>
+                                        <option value="Ann (VBA)">Ann (VBA)</option>
+                                        <option value="Anni Sakhan (VBK)">Anni Sakhan (VBK)</option>
+                                        <option value="Bangalore (BLR)">Bangalore (BLR)</option>
+                                        <option value="Bangkok (BKK)">Bangkok (BKK)</option>
+                                        <option value="Bassein (BSX)">Bassein (BSX)</option>
+                                        <option value="Bhamo (BMO)">Bhamo (BMO)</option>
+                                        <option value="Bokpyin (VBP)">Bokpyin (VBP)</option>
+                                        <option value="Brisbane (BNE)">Brisbane (BNE)</option>
+                                        <option value="Busan (PUS)">Busan (PUS)</option>
+                                        <option value="Chengdu (CTU)">Chengdu (CTU)</option>
+                                        <option value="Chaing Mai (CNX)">Chaing Mai (CNX)</option>
+                                        <option value="Coco Islands (VCC)">Coco Islands (VCC)</option>
+                                        <option value="Colombo (CMB)">Colombo (CMB)</option>
+                                        <option value="Cox's bazar (CXB)">Cox's bazar (CXB)</option>
+                                        <option value="Dawei (TVY)">Dawei (TVY)</option>
+                                        <option value="Denpasar (DPS)">Denpasar (DPS)</option>
+                                        <option value="Dhaka (DAC)">Dhaka (DAC)</option>
+                                        <option value="Fukuoka (FUK)">Fukuoka (FUK)</option>
+                                        <option value="Gaya (GAY)">Gaya (GAY)</option>
+                                        <option value="Haikou (HAK)">Haikou (HAK)</option>
+                                        <option value="Hanoi (HAN)">Hanoi (HAN)</option>
+                                        <option value="Heho (HEH)">Heho (HEH)</option>
+                                        <option value="Ho Chi Minh City (SGN)">Ho Chi Minh City (SGN)</option>
+                                        <option value="Hommalinn (HOX)">Hommalinn (HOX)</option>
+                                        <option value="Hong Kong (HKG)">Hong Kong (HKG)</option>
+                                        <option value="Incheon (ICN)">Incheon (ICN)</option>
+                                        <option value="Jakarta (CGK)">Jakarta (CGK)</option>
+                                        <option value="Kalemyo (KMV)">Kalemyo (KMV)</option>
+                                        <option value="Kawtung (KET)">Kawtung (KET)</option>
+                                        <option value="Khamti (KHM)">Khamti (KHM)</option>
+                                        <option value="Kolkata (CCU)">Kolkata (CCU)</option>
+                                        <option value="Krabi (KBV)">Krabi (KBV)</option>
+                                        <option value="Kuala Lumpur (KUL)">Kuala Lumpur (KUL)</option>
+                                        <option value="Kumming (KMG)">Kumming (KMG)</option>
+                                        <option value="Kyaukpyu (KYP)">Kyaukpyu (KYP)</option>
+                                        <option value="Lashio (LSH)">Lashio (LSH)</option>
+                                        <option value="Loikaw (LIW)">Loikaw (LIW)</option>
+                                        <option value="Mae Sot (MAQ)">Mae Sot (MAQ)</option>
+                                        <option value="Manaung (MGU)">Manaung (MGU)</option>
+                                        <option value="Mandalay (MDL)">Mandalay (MDL)</option>
+                                        <option value="Mangrere (AKL)">Mangrere (AKL)</option>
+                                        <option value="Mangshi (LUM)">Mangshi (LUM)</option>
+                                        <option value="Manila (MNL)">Manila (MNL)</option>
+                                        <option value="Mawlamyaing (MNU)">Mawlamyaing (MNU)</option>
+                                        <option value="Melbourne (MEL)">Melbourne (MEL)</option>
+                                        <option value="Monghsat (MOG)">Monghsat (MOG)</option>
+                                        <option value="Monywa (NYW)">Monywa (NYW)</option>
+                                        <option value="Mumbai (BOM)">Mumbai (BOM)</option>
+                                        <option value="Myeik (MGZ)">Myeik (MGZ)</option>
+                                        <option value="Myitkyina (MYT)">Myitkyina (MYT)</option>
+                                        <option value="Nagoya (NGO)">Nagoya (NGO)</option>
+                                        <option value="Naming (NMS)">Naming (NMS)</option>
+                                        <option value="Nanning (NNG)">Nanning (NNG)</option>
+                                        <option value="Nay Pyi Taw (NYT)">Nay Pyi Taw (NYT)</option>
+                                        <option value="Nyaung U (NYU)">Nyaung U (NYU)</option>
+                                        <option value="Phuket (HKT)">Phuket (HKT)</option>
+                                        <option value="Putao (PBU)">Putao (PBU)</option>
+                                        <option value="Siem Reap (SAI)">Siem Reap (SAI)</option>
+                                        <option value="Singapore (SIN)">Singapore (SIN)</option>
+                                        <option value="Sittwe (AKY)">Sittwe (AKY)</option>
+                                        <option value="Subang (SZB)">Subang (SZB)</option>
+                                        <option value="Surbung (SRU)">Surbung (SRU)</option>
+                                        <option value="Sydney (SYD)">Sydney (SYD)</option>
+                                        <option value="Tachilek (THL)">Tachilek (THL)</option>
+                                        <option value="Taipei (TPE)">Taipei (TPE)</option>
+                                        <option value="Thandwe (SNW)">Thandwe (SNW)</option>
+                                        <option value="Tokyo - Narita (NRT)">Tokyo - Narita (NRT)</option>
+                                        <option value="Vientiane (VTE)">Vientiane (VTE)</option>
+                                        <option value="Xiamen (XMN)">Xiamen (XMN)</option>
+                                        <option value="Yangon (RGN)">Yangon (RGN)</option>
+                                    </select>
+                                    <select id="searchDestination">
+                                        <option value="" disabled selected>DESTINATION</option>
+                                        <option value="Ann (VBA)">Ann (VBA)</option>
+                                        <option value="Anni Sakhan (VBK)">Anni Sakhan (VBK)</option>
+                                        <option value="Bangalore (BLR)">Bangalore (BLR)</option>
+                                        <option value="Bangkok (BKK)">Bangkok (BKK)</option>
+                                        <option value="Bassein (BSX)">Bassein (BSX)</option>
+                                        <option value="Bhamo (BMO)">Bhamo (BMO)</option>
+                                        <option value="Bokpyin (VBP)">Bokpyin (VBP)</option>
+                                        <option value="Brisbane (BNE)">Brisbane (BNE)</option>
+                                        <option value="Busan (PUS)">Busan (PUS)</option>
+                                        <option value="Chengdu (CTU)">Chengdu (CTU)</option>
+                                        <option value="Chaing Mai (CNX)">Chaing Mai (CNX)</option>
+                                        <option value="Coco Islands (VCC)">Coco Islands (VCC)</option>
+                                        <option value="Colombo (CMB)">Colombo (CMB)</option>
+                                        <option value="Cox's bazar (CXB)">Cox's bazar (CXB)</option>
+                                        <option value="Dawei (TVY)">Dawei (TVY)</option>
+                                        <option value="Denpasar (DPS)">Denpasar (DPS)</option>
+                                        <option value="Dhaka (DAC)">Dhaka (DAC)</option>
+                                        <option value="Fukuoka (FUK)">Fukuoka (FUK)</option>
+                                        <option value="Gaya (GAY)">Gaya (GAY)</option>
+                                        <option value="Haikou (HAK)">Haikou (HAK)</option>
+                                        <option value="Hanoi (HAN)">Hanoi (HAN)</option>
+                                        <option value="Heho (HEH)">Heho (HEH)</option>
+                                        <option value="Ho Chi Minh City (SGN)">Ho Chi Minh City (SGN)</option>
+                                        <option value="Hommalinn (HOX)">Hommalinn (HOX)</option>
+                                        <option value="Hong Kong (HKG)">Hong Kong (HKG)</option>
+                                        <option value="Incheon (ICN)">Incheon (ICN)</option>
+                                        <option value="Jakarta (CGK)">Jakarta (CGK)</option>
+                                        <option value="Kalemyo (KMV)">Kalemyo (KMV)</option>
+                                        <option value="Kawtung (KET)">Kawtung (KET)</option>
+                                        <option value="Khamti (KHM)">Khamti (KHM)</option>
+                                        <option value="Kolkata (CCU)">Kolkata (CCU)</option>
+                                        <option value="Krabi (KBV)">Krabi (KBV)</option>
+                                        <option value="Kuala Lumpur (KUL)">Kuala Lumpur (KUL)</option>
+                                        <option value="Kumming (KMG)">Kumming (KMG)</option>
+                                        <option value="Kyaukpyu (KYP)">Kyaukpyu (KYP)</option>
+                                        <option value="Lashio (LSH)">Lashio (LSH)</option>
+                                        <option value="Loikaw (LIW)">Loikaw (LIW)</option>
+                                        <option value="Mae Sot (MAQ)">Mae Sot (MAQ)</option>
+                                        <option value="Manaung (MGU)">Manaung (MGU)</option>
+                                        <option value="Mandalay (MDL)">Mandalay (MDL)</option>
+                                        <option value="Mangrere (AKL)">Mangrere (AKL)</option>
+                                        <option value="Mangshi (LUM)">Mangshi (LUM)</option>
+                                        <option value="Manila (MNL)">Manila (MNL)</option>
+                                        <option value="Mawlamyaing (MNU)">Mawlamyaing (MNU)</option>
+                                        <option value="Melbourne (MEL)">Melbourne (MEL)</option>
+                                        <option value="Monghsat (MOG)">Monghsat (MOG)</option>
+                                        <option value="Monywa (NYW)">Monywa (NYW)</option>
+                                        <option value="Mumbai (BOM)">Mumbai (BOM)</option>
+                                        <option value="Myeik (MGZ)">Myeik (MGZ)</option>
+                                        <option value="Myitkyina (MYT)">Myitkyina (MYT)</option>
+                                        <option value="Nagoya (NGO)">Nagoya (NGO)</option>
+                                        <option value="Naming (NMS)">Naming (NMS)</option>
+                                        <option value="Nanning (NNG)">Nanning (NNG)</option>
+                                        <option value="Nay Pyi Taw (NYT)">Nay Pyi Taw (NYT)</option>
+                                        <option value="Nyaung U (NYU)">Nyaung U (NYU)</option>
+                                        <option value="Phuket (HKT)">Phuket (HKT)</option>
+                                        <option value="Putao (PBU)">Putao (PBU)</option>
+                                        <option value="Siem Reap (SAI)">Siem Reap (SAI)</option>
+                                        <option value="Singapore (SIN)">Singapore (SIN)</option>
+                                        <option value="Sittwe (AKY)">Sittwe (AKY)</option>
+                                        <option value="Subang (SZB)">Subang (SZB)</option>
+                                        <option value="Surbung (SRU)">Surbung (SRU)</option>
+                                        <option value="Sydney (SYD)">Sydney (SYD)</option>
+                                        <option value="Tachilek (THL)">Tachilek (THL)</option>
+                                        <option value="Taipei (TPE)">Taipei (TPE)</option>
+                                        <option value="Thandwe (SNW)">Thandwe (SNW)</option>
+                                        <option value="Tokyo - Narita (NRT)">Tokyo - Narita (NRT)</option>
+                                        <option value="Vientiane (VTE)">Vientiane (VTE)</option>
+                                        <option value="Xiamen (XMN)">Xiamen (XMN)</option>
+                                        <option value="Yangon (RGN)">Yangon (RGN)</option>
+                                    </select>
+                                    <select id="searchAirline">
+                                        <option value="" disabled selected>AIRLINE</option>
+                                        <option value="MNA">MNA</option><option value="MAI">MAI</option><option value="ManYadanarpon">ManYadanarpon</option><option value="AirThanwlin">AirThanwlin</option>
+                                    </select>
+                                    <div class="toggle-switch">
+                                        <label for="searchNotPaidToggle">Not Paid Only</label>
+                                        <label class="switch">
+                                            <input type="checkbox" id="searchNotPaidToggle">
+                                            <span class="slider round"></span>
+                                        </label>
+                                    </div>
                                 </div>
-                                <input type="text" id="searchTravelDate" placeholder="Travel Date (MM/DD/YYYY)">
-                                <select id="searchDeparture" required>
-                                    <option value="" disabled selected>DEPARTURE</option>
-                                    <option value="Ann (VBA)">Ann (VBA)</option>
-                                    <option value="Anni Sakhan (VBK)">Anni Sakhan (VBK)</option>
-                                    <option value="Bangalore (BLR)">Bangalore (BLR)</option>
-                                    <option value="Bangkok (BKK)">Bangkok (BKK)</option>
-                                    <option value="Bassein (BSX)">Bassein (BSX)</option>
-                                    <option value="Bhamo (BMO)">Bhamo (BMO)</option>
-                                    <option value="Bokpyin (VBP)">Bokpyin (VBP)</option>
-                                    <option value="Brisbane (BNE)">Brisbane (BNE)</option>
-                                    <option value="Busan (PUS)">Busan (PUS)</option>
-                                    <option value="Chengdu (CTU)">Chengdu (CTU)</option>
-                                    <option value="Chaing Mai (CNX)">Chaing Mai (CNX)</option>
-                                    <option value="Coco Islands (VCC)">Coco Islands (VCC)</option>
-                                    <option value="Colombo (CMB)">Colombo (CMB)</option>
-                                    <option value="Cox's bazar (CXB)">Cox's bazar (CXB)</option>
-                                    <option value="Dawei (TVY)">Dawei (TVY)</option>
-                                    <option value="Denpasar (DPS)">Denpasar (DPS)</option>
-                                    <option value="Dhaka (DAC)">Dhaka (DAC)</option>
-                                    <option value="Fukuoka (FUK)">Fukuoka (FUK)</option>
-                                    <option value="Gaya (GAY)">Gaya (GAY)</option>
-                                    <option value="Haikou (HAK)">Haikou (HAK)</option>
-                                    <option value="Hanoi (HAN)">Hanoi (HAN)</option>
-                                    <option value="Heho (HEH)">Heho (HEH)</option>
-                                    <option value="Ho Chi Minh City (SGN)">Ho Chi Minh City (SGN)</option>
-                                    <option value="Hommalinn (HOX)">Hommalinn (HOX)</option>
-                                    <option value="Hong Kong (HKG)">Hong Kong (HKG)</option>
-                                    <option value="Incheon (ICN)">Incheon (ICN)</option>
-                                    <option value="Jakarta (CGK)">Jakarta (CGK)</option>
-                                    <option value="Kalemyo (KMV)">Kalemyo (KMV)</option>
-                                    <option value="Kawtung (KET)">Kawtung (KET)</option>
-                                    <option value="Khamti (KHM)">Khamti (KHM)</option>
-                                    <option value="Kolkata (CCU)">Kolkata (CCU)</option>
-                                    <option value="Krabi (KBV)">Krabi (KBV)</option>
-                                    <option value="Kuala Lumpur (KUL)">Kuala Lumpur (KUL)</option>
-                                    <option value="Kumming (KMG)">Kumming (KMG)</option>
-                                    <option value="Kyaukpyu (KYP)">Kyaukpyu (KYP)</option>
-                                    <option value="Lashio (LSH)">Lashio (LSH)</option>
-                                    <option value="Loikaw (LIW)">Loikaw (LIW)</option>
-                                    <option value="Mae Sot (MAQ)">Mae Sot (MAQ)</option>
-                                    <option value="Manaung (MGU)">Manaung (MGU)</option>
-                                    <option value="Mandalay (MDL)">Mandalay (MDL)</option>
-                                    <option value="Mangrere (AKL)">Mangrere (AKL)</option>
-                                    <option value="Mangshi (LUM)">Mangshi (LUM)</option>
-                                    <option value="Manila (MNL)">Manila (MNL)</option>
-                                    <option value="Mawlamyaing (MNU)">Mawlamyaing (MNU)</option>
-                                    <option value="Melbourne (MEL)">Melbourne (MEL)</option>
-                                    <option value="Monghsat (MOG)">Monghsat (MOG)</option>
-                                    <option value="Monywa (NYW)">Monywa (NYW)</option>
-                                    <option value="Mumbai (BOM)">Mumbai (BOM)</option>
-                                    <option value="Myeik (MGZ)">Myeik (MGZ)</option>
-                                    <option value="Myitkyina (MYT)">Myitkyina (MYT)</option>
-                                    <option value="Nagoya (NGO)">Nagoya (NGO)</option>
-                                    <option value="Naming (NMS)">Naming (NMS)</option>
-                                    <option value="Nanning (NNG)">Nanning (NNG)</option>
-                                    <option value="Nay Pyi Taw (NYT)">Nay Pyi Taw (NYT)</option>
-                                    <option value="Nyaung U (NYU)">Nyaung U (NYU)</option>
-                                    <option value="Phuket (HKT)">Phuket (HKT)</option>
-                                    <option value="Putao (PBU)">Putao (PBU)</option>
-                                    <option value="Siem Reap (SAI)">Siem Reap (SAI)</option>
-                                    <option value="Singapore (SIN)">Singapore (SIN)</option>
-                                    <option value="Sittwe (AKY)">Sittwe (AKY)</option>
-                                    <option value="Subang (SZB)">Subang (SZB)</option>
-                                    <option value="Surbung (SRU)">Surbung (SRU)</option>
-                                    <option value="Sydney (SYD)">Sydney (SYD)</option>
-                                    <option value="Tachilek (THL)">Tachilek (THL)</option>
-                                    <option value="Taipei (TPE)">Taipei (TPE)</option>
-                                    <option value="Thandwe (SNW)">Thandwe (SNW)</option>
-                                    <option value="Tokyo - Narita (NRT)">Tokyo - Narita (NRT)</option>
-                                    <option value="Vientiane (VTE)">Vientiane (VTE)</option>
-                                    <option value="Xiamen (XMN)">Xiamen (XMN)</option>
-                                    <option value="Yangon (RGN)">Yangon (RGN)</option>
-                                </select>
-                                <select id="searchDestination" required>
-                                    <option value="" disabled selected>DESTINATION</option>
-                                    <option value="Ann (VBA)">Ann (VBA)</option>
-                                    <option value="Anni Sakhan (VBK)">Anni Sakhan (VBK)</option>
-                                    <option value="Bangalore (BLR)">Bangalore (BLR)</option>
-                                    <option value="Bangkok (BKK)">Bangkok (BKK)</option>
-                                    <option value="Bassein (BSX)">Bassein (BSX)</option>
-                                    <option value="Bhamo (BMO)">Bhamo (BMO)</option>
-                                    <option value="Bokpyin (VBP)">Bokpyin (VBP)</option>
-                                    <option value="Brisbane (BNE)">Brisbane (BNE)</option>
-                                    <option value="Busan (PUS)">Busan (PUS)</option>
-                                    <option value="Chengdu (CTU)">Chengdu (CTU)</option>
-                                    <option value="Chaing Mai (CNX)">Chaing Mai (CNX)</option>
-                                    <option value="Coco Islands (VCC)">Coco Islands (VCC)</option>
-                                    <option value="Colombo (CMB)">Colombo (CMB)</option>
-                                    <option value="Cox's bazar (CXB)">Cox's bazar (CXB)</option>
-                                    <option value="Dawei (TVY)">Dawei (TVY)</option>
-                                    <option value="Denpasar (DPS)">Denpasar (DPS)</option>
-                                    <option value="Dhaka (DAC)">Dhaka (DAC)</option>
-                                    <option value="Fukuoka (FUK)">Fukuoka (FUK)</option>
-                                    <option value="Gaya (GAY)">Gaya (GAY)</option>
-                                    <option value="Haikou (HAK)">Haikou (HAK)</option>
-                                    <option value="Hanoi (HAN)">Hanoi (HAN)</option>
-                                    <option value="Heho (HEH)">Heho (HEH)</option>
-                                    <option value="Ho Chi Minh City (SGN)">Ho Chi Minh City (SGN)</option>
-                                    <option value="Hommalinn (HOX)">Hommalinn (HOX)</option>
-                                    <option value="Hong Kong (HKG)">Hong Kong (HKG)</option>
-                                    <option value="Incheon (ICN)">Incheon (ICN)</option>
-                                    <option value="Jakarta (CGK)">Jakarta (CGK)</option>
-                                    <option value="Kalemyo (KMV)">Kalemyo (KMV)</option>
-                                    <option value="Kawtung (KET)">Kawtung (KET)</option>
-                                    <option value="Khamti (KHM)">Khamti (KHM)</option>
-                                    <option value="Kolkata (CCU)">Kolkata (CCU)</option>
-                                    <option value="Krabi (KBV)">Krabi (KBV)</option>
-                                    <option value="Kuala Lumpur (KUL)">Kuala Lumpur (KUL)</option>
-                                    <option value="Kumming (KMG)">Kumming (KMG)</option>
-                                    <option value="Kyaukpyu (KYP)">Kyaukpyu (KYP)</option>
-                                    <option value="Lashio (LSH)">Lashio (LSH)</option>
-                                    <option value="Loikaw (LIW)">Loikaw (LIW)</option>
-                                    <option value="Mae Sot (MAQ)">Mae Sot (MAQ)</option>
-                                    <option value="Manaung (MGU)">Manaung (MGU)</option>
-                                    <option value="Mandalay (MDL)">Mandalay (MDL)</option>
-                                    <option value="Mangrere (AKL)">Mangrere (AKL)</option>
-                                    <option value="Mangshi (LUM)">Mangshi (LUM)</option>
-                                    <option value="Manila (MNL)">Manila (MNL)</option>
-                                    <option value="Mawlamyaing (MNU)">Mawlamyaing (MNU)</option>
-                                    <option value="Melbourne (MEL)">Melbourne (MEL)</option>
-                                    <option value="Monghsat (MOG)">Monghsat (MOG)</option>
-                                    <option value="Monywa (NYW)">Monywa (NYW)</option>
-                                    <option value="Mumbai (BOM)">Mumbai (BOM)</option>
-                                    <option value="Myeik (MGZ)">Myeik (MGZ)</option>
-                                    <option value="Myitkyina (MYT)">Myitkyina (MYT)</option>
-                                    <option value="Nagoya (NGO)">Nagoya (NGO)</option>
-                                    <option value="Naming (NMS)">Naming (NMS)</option>
-                                    <option value="Nanning (NNG)">Nanning (NNG)</option>
-                                    <option value="Nay Pyi Taw (NYT)">Nay Pyi Taw (NYT)</option>
-                                    <option value="Nyaung U (NYU)">Nyaung U (NYU)</option>
-                                    <option value="Phuket (HKT)">Phuket (HKT)</option>
-                                    <option value="Putao (PBU)">Putao (PBU)</option>
-                                    <option value="Siem Reap (SAI)">Siem Reap (SAI)</option>
-                                    <option value="Singapore (SIN)">Singapore (SIN)</option>
-                                    <option value="Sittwe (AKY)">Sittwe (AKY)</option>
-                                    <option value="Subang (SZB)">Subang (SZB)</option>
-                                    <option value="Surbung (SRU)">Surbung (SRU)</option>
-                                    <option value="Sydney (SYD)">Sydney (SYD)</option>
-                                    <option value="Tachilek (THL)">Tachilek (THL)</option>
-                                    <option value="Taipei (TPE)">Taipei (TPE)</option>
-                                    <option value="Thandwe (SNW)">Thandwe (SNW)</option>
-                                    <option value="Tokyo - Narita (NRT)">Tokyo - Narita (NRT)</option>
-                                    <option value="Vientiane (VTE)">Vientiane (VTE)</option>
-                                    <option value="Xiamen (XMN)">Xiamen (XMN)</option>
-                                    <option value="Yangon (RGN)">Yangon (RGN)</option>
-                                </select>
-                                <select id="searchAirline" required>
-                                    <option value="" disabled selected>AIRLINE</option>
-                                    <option value="MNA">MNA</option><option value="MAI">MAI</option><option value="ManYadanarpon">ManYadanarpon</option><option value="AirThanwlin">AirThanwlin</option>
-                                </select>
-                                <div class="toggle-switch">
-                                    <label for="searchNotPaidToggle">Not Paid Only</label>
-                                    <label class="switch">
-                                        <input type="checkbox" id="searchNotPaidToggle">
-                                        <span class="slider round"></span>
-                                    </label>
+                                <div class="search-buttons">
+                                    <button id="searchBtn" class="btn btn-primary"><i class="fa-solid fa-search"></i> Search</button>
+                                    <button id="clearBtn" class="btn btn-secondary"><i class="fa-solid fa-eraser"></i> Clear</button>
                                 </div>
-                            </div>
-                            <div class="search-buttons">
-                                <button id="searchBtn" class="btn btn-primary"><i class="fa-solid fa-search"></i> Search</button>
-                                <button id="clearBtn" class="btn btn-secondary"><i class="fa-solid fa-eraser"></i> Clear</button>
-                            </div>
+                            </form>
                         </div>
 
                         <div class="results-section glass-card">
@@ -466,7 +484,17 @@
 
             <section id="sell-view" class="view">
                  <div class="form-container glass-card">
-                    <h2><i class="fa-solid fa-ticket"></i> Sell New Ticket</h2>
+                    <div class="form-header">
+                        <h2><i class="fa-solid fa-ticket"></i> Sell New Ticket</h2>
+                        <div class="flight-type-toggle">
+                            <span id="domestic-label">Domestic</span>
+                            <label class="switch">
+                                <input type="checkbox" id="flightTypeToggle">
+                                <span class="slider round"></span>
+                            </label>
+                            <span id="international-label">International</span>
+                        </div>
+                    </div>
                     <form id="sellForm">
                         <div class="form-grid">
                             <div class="form-group"><label for="issued_date">Issued Date</label><input type="text" id="issued_date" name="issued_date" placeholder="MM/DD/YYYY" required></div>
@@ -477,149 +505,9 @@
                             <div class="form-group"><label for="account_type">Social Media Account Type</label><select id="account_type" name="account_type" required><option value="" disabled selected>Select Account Type</option><option value="Facebook Page">Facebook Page</option><option value="Messenger">Messenger</option><option value="Viber">Viber</option><option value="Telegram">Telegram</option><option value="WeChat">WeChat</option><option value="Phone">Phone</option></select></div>
                             <div class="form-group"><label for="account_link">Account Link</label><input type="text" id="account_link" name="account_link" placeholder="URL, phone number or @username"></div>
                             <div class="form-group"><label for="departure">Departure</label><select id="departure" name="departure" required><option value="" disabled selected>Select Departure</option>
-                                <option value="Ann (VBA)">Ann (VBA)</option>
-                                <option value="Anni Sakhan (VBK)">Anni Sakhan (VBK)</option>
-                                <option value="Bangalore (BLR)">Bangalore (BLR)</option>
-                                <option value="Bangkok (BKK)">Bangkok (BKK)</option>
-                                <option value="Bassein (BSX)">Bassein (BSX)</option>
-                                <option value="Bhamo (BMO)">Bhamo (BMO)</option>
-                                <option value="Bokpyin (VBP)">Bokpyin (VBP)</option>
-                                <option value="Brisbane (BNE)">Brisbane (BNE)</option>
-                                <option value="Busan (PUS)">Busan (PUS)</option>
-                                <option value="Chengdu (CTU)">Chengdu (CTU)</option>
-                                <option value="Chaing Mai (CNX)">Chaing Mai (CNX)</option>
-                                <option value="Coco Islands (VCC)">Coco Islands (VCC)</option>
-                                <option value="Colombo (CMB)">Colombo (CMB)</option>
-                                <option value="Cox's bazar (CXB)">Cox's bazar (CXB)</option>
-                                <option value="Dawei (TVY)">Dawei (TVY)</option>
-                                <option value="Denpasar (DPS)">Denpasar (DPS)</option>
-                                <option value="Dhaka (DAC)">Dhaka (DAC)</option>
-                                <option value="Fukuoka (FUK)">Fukuoka (FUK)</option>
-                                <option value="Gaya (GAY)">Gaya (GAY)</option>
-                                <option value="Haikou (HAK)">Haikou (HAK)</option>
-                                <option value="Hanoi (HAN)">Hanoi (HAN)</option>
-                                <option value="Heho (HEH)">Heho (HEH)</option>
-                                <option value="Ho Chi Minh City (SGN)">Ho Chi Minh City (SGN)</option>
-                                <option value="Hommalinn (HOX)">Hommalinn (HOX)</option>
-                                <option value="Hong Kong (HKG)">Hong Kong (HKG)</option>
-                                <option value="Incheon (ICN)">Incheon (ICN)</option>
-                                <option value="Jakarta (CGK)">Jakarta (CGK)</option>
-                                <option value="Kalemyo (KMV)">Kalemyo (KMV)</option>
-                                <option value="Kawtung (KET)">Kawtung (KET)</option>
-                                <option value="Khamti (KHM)">Khamti (KHM)</option>
-                                <option value="Kolkata (CCU)">Kolkata (CCU)</option>
-                                <option value="Krabi (KBV)">Krabi (KBV)</option>
-                                <option value="Kuala Lumpur (KUL)">Kuala Lumpur (KUL)</option>
-                                <option value="Kumming (KMG)">Kumming (KMG)</option>
-                                <option value="Kyaukpyu (KYP)">Kyaukpyu (KYP)</option>
-                                <option value="Lashio (LSH)">Lashio (LSH)</option>
-                                <option value="Loikaw (LIW)">Loikaw (LIW)</option>
-                                <option value="Mae Sot (MAQ)">Mae Sot (MAQ)</option>
-                                <option value="Manaung (MGU)">Manaung (MGU)</option>
-                                <option value="Mandalay (MDL)">Mandalay (MDL)</option>
-                                <option value="Mangrere (AKL)">Mangrere (AKL)</option>
-                                <option value="Mangshi (LUM)">Mangshi (LUM)</option>
-                                <option value="Manila (MNL)">Manila (MNL)</option>
-                                <option value="Mawlamyaing (MNU)">Mawlamyaing (MNU)</option>
-                                <option value="Melbourne (MEL)">Melbourne (MEL)</option>
-                                <option value="Monghsat (MOG)">Monghsat (MOG)</option>
-                                <option value="Monywa (NYW)">Monywa (NYW)</option>
-                                <option value="Mumbai (BOM)">Mumbai (BOM)</option>
-                                <option value="Myeik (MGZ)">Myeik (MGZ)</option>
-                                <option value="Myitkyina (MYT)">Myitkyina (MYT)</option>
-                                <option value="Nagoya (NGO)">Nagoya (NGO)</option>
-                                <option value="Naming (NMS)">Naming (NMS)</option>
-                                <option value="Nanning (NNG)">Nanning (NNG)</option>
-                                <option value="Nay Pyi Taw (NYT)">Nay Pyi Taw (NYT)</option>
-                                <option value="Nyaung U (NYU)">Nyaung U (NYU)</option>
-                                <option value="Phuket (HKT)">Phuket (HKT)</option>
-                                <option value="Putao (PBU)">Putao (PBU)</option>
-                                <option value="Siem Reap (SAI)">Siem Reap (SAI)</option>
-                                <option value="Singapore (SIN)">Singapore (SIN)</option>
-                                <option value="Sittwe (AKY)">Sittwe (AKY)</option>
-                                <option value="Subang (SZB)">Subang (SZB)</option>
-                                <option value="Surbung (SRU)">Surbung (SRU)</option>
-                                <option value="Sydney (SYD)">Sydney (SYD)</option>
-                                <option value="Tachilek (THL)">Tachilek (THL)</option>
-                                <option value="Taipei (TPE)">Taipei (TPE)</option>
-                                <option value="Thandwe (SNW)">Thandwe (SNW)</option>
-                                <option value="Tokyo - Narita (NRT)">Tokyo - Narita (NRT)</option>
-                                <option value="Vientiane (VTE)">Vientiane (VTE)</option>
-                                <option value="Xiamen (XMN)">Xiamen (XMN)</option>
-                                <option value="Yangon (RGN)">Yangon (RGN)</option>
-                            </select></div>
+                                </select></div>
                             <div class="form-group"><label for="destination">Destination</label><select id="destination" name="destination" required><option value="" disabled selected>Select Destination</option>
-                                <option value="Ann (VBA)">Ann (VBA)</option>
-                                <option value="Anni Sakhan (VBK)">Anni Sakhan (VBK)</option>
-                                <option value="Bangalore (BLR)">Bangalore (BLR)</option>
-                                <option value="Bangkok (BKK)">Bangkok (BKK)</option>
-                                <option value="Bassein (BSX)">Bassein (BSX)</option>
-                                <option value="Bhamo (BMO)">Bhamo (BMO)</option>
-                                <option value="Bokpyin (VBP)">Bokpyin (VBP)</option>
-                                <option value="Brisbane (BNE)">Brisbane (BNE)</option>
-                                <option value="Busan (PUS)">Busan (PUS)</option>
-                                <option value="Chengdu (CTU)">Chengdu (CTU)</option>
-                                <option value="Chaing Mai (CNX)">Chaing Mai (CNX)</option>
-                                <option value="Coco Islands (VCC)">Coco Islands (VCC)</option>
-                                <option value="Colombo (CMB)">Colombo (CMB)</option>
-                                <option value="Cox's bazar (CXB)">Cox's bazar (CXB)</option>
-                                <option value="Dawei (TVY)">Dawei (TVY)</option>
-                                <option value="Denpasar (DPS)">Denpasar (DPS)</option>
-                                <option value="Dhaka (DAC)">Dhaka (DAC)</option>
-                                <option value="Fukuoka (FUK)">Fukuoka (FUK)</option>
-                                <option value="Gaya (GAY)">Gaya (GAY)</option>
-                                <option value="Haikou (HAK)">Haikou (HAK)</option>
-                                <option value="Hanoi (HAN)">Hanoi (HAN)</option>
-                                <option value="Heho (HEH)">Heho (HEH)</option>
-                                <option value="Ho Chi Minh City (SGN)">Ho Chi Minh City (SGN)</option>
-                                <option value="Hommalinn (HOX)">Hommalinn (HOX)</option>
-                                <option value="Hong Kong (HKG)">Hong Kong (HKG)</option>
-                                <option value="Incheon (ICN)">Incheon (ICN)</option>
-                                <option value="Jakarta (CGK)">Jakarta (CGK)</option>
-                                <option value="Kalemyo (KMV)">Kalemyo (KMV)</option>
-                                <option value="Kawtung (KET)">Kawtung (KET)</option>
-                                <option value="Khamti (KHM)">Khamti (KHM)</option>
-                                <option value="Kolkata (CCU)">Kolkata (CCU)</option>
-                                <option value="Krabi (KBV)">Krabi (KBV)</option>
-                                <option value="Kuala Lumpur (KUL)">Kuala Lumpur (KUL)</option>
-                                <option value="Kumming (KMG)">Kumming (KMG)</option>
-                                <option value="Kyaukpyu (KYP)">Kyaukpyu (KYP)</option>
-                                <option value="Lashio (LSH)">Lashio (LSH)</option>
-                                <option value="Loikaw (LIW)">Loikaw (LIW)</option>
-                                <option value="Mae Sot (MAQ)">Mae Sot (MAQ)</option>
-                                <option value="Manaung (MGU)">Manaung (MGU)</option>
-                                <option value="Mandalay (MDL)">Mandalay (MDL)</option>
-                                <option value="Mangrere (AKL)">Mangrere (AKL)</option>
-                                <option value="Mangshi (LUM)">Mangshi (LUM)</option>
-                                <option value="Manila (MNL)">Manila (MNL)</option>
-                                <option value="Mawlamyaing (MNU)">Mawlamyaing (MNU)</option>
-                                <option value="Melbourne (MEL)">Melbourne (MEL)</option>
-                                <option value="Monghsat (MOG)">Monghsat (MOG)</option>
-                                <option value="Monywa (NYW)">Monywa (NYW)</option>
-                                <option value="Mumbai (BOM)">Mumbai (BOM)</option>
-                                <option value="Myeik (MGZ)">Myeik (MGZ)</option>
-                                <option value="Myitkyina (MYT)">Myitkyina (MYT)</option>
-                                <option value="Nagoya (NGO)">Nagoya (NGO)</option>
-                                <option value="Naming (NMS)">Naming (NMS)</option>
-                                <option value="Nanning (NNG)">Nanning (NNG)</option>
-                                <option value="Nay Pyi Taw (NYT)">Nay Pyi Taw (NYT)</option>
-                                <option value="Nyaung U (NYU)">Nyaung U (NYU)</option>
-                                <option value="Phuket (HKT)">Phuket (HKT)</option>
-                                <option value="Putao (PBU)">Putao (PBU)</option>
-                                <option value="Siem Reap (SAI)">Siem Reap (SAI)</option>
-                                <option value="Singapore (SIN)">Singapore (SIN)</option>
-                                <option value="Sittwe (AKY)">Sittwe (AKY)</option>
-                                <option value="Subang (SZB)">Subang (SZB)</option>
-                                <option value="Surbung (SRU)">Surbung (SRU)</option>
-                                <option value="Sydney (SYD)">Sydney (SYD)</option>
-                                <option value="Tachilek (THL)">Tachilek (THL)</option>
-                                <option value="Taipei (TPE)">Taipei (TPE)</option>
-                                <option value="Thandwe (SNW)">Thandwe (SNW)</option>
-                                <option value="Tokyo - Narita (NRT)">Tokyo - Narita (NRT)</option>
-                                <option value="Vientiane (VTE)">Vientiane (VTE)</option>
-                                <option value="Xiamen (XMN)">Xiamen (XMN)</option>
-                                <option value="Yangon (RGN)">Yangon (RGN)</option>
-                            </select></div>
+                                </select></div>
                             <div class="form-group"><label for="departing_on">Travel Date</label><input type="text" id="departing_on" name="departing_on" placeholder="MM/DD/YYYY" required></div>
                             <div class="form-group">
                                 <label for="airline">Airline</label>
@@ -713,7 +601,7 @@
         </main>
     </div>
 
-    <div id="settings-panel" class="settings-panel">
+    <div id="settings-panel" class="glass-card settings-panel solid-bg">
         <h3 class="settings-title">UI Customization</h3>
         <div class="settings-grid">
             <div class="setting-item">

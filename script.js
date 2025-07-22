@@ -7,28 +7,37 @@ const CONFIG = {
     DISCOVERY_DOC: 'https://sheets.googleapis.com/$discovery/rest?version=v4',
     SHEET_NAME: '2025',
     BOOKING_SHEET_NAME: 'booking',
-    MODIFICATION_HISTORY_SHEET: 'modification_history', // New Sheet
-    CANCELLATION_HISTORY_SHEET: 'cancellation_history' // New Sheet
+    MODIFICATION_HISTORY_SHEET: 'modification_history',
+    CANCELLATION_HISTORY_SHEET: 'cancellation_history'
 };
 
-// Global variables
-let allTickets = [];
-let filteredTickets = [];
-let allBookings = [];
-let filteredBookings = [];
-let modificationHistory = [];
-let cancellationHistory = [];
-let charts = {};
+// --- GLOBAL STATE & CACHE ---
+const state = {
+    allTickets: [],
+    filteredTickets: [],
+    allBookings: [],
+    filteredBookings: [],
+    modificationHistory: [],
+    cancellationHistory: [],
+    charts: {},
+    isSubmitting: false,
+    rowsPerPage: 10,
+    currentPage: 1,
+    bookingCurrentPage: 1,
+    modHistoryPage: 1,
+    cancelHistoryPage: 1,
+    searchTimeout: null,
+    cache: {} // In-memory cache
+};
 let tokenClient;
 let gapiInited = false;
 let gisInited = false;
-let isSubmitting = false;
-const rowsPerPage = 10;
-let currentPage = 1;
-let bookingCurrentPage = 1;
-let modHistoryPage = 1;
-let cancelHistoryPage = 1;
-let searchTimeout;
+
+// --- City data for flight type toggle ---
+const CITIES = {
+    DOMESTIC: ["Bhamo (BMO)", "Bokpyin (VBP)", "Dawei (TVY)", "Heho (HEH)", "Hommalinn (HOX)", "Kalemyo (KMV)", "Kawtung (KET)", "Khamti (KHM)", "Kyaukpyu (KYP)", "Lashio (LSH)", "Loikaw (LIW)", "Mandalay (MDL)", "Mawlamyaing (MNU)", "Monywa (NYW)", "Myeik (MGZ)", "Myitkyina (MYT)", "Nay Pyi Taw (NYT)", "Nyaung U (NYU)", "Putao (PBU)", "Sittwe (AKY)", "Tachilek (THL)", "Thandwe (SNW)", "Yangon (RGN)"],
+    INTERNATIONAL: ["Mandalay (MDL)", "Yangon (RGN)", "Ann (VBA)", "Anni Sakhan (VBK)", "Bangalore (BLR)", "Bangkok (BKK)", "Bassein (BSX)", "Brisbane (BNE)", "Busan (PUS)", "Chengdu (CTU)", "Chaing Mai (CNX)", "Coco Islands (VCC)", "Colombo (CMB)", "Cox's bazar (CXB)", "Denpasar (DPS)", "Dhaka (DAC)", "Fukuoka (FUK)", "Gaya (GAY)", "Haikou (HAK)", "Hanoi (HAN)", "Ho Chi Minh City (SGN)", "Hong Kong (HKG)", "Incheon (ICN)", "Jakarta (CGK)", "Kolkata (CCU)", "Krabi (KBV)", "Kuala Lumpur (KUL)", "Kumming (KMG)", "Mae Sot (MAQ)", "Manaung (MGU)", "Mangrere (AKL)", "Mangshi (LUM)", "Manila (MNL)", "Melbourne (MEL)", "Monghsat (MOG)", "Mumbai (BOM)", "Nagoya (NGO)", "Naming (NMS)", "Nanning (NNG)", "Phuket (HKT)", "Siem Reap (SAI)", "Singapore (SIN)", "Subang (SZB)", "Surbung (SRU)", "Sydney (SYD)", "Taipei (TPE)", "Tokyo - Narita (NRT)", "Vientiane (VTE)", "Xiamen (XMN)"]
+};
 
 
 // --- DOM Elements ---
@@ -49,7 +58,9 @@ const bookingDetailModalBody = document.getElementById('bookingDetailModalBody')
 const bookingConfirmModal = document.getElementById('bookingConfirmModal');
 const bookingConfirmModalBody = document.getElementById('bookingConfirmModalBody');
 const settingsPanel = document.getElementById('settings-panel');
-
+const monthSelector = document.getElementById('dashboard-month');
+const yearSelector = document.getElementById('dashboard-year');
+const flightTypeToggle = document.getElementById('flightTypeToggle');
 
 // --- INITIALIZATION ---
 window.onload = async () => {
@@ -57,6 +68,8 @@ window.onload = async () => {
     setupEventListeners();
     initializeBackgroundChanger();
     initializeUISettings();
+    populateFlightLocations();
+    updateToggleLabels();
     if (typeof gapi === 'undefined' || !google.accounts) { showToast('Google API scripts not loaded.', 'error'); return; }
     try {
         await Promise.all([loadGapiClient(), loadGisClient()]);
@@ -68,32 +81,23 @@ window.onload = async () => {
 };
 
 function initializeDatepickers() {
-    // Options for most datepickers (Search, Booking, etc.)
     const defaultOptions = { 
         format: 'mm/dd/yyyy', 
         autohide: true, 
         todayHighlight: true 
     };
-
-    // Options for the search end date
+    const sellTicketOptions = {
+        ...defaultOptions,
+        minDate: 'today'
+    };
     const endDateOptions = {
-        format: 'mm/dd/yyyy',
-        autohide: true,
-        todayHighlight: true,
-        maxDate: 'today' // Disables selection of dates after today
+        ...defaultOptions,
+        maxDate: 'today'
     };
 
-    // Initialize datepickers that can select past dates
-    ['searchStartDate', 'searchTravelDate', 'booking_departing_on', 'issued_date', 'departing_on', 'paid_date'].forEach(id => {
-        const el = document.getElementById(id);
-        if (el) new Datepicker(el, defaultOptions);
-    });
-
-    // Initialize the search end date with the maxDate restriction
-    const searchEndDateEl = document.getElementById('searchEndDate');
-    if (searchEndDateEl) {
-        new Datepicker(searchEndDateEl, endDateOptions);
-    }
+    ['searchStartDate', 'searchTravelDate', 'booking_departing_on'].forEach(id => new Datepicker(document.getElementById(id), defaultOptions));
+    new Datepicker(document.getElementById('searchEndDate'), endDateOptions);
+    ['issued_date', 'departing_on', 'paid_date'].forEach(id => new Datepicker(document.getElementById(id), sellTicketOptions));
 }
 
 
@@ -158,10 +162,47 @@ async function initializeApp() {
             loadModificationHistory(),
             loadCancellationHistory()
         ]);
+        initializeDashboardSelectors();
     } catch (error) {
         console.error("Initialization failed:", error);
         showToast('A critical error occurred during data initialization. Please check the console (F12) for details.', 'error');
     }
+}
+
+// --- API CACHING ---
+async function fetchFromSheet(range, cacheKey) {
+    const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
+
+    if (state.cache[cacheKey] && (Date.now() - state.cache[cacheKey].timestamp < CACHE_DURATION)) {
+        console.log(`Using cached data for: ${cacheKey}`);
+        return Promise.resolve(state.cache[cacheKey].data);
+    }
+
+    console.log(`Fetching fresh data for: ${cacheKey}`);
+    try {
+        const response = await gapi.client.sheets.spreadsheets.values.get({
+            spreadsheetId: CONFIG.SHEET_ID,
+            range: range
+        });
+
+        const data = response.result;
+        state.cache[cacheKey] = {
+            data: data,
+            timestamp: Date.now()
+        };
+        return data;
+    } catch (error) {
+        showToast(`API Error: ${error.result?.error?.message || 'Could not fetch data.'}`, 'error');
+        throw error;
+    }
+}
+
+// --- DEBOUNCE UTILITY ---
+function debounce(func, delay = 300) {
+    clearTimeout(state.searchTimeout);
+    state.searchTimeout = setTimeout(() => {
+        func.apply(this, arguments);
+    }, delay);
 }
 
 
@@ -169,17 +210,27 @@ async function initializeApp() {
 function setupEventListeners() {
     navBtns.forEach(btn => btn.addEventListener('click', (e) => showView(e.currentTarget.dataset.view)));
     authorizeButton.addEventListener('click', handleAuthClick);
+    
     document.getElementById('searchBtn').addEventListener('click', performSearch);
     document.getElementById('clearBtn').addEventListener('click', clearSearch);
     document.getElementById('exportPdfBtn').addEventListener('click', exportToPdf); 
     
-    ['searchName', 'searchBooking', 'searchTravelDate'].forEach(id => {
-        document.getElementById(id).addEventListener('keyup', (e) => {
-            if (e.key === 'Enter') {
-                performSearch();
-            }
-        });
+    document.getElementById('searchName').addEventListener('keyup', () => debounce(performSearch));
+    document.getElementById('searchBooking').addEventListener('keyup', () => debounce(performSearch));
+    
+    ['searchTravelDate', 'searchStartDate', 'searchEndDate', 'searchDeparture', 'searchDestination', 'searchAirline'].forEach(id => {
+         document.getElementById(id).addEventListener('change', performSearch);
     });
+     document.getElementById('searchNotPaidToggle').addEventListener('change', performSearch);
+
+    monthSelector.addEventListener('change', updateDashboardData);
+    yearSelector.addEventListener('change', updateDashboardData);
+    
+    flightTypeToggle.addEventListener('change', () => {
+        populateFlightLocations();
+        updateToggleLabels();
+    });
+
 
     document.getElementById('sellForm').addEventListener('submit', handleSellTicket);
     document.getElementById('airline').addEventListener('change', handleAirlineChange);
@@ -204,29 +255,10 @@ function setupEventListeners() {
     document.getElementById('bookingClearBtn').addEventListener('click', clearBookingSearch);
     bookingDetailModal.querySelector('.close').addEventListener('click', () => bookingDetailModal.classList.remove('show'));
 
-    ['departure', 'destination', 'searchDeparture', 'searchDestination', 'booking_departure', 'booking_destination'].forEach(id => {
-        const select = document.getElementById(id);
-        if (select) {
-            const tempInput = document.createElement('input');
-            tempInput.setAttribute('type', 'text');
-            tempInput.setAttribute('style', 'position:absolute;opacity:0;height:0;width:0;');
-            select.parentNode.insertBefore(tempInput, select);
-
-            select.addEventListener('focus', () => {
-                tempInput.focus();
-                select.classList.add('focused');
-            });
-
-            tempInput.addEventListener('blur', () => {
-                select.classList.remove('focused');
-            });
-
-            tempInput.addEventListener('keydown', (e) => handleSelectSearchAndTab(e, id));
-        }
+    ['departure', 'destination', 'searchDeparture', 'searchDestination'].forEach(id => {
+        document.getElementById(id).addEventListener('change', handleRouteValidation);
     });
 
-    modifyModal.querySelector('.close').addEventListener('click', () => modifyModal.classList.remove('show'));
-    cancelModal.querySelector('.close').addEventListener('click', () => cancelModal.classList.remove('show'));
     window.addEventListener('click', (event) => {
         if (event.target == detailsModal) detailsModal.classList.remove('show');
         if (event.target == modifyModal) modifyModal.classList.remove('show');
@@ -239,99 +271,74 @@ function setupEventListeners() {
     });
 }
 
+// --- ROUTE & FLIGHT TYPE LOGIC ---
+function populateFlightLocations() {
+    const isDomestic = !flightTypeToggle.checked;
+    const locations = isDomestic ? CITIES.DOMESTIC : CITIES.INTERNATIONAL;
+    
+    const departureSelect = document.getElementById('departure');
+    const destinationSelect = document.getElementById('destination');
 
-// --- CORRECTED SHORTCUT TYPING & TABBING FUNCTION ---
-function handleSelectSearchAndTab(event, elementId) {
-    const selectElement = document.getElementById(elementId);
-    const tempInput = event.target;
+    departureSelect.innerHTML = '<option value="" disabled selected>Select Departure</option>';
+    destinationSelect.innerHTML = '<option value="" disabled selected>Select Destination</option>';
 
-    if (event.key === 'Tab') {
-        event.preventDefault();
-        const tabOrder = {
-            'departure': 'destination',
-            'destination': 'departing_on',
-            'searchDeparture': 'searchDestination',
-            'searchDestination': 'searchAirline',
-            'booking_departure': 'booking_destination',
-            'booking_destination': 'booking_departing_on'
-        };
-        const nextElementId = tabOrder[elementId];
-        if (nextElementId) {
-            const nextElement = document.getElementById(nextElementId);
-            if (nextElement) {
-                const nextTempInput = nextElement.previousElementSibling;
-                if (nextTempInput && nextTempInput.tagName === 'INPUT') {
-                    nextTempInput.focus();
-                } else {
-                    nextElement.focus();
-                }
-            }
-        }
-        return;
-    }
+    locations.sort().forEach(location => {
+        departureSelect.add(new Option(location, location));
+        destinationSelect.add(new Option(location, location));
+    });
+}
 
-    if (event.key === 'Backspace') {
-        tempInput.value = tempInput.value.slice(0, -1);
-    } else if (event.key.length === 1 && /[a-zA-Z]/.test(event.key)) {
-        if (searchTimeout) clearTimeout(searchTimeout);
-        tempInput.value += event.key.toUpperCase();
+function updateToggleLabels() {
+    const domesticLabel = document.getElementById('domestic-label');
+    const internationalLabel = document.getElementById('international-label');
+    if (flightTypeToggle.checked) {
+        internationalLabel.classList.add('active');
+        domesticLabel.classList.remove('active');
     } else {
-        return;
-    }
-
-    searchTimeout = setTimeout(() => {
-        tempInput.value = '';
-    }, 1500);
-
-    const currentSearch = tempInput.value;
-    if (!currentSearch) {
-        selectElement.value = "";
-        return;
-    }
-
-    let bestMatch = null;
-    let matchLevel = 0; // 0: none, 1: startsWith, 2: exact
-
-    for (const option of selectElement.options) {
-        if (!option.value) continue;
-        const shortcutMatch = option.value.match(/\((.*?)\)/);
-        if (shortcutMatch) {
-            const shortcut = shortcutMatch[1].toUpperCase();
-
-            if (shortcut === currentSearch) {
-                bestMatch = option.value;
-                matchLevel = 2;
-                break; 
-            }
-            if (shortcut.startsWith(currentSearch) && matchLevel < 1) {
-                bestMatch = option.value;
-                matchLevel = 1;
-            }
-        }
-    }
-
-    if (bestMatch) {
-        selectElement.value = bestMatch;
-    } else {
-        selectElement.value = "";
+        domesticLabel.classList.add('active');
+        internationalLabel.classList.remove('active');
     }
 }
+
+function handleRouteValidation(event) {
+    const changedSelect = event.target;
+    const form = changedSelect.closest('form');
+    if (!form) return;
+
+    const isDeparture = changedSelect.id.includes('departure');
+    const otherSelectId = isDeparture 
+        ? changedSelect.id.replace('departure', 'destination')
+        : changedSelect.id.replace('destination', 'departure');
+    
+    const otherSelect = form.querySelector(`#${otherSelectId}`);
+    if (!otherSelect) return;
+
+    const selectedValue = changedSelect.value;
+    
+    for (const option of otherSelect.options) {
+        option.disabled = false;
+    }
+
+    if (selectedValue) {
+        const optionToDisable = otherSelect.querySelector(`option[value="${selectedValue}"]`);
+        if (optionToDisable) {
+            optionToDisable.disabled = true;
+        }
+    }
+}
+
 
 // --- CORE APP LOGIC (TICKETS) ---
 async function loadTicketData() {
     try {
         loading.style.display = 'block';
         dashboardContent.style.display = 'none';
-        const response = await gapi.client.sheets.spreadsheets.values.get({
-            spreadsheetId: CONFIG.SHEET_ID,
-            range: `${CONFIG.SHEET_NAME}!A:U` 
-        });
+        const response = await fetchFromSheet(`${CONFIG.SHEET_NAME}!A:U`, 'ticketData');
         
-        if (response.result.values && response.result.values.length > 1) {
-            allTickets = parseTicketData(response.result.values);
-            updateDashboardData();
+        if (response.values && response.values.length > 1) {
+            state.allTickets = parseTicketData(response.values);
             populateSearchAirlines();
-            displayAllTickets();
+            displayInitialTickets();
         }
         loading.style.display = 'none';
         dashboardContent.style.display = 'flex';
@@ -361,15 +368,12 @@ function parseTicketData(values) {
 // --- BOOKING LOGIC ---
 async function loadBookingData() {
     try {
-        const response = await gapi.client.sheets.spreadsheets.values.get({
-            spreadsheetId: CONFIG.SHEET_ID,
-            range: `${CONFIG.BOOKING_SHEET_NAME}!A:K`
-        });
+        const response = await fetchFromSheet(`${CONFIG.BOOKING_SHEET_NAME}!A:K`, 'bookingData');
 
-        if (response.result.values) {
-            allBookings = parseBookingData(response.result.values);
+        if (response.values) {
+            state.allBookings = parseBookingData(response.values);
         } else {
-            allBookings = [];
+            state.allBookings = [];
         }
         populateBookingSearchOptions();
         displayBookings();
@@ -404,7 +408,7 @@ function displayBookings(bookingsToDisplay) {
         const today = new Date();
         today.setHours(0, 0, 0, 0);
 
-        bookings = allBookings.filter(b => {
+        bookings = state.allBookings.filter(b => {
             const hasNoAction = !b.remarks || String(b.remarks).trim() === '';
             const travelDate = parseSheetDate(b.departing_on);
             return hasNoAction && travelDate >= today;
@@ -417,24 +421,24 @@ function displayBookings(bookingsToDisplay) {
         return dateA - dateB;
     });
 
-    filteredBookings = bookings;
+    state.filteredBookings = bookings;
 
-    if (filteredBookings.length === 0) {
+    if (state.filteredBookings.length === 0) {
         tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;">No bookings found.</td></tr>`;
         setupBookingPagination([]);
         return;
     }
     
-    bookingCurrentPage = 1;
+    state.bookingCurrentPage = 1;
     renderBookingPage(1);
 }
 
 function renderBookingPage(page) {
-    bookingCurrentPage = page;
+    state.bookingCurrentPage = page;
     const tbody = document.getElementById('bookingTableBody');
     tbody.innerHTML = '';
 
-    const paginated = filteredBookings.slice((page - 1) * rowsPerPage, page * rowsPerPage);
+    const paginated = state.filteredBookings.slice((page - 1) * state.rowsPerPage, page * state.rowsPerPage);
 
     paginated.forEach(booking => {
         const row = tbody.insertRow();
@@ -449,24 +453,24 @@ function renderBookingPage(page) {
         `;
     });
     
-    setupBookingPagination(filteredBookings);
+    setupBookingPagination(state.filteredBookings);
 }
 
 function handleGetTicket(rowIndex) {
-    const booking = allBookings.find(b => b.rowIndex === rowIndex);
+    const booking = state.allBookings.find(b => b.rowIndex === rowIndex);
     const message = `Are you sure you want to mark booking for <strong>${booking.name}</strong> as "Get Ticket"? This will remove it from the list.`;
     showBookingConfirmModal(message, () => updateBookingStatus(rowIndex, 'Get Ticket'));
 }
 
 function handleCancelBooking(rowIndex) {
-    const booking = allBookings.find(b => b.rowIndex === rowIndex);
+    const booking = state.allBookings.find(b => b.rowIndex === rowIndex);
     const message = `Are you sure you want to <strong>CANCEL</strong> the booking for <strong>${booking.name}</strong>? This will remove it from the list.`;
     showBookingConfirmModal(message, () => updateBookingStatus(rowIndex, 'Canceled'));
 }
 
 async function updateBookingStatus(rowIndex, remarks) {
     try {
-        isSubmitting = true;
+        state.isSubmitting = true;
         showToast('Updating booking status...', 'info');
         const range = `${CONFIG.BOOKING_SHEET_NAME}!K${rowIndex}`;
         await gapi.client.sheets.spreadsheets.values.update({
@@ -477,19 +481,20 @@ async function updateBookingStatus(rowIndex, remarks) {
                 values: [[remarks]]
             }
         });
+        state.cache['bookingData'] = null;
         showToast('Booking updated successfully!', 'success');
         await loadBookingData();
     } catch (error) {
         showToast(`Update Error: ${error.result?.error?.message || 'Could not update.'}`, 'error');
         await loadBookingData();
     } finally {
-        isSubmitting = false;
+        state.isSubmitting = false;
         bookingConfirmModal.classList.remove('show');
     }
 }
 
 function showBookingDetails(rowIndex) {
-    const booking = allBookings.find(b => b.rowIndex === rowIndex);
+    const booking = state.allBookings.find(b => b.rowIndex === rowIndex);
     if (booking) {
         bookingDetailModalBody.innerHTML = `
             <h3>Booking Request Details</h3>
@@ -526,8 +531,8 @@ function hideNewBookingForm() {
 
 async function handleNewBookingSubmit(e) {
     e.preventDefault();
-    if (isSubmitting) return;
-    isSubmitting = true;
+    if (state.isSubmitting) return;
+    state.isSubmitting = true;
     const submitButton = e.target.querySelector('button[type="submit"]');
     if (submitButton) submitButton.disabled = true;
 
@@ -565,13 +570,14 @@ async function handleNewBookingSubmit(e) {
             resource: { values },
         });
 
+        state.cache['bookingData'] = null;
         showToast('Booking saved successfully!', 'success');
         hideNewBookingForm();
         await loadBookingData();
     } catch (error) {
         showToast(`Error: ${error.message || 'Could not save booking.'}`, 'error');
     } finally {
-        isSubmitting = false;
+        state.isSubmitting = false;
         if (submitButton) submitButton.disabled = false;
     }
 }
@@ -579,7 +585,7 @@ async function handleNewBookingSubmit(e) {
 function setupBookingPagination(items) {
     const container = document.getElementById('bookingPagination');
     container.innerHTML = '';
-    const pageCount = Math.ceil(items.length / rowsPerPage);
+    const pageCount = Math.ceil(items.length / state.rowsPerPage);
     if (pageCount <= 1) return;
 
     const createBtn = (txt, pg, enabled = true) => {
@@ -590,17 +596,17 @@ function setupBookingPagination(items) {
         if (enabled) {
             btn.onclick = () => renderBookingPage(pg);
         }
-        if (pg === bookingCurrentPage) {
+        if (pg === state.bookingCurrentPage) {
             btn.classList.add('active');
         }
         return btn;
     };
 
-    container.append(createBtn('&laquo;', bookingCurrentPage - 1, bookingCurrentPage > 1));
+    container.append(createBtn('&laquo;', state.bookingCurrentPage - 1, state.bookingCurrentPage > 1));
     for (let i = 1; i <= pageCount; i++) {
         container.append(createBtn(i, i));
     }
-    container.append(createBtn('&raquo;', bookingCurrentPage + 1, bookingCurrentPage < pageCount));
+    container.append(createBtn('&raquo;', state.bookingCurrentPage + 1, state.bookingCurrentPage < pageCount));
 }
 
 function showBookingConfirmModal(message, onConfirm) {
@@ -627,7 +633,7 @@ function populateBookingSearchOptions() {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    const activeBookings = allBookings.filter(b => {
+    const activeBookings = state.allBookings.filter(b => {
         const hasNoAction = !b.remarks || String(b.remarks).trim() === '';
         const travelDate = parseSheetDate(b.departing_on);
         return hasNoAction && travelDate >= today;
@@ -653,7 +659,7 @@ function performBookingSearch() {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    const searchResults = allBookings.filter(b => {
+    const searchResults = state.allBookings.filter(b => {
         const route = `${b.departure || ''}→${b.destination || ''}`;
         const hasNoAction = !b.remarks || String(b.remarks).trim() === '';
         const travelDate = parseSheetDate(b.departing_on);
@@ -707,28 +713,30 @@ function showView(viewName) {
     views.forEach(view => view.classList.toggle('active', view.id === `${viewName}-view`));
     if (viewName === 'sell') {
         document.getElementById('sellForm').reset();
+        populateFlightLocations();
+        updateToggleLabels();
     }
     if (viewName === 'booking') {
         hideNewBookingForm();
     }
 }
 
-function displayAllTickets() {
-    const sorted = [...allTickets].sort((a, b) => parseSheetDate(b.issued_date) - parseSheetDate(a.issued_date) || b.rowIndex - a.rowIndex);
-    filteredTickets = sorted;
-    displayTickets(filteredTickets, 1);
+function displayInitialTickets() {
+    const sorted = [...state.allTickets].sort((a, b) => parseSheetDate(b.issued_date) - parseSheetDate(a.issued_date) || b.rowIndex - a.rowIndex);
+    const initialTickets = sorted.slice(0, 50);
+    state.filteredTickets = initialTickets;
+    displayTickets(initialTickets, 1);
 }
 
 function displayTickets(tickets, page = 1) {
     const tbody = document.getElementById('resultsBody');
     tbody.innerHTML = ''; 
-    currentPage = page;
-    const paginated = tickets.slice((page - 1) * rowsPerPage, page * rowsPerPage);
+    state.currentPage = page;
+    const paginated = tickets.slice((page - 1) * state.rowsPerPage, page * state.rowsPerPage);
     
     paginated.forEach((ticket) => {
         const row = tbody.insertRow();
 
-        // Check for cancellation or refund remarks to apply a CSS class
         if (ticket.remarks) {
             const lowerRemarks = ticket.remarks.toLowerCase();
             if (lowerRemarks.includes('refund') || lowerRemarks.includes('cancel')) {
@@ -743,18 +751,25 @@ function displayTickets(tickets, page = 1) {
 
 function closeDetailsModal() { document.getElementById('modal').classList.remove('show'); }
 
-// --- UPDATED AESTHETIC DETAILS VIEW ---
 function showDetails(rowIndex) {
-    const ticket = allTickets.find(t => t.rowIndex === rowIndex);
+    const ticket = state.allTickets.find(t => t.rowIndex === rowIndex);
     if (!ticket) return;
 
     let statusClass = 'confirmed';
-    let statusText = 'Confirmed';
+    let statusText = `Issued on ${formatDateToDMMMY(ticket.issued_date) || 'N/A'}`;
+
     if (ticket.remarks) {
         const lowerRemarks = ticket.remarks.toLowerCase();
-        if (lowerRemarks.includes('refund') || lowerRemarks.includes('cancel')) {
+        const dateRegex = /(\d{1,2}[\/-]\d{1,2}[\/-]\d{4})/;
+        const match = lowerRemarks.match(dateRegex);
+        const actionDate = match ? formatDateToDMMMY(match[1]) : 'an unknown date';
+
+        if (lowerRemarks.includes('full refund')) {
             statusClass = 'canceled';
-            statusText = 'Canceled';
+            statusText = `Full Refund on ${actionDate}`;
+        } else if (lowerRemarks.includes('cancel')) {
+            statusClass = 'canceled';
+            statusText = `Canceled on ${actionDate}`;
         }
     }
 
@@ -770,102 +785,30 @@ function showDetails(rowIndex) {
         <div class="details-section">
             <div class="details-section-title">Client Information</div>
             <div class="details-grid">
-                <div class="details-item">
-                    <i class="fa-solid fa-id-card"></i>
-                    <div class="details-item-content">
-                        <div class="label">NRC No.</div>
-                        <div class="value">${ticket.nrc_no || 'N/A'}</div>
-                    </div>
-                </div>
-                <div class="details-item">
-                    <i class="fa-solid fa-phone"></i>
-                    <div class="details-item-content">
-                        <div class="label">Phone</div>
-                        <div class="value">${makeClickable(ticket.phone) || 'N/A'}</div>
-                    </div>
-                </div>
-                <div class="details-item">
-                     <i class="fa-solid fa-hashtag"></i>
-                    <div class="details-item-content">
-                        <div class="label">Social Media</div>
-                        <div class="value">${ticket.account_name || 'N/A'} (${ticket.account_type || 'N/A'})</div>
-                    </div>
-                </div>
-                <div class="details-item">
-                    <i class="fa-solid fa-link"></i>
-                    <div class="details-item-content">
-                        <div class="label">Account Link</div>
-                        <div class="value">${makeClickable(ticket.account_link) || 'N/A'}</div>
-                    </div>
-                </div>
+                <div class="details-item"><i class="fa-solid fa-id-card"></i><div class="details-item-content"><div class="label">NRC No.</div><div class="value">${ticket.nrc_no || 'N/A'}</div></div></div>
+                <div class="details-item"><i class="fa-solid fa-phone"></i><div class="details-item-content"><div class="label">Phone</div><div class="value">${makeClickable(ticket.phone) || 'N/A'}</div></div></div>
+                <div class="details-item"><i class="fa-solid fa-hashtag"></i><div class="details-item-content"><div class="label">Social Media</div><div class="value">${ticket.account_name || 'N/A'} (${ticket.account_type || 'N/A'})</div></div></div>
+                <div class="details-item"><i class="fa-solid fa-link"></i><div class="details-item-content"><div class="label">Account Link</div><div class="value">${makeClickable(ticket.account_link) || 'N/A'}</div></div></div>
             </div>
         </div>
 
         <div class="details-section">
             <div class="details-section-title">Flight Details</div>
             <div class="details-grid">
-                <div class="details-item">
-                    <i class="fa-solid fa-plane-departure"></i>
-                    <div class="details-item-content">
-                        <div class="label">From</div>
-                        <div class="value">${ticket.departure || 'N/A'}</div>
-                    </div>
-                </div>
-                <div class="details-item">
-                    <i class="fa-solid fa-plane-arrival"></i>
-                    <div class="details-item-content">
-                        <div class="label">To</div>
-                        <div class="value">${ticket.destination || 'N/A'}</div>
-                    </div>
-                </div>
-                <div class="details-item">
-                    <i class="fa-solid fa-calendar-days"></i>
-                    <div class="details-item-content">
-                        <div class="label">Travel Date</div>
-                        <div class="value">${ticket.departing_on || 'N/A'}</div>
-                    </div>
-                </div>
-                <div class="details-item">
-                    <i class="fa-solid fa-plane"></i>
-                    <div class="details-item-content">
-                        <div class="label">Airline</div>
-                        <div class="value">${ticket.airline || 'N/A'}</div>
-                    </div>
-                </div>
+                <div class="details-item"><i class="fa-solid fa-plane-departure"></i><div class="details-item-content"><div class="label">From</div><div class="value">${ticket.departure || 'N/A'}</div></div></div>
+                <div class="details-item"><i class="fa-solid fa-plane-arrival"></i><div class="details-item-content"><div class="label">To</div><div class="value">${ticket.destination || 'N/A'}</div></div></div>
+                <div class="details-item"><i class="fa-solid fa-calendar-days"></i><div class="details-item-content"><div class="label">Travel Date</div><div class="value">${ticket.departing_on || 'N/A'}</div></div></div>
+                <div class="details-item"><i class="fa-solid fa-plane"></i><div class="details-item-content"><div class="label">Airline</div><div class="value">${ticket.airline || 'N/A'}</div></div></div>
             </div>
         </div>
 
         <div class="details-section">
             <div class="details-section-title">Financials</div>
             <div class="details-grid">
-                 <div class="details-item">
-                    <i class="fa-solid fa-receipt"></i>
-                    <div class="details-item-content">
-                        <div class="label">Net Amount</div>
-                        <div class="value">${(ticket.net_amount || 0).toLocaleString()} MMK</div>
-                    </div>
-                </div>
-                 <div class="details-item">
-                    <i class="fa-solid fa-hand-holding-dollar"></i>
-                    <div class="details-item-content">
-                        <div class="label">Commission</div>
-                        <div class="value">${(ticket.commission || 0).toLocaleString()} MMK</div>
-                    </div>
-                </div>
-                <div class="details-item">
-                    <i class="fa-solid fa-money-bill-transfer"></i>
-                    <div class="details-item-content">
-                        <div class="label">Date Change / Extra</div>
-                        <div class="value">${((ticket.date_change || 0) + (ticket.extra_fare || 0)).toLocaleString()} MMK</div>
-                    </div>
-                </div>
-                <div class="details-item">
-                    <i class="fa-solid fa-credit-card"></i>
-                    <div class="details-item-content">
-                        <div class="label">Payment Status</div>
-                        <div class="value">${ticket.paid ? `Paid via ${ticket.payment_method || 'N/A'}` : 'Not Paid'}</div>
-                    </div>
-                </div>
+                 <div class="details-item"><i class="fa-solid fa-receipt"></i><div class="details-item-content"><div class="label">Net Amount</div><div class="value">${(ticket.net_amount || 0).toLocaleString()} MMK</div></div></div>
+                 <div class="details-item"><i class="fa-solid fa-hand-holding-dollar"></i><div class="details-item-content"><div class="label">Commission</div><div class="value">${(ticket.commission || 0).toLocaleString()} MMK</div></div></div>
+                <div class="details-item"><i class="fa-solid fa-money-bill-transfer"></i><div class="details-item-content"><div class="label">Date Change / Extra</div><div class="value">${((ticket.date_change || 0) + (ticket.extra_fare || 0)).toLocaleString()} MMK</div></div></div>
+                <div class="details-item"><i class="fa-solid fa-credit-card"></i><div class="details-item-content"><div class="label">Payment Status</div><div class="value">${ticket.paid ? `Paid via ${ticket.payment_method || 'N/A'}` : 'Not Paid'}</div></div></div>
             </div>
         </div>
     `;
@@ -874,56 +817,93 @@ function showDetails(rowIndex) {
 
 
 // --- DASHBOARD DATA & CHARTS ---
-function updateDashboardData() {
+function initializeDashboardSelectors() {
+    const months = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+    monthSelector.innerHTML = months.map((m, i) => `<option value="${i}">${m}</option>`).join('');
+
+    const years = [...new Set(state.allTickets.map(t => parseSheetDate(t.issued_date).getFullYear()))].filter(Boolean).sort((a,b) => b-a);
+    if(years.length === 0) years.push(new Date().getFullYear());
+    yearSelector.innerHTML = years.map(y => `<option value="${y}">${y}</option>`).join('');
+    
     const now = new Date();
-    const currentMonth = now.getMonth();
-    const currentYear = now.getFullYear();
-    const monthName = now.toLocaleString('default', { month: 'long' });
-
-    const ticketsThisMonth = allTickets.filter(t => {
-        const ticketDate = parseSheetDate(t.issued_date);
-        return ticketDate.getMonth() === currentMonth && ticketDate.getFullYear() === currentYear && !t.canceled;
-    });
-
-    const totalTicketsBox = document.getElementById('total-tickets-box');
-    totalTicketsBox.innerHTML = `<h3>Tickets (${monthName})</h3><div class="main-value">${ticketsThisMonth.length}</div><i class="icon fa-solid fa-ticket-simple"></i>`;
-
-    const totalRevenue = ticketsThisMonth.reduce((sum, t) => sum + (t.net_amount || 0) + (t.date_change || 0), 0);
-    const revenueBox = document.getElementById('monthly-revenue-box');
-    revenueBox.innerHTML = `<h3>Revenue (${monthName})</h3><div class="main-value">${totalRevenue.toLocaleString()}</div><span class="sub-value">MMK</span><i class="icon fa-solid fa-sack-dollar"></i>`;
-
-    const totalCommission = ticketsThisMonth.reduce((sum, t) => sum + (t.commission || 0), 0);
-    const commissionBox = document.getElementById('monthly-commission-box');
-    commissionBox.innerHTML = `<h3>Commission (${monthName})</h3><div class="main-value">${totalCommission.toLocaleString()}</div><span class="sub-value">MMK</span><i class="icon fa-solid fa-hand-holding-dollar"></i>`;
+    monthSelector.value = now.getMonth();
+    yearSelector.value = now.getFullYear();
     
-    const totalExtraFare = ticketsThisMonth.reduce((sum, t) => sum + (t.extra_fare || 0), 0);
-    const extraFareBox = document.getElementById('monthly-extra-fare-box');
-    extraFareBox.innerHTML = `<h3>Extra Fare (${monthName})</h3><div class="main-value">${totalExtraFare.toLocaleString()}</div><span class="sub-value">MMK</span><i class="icon fa-solid fa-dollar-sign"></i>`;
-
-    const getTopItem = (data, key) => {
-        if (data.length === 0) return 'N/A';
-        const counts = data.reduce((acc, t) => {
-            const value = t[key] || 'Unknown';
-            acc[value] = (acc[value] || 0) + 1;
-            return acc;
-        }, {});
-        return Object.keys(counts).reduce((a, b) => counts[a] > counts[b] ? a : b);
-    };
-
-    const topAirline = getTopItem(ticketsThisMonth, 'airline');
-    const topAirlineBox = document.getElementById('top-airline-box');
-    topAirlineBox.innerHTML = `<h3>Top Airline</h3><div class="main-value long-text">${topAirline}</div><i class="icon fa-solid fa-plane"></i>`;
-    
-    const routeCounts = ticketsThisMonth.reduce((acc, t) => {
-        const route = t.departure && t.destination ? `${t.departure.split(' ')[0]}→${t.destination.split(' ')[0]}` : 'Unknown';
-        acc[route] = (acc[route] || 0) + 1;
-        return acc;
-    }, {});
-    const topRoute = Object.keys(routeCounts).reduce((a, b) => routeCounts[a] > routeCounts[b] ? a : b, 'N/A');
-    const topRouteBox = document.getElementById('top-route-box');
-    topRouteBox.innerHTML = `<h3>Top Route</h3><div class="main-value long-text">${topRoute}</div><i class="icon fa-solid fa-route"></i>`;
+    updateDashboardData();
 }
 
+function updateDashboardData() {
+    const selectedMonth = parseInt(monthSelector.value);
+    const selectedYear = parseInt(yearSelector.value);
+
+    if (isNaN(selectedMonth) || isNaN(selectedYear)) return;
+
+    const ticketsThisPeriod = state.allTickets.filter(t => {
+        const ticketDate = parseSheetDate(t.issued_date);
+        const isCanceled = t.remarks?.toLowerCase().includes('cancel') || t.remarks?.toLowerCase().includes('refund');
+        return ticketDate.getMonth() === selectedMonth && ticketDate.getFullYear() === selectedYear && !isCanceled;
+    });
+
+    document.getElementById('total-tickets-value').textContent = ticketsThisPeriod.length;
+
+    const totalRevenue = ticketsThisPeriod.reduce((sum, t) => sum + (t.net_amount || 0) + (t.date_change || 0), 0);
+    const revenueBox = document.getElementById('monthly-revenue-box');
+    revenueBox.innerHTML = `<div class="info-card-content"><h3>Total Revenue</h3><div class="main-value">${totalRevenue.toLocaleString()}</div><span class="sub-value">MMK</span><i class="icon fa-solid fa-sack-dollar"></i></div>`;
+    
+    const totalCommission = ticketsThisPeriod.reduce((sum, t) => sum + (t.commission || 0), 0);
+    const commissionBox = document.getElementById('monthly-commission-box');
+    commissionBox.innerHTML = `<div class="info-card-content"><h3>Total Commission</h3><div class="main-value">${totalCommission.toLocaleString()}</div><span class="sub-value">MMK</span><i class="icon fa-solid fa-hand-holding-dollar"></i></div>`;
+
+    const totalExtraFare = ticketsThisPeriod.reduce((sum, t) => sum + (t.extra_fare || 0), 0);
+    const extraFareBox = document.getElementById('monthly-extra-fare-box');
+    extraFareBox.innerHTML = `<div class="info-card-content"><h3>Total Extra Fare</h3><div class="main-value">${totalExtraFare.toLocaleString()}</div><span class="sub-value">MMK</span><i class="icon fa-solid fa-dollar-sign"></i></div>`;
+    
+    if (state.charts.airlineChart) state.charts.airlineChart.destroy();
+    createAirlineChart(ticketsThisPeriod);
+}
+
+function createAirlineChart(tickets) {
+    const ctx = document.getElementById('airline-chart').getContext('2d');
+    const airlineCounts = tickets.reduce((acc, t) => {
+        const airline = t.airline || 'Unknown';
+        acc[airline] = (acc[airline] || 0) + 1;
+        return acc;
+    }, {});
+
+    const labels = Object.keys(airlineCounts);
+    const data = Object.values(airlineCounts);
+
+    state.charts.airlineChart = new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+            labels: labels,
+            datasets: [{
+                data: data,
+                backgroundColor: [
+                    'rgba(254, 230, 190, 0.9)', 'rgba(63, 185, 80, 0.9)',
+                    'rgba(88, 166, 255, 0.9)', 'rgba(255, 118, 126, 0.9)',
+                    'rgba(168, 133, 255, 0.9)', 'rgba(255, 189, 89, 0.9)'
+                ],
+                borderColor: 'rgba(13, 17, 23, 0.5)',
+                borderWidth: 2,
+                hoverOffset: 8
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    display: labels.length > 0 && labels.length < 8,
+                    position: 'right',
+                    labels: { color: '#e6edf3', boxWidth: 12, padding: 8, font: { size: 10 } }
+                }
+            },
+            animation: { animateScale: true, duration: 500 },
+            cutout: '65%'
+        }
+    });
+}
 
 // --- UTILITY FUNCTIONS ---
 function makeClickable(text) { if (!text) return 'N/A'; if (text.toLowerCase().startsWith('http')) return `<a href="${text}" target="_blank" style="color:var(--primary-accent);">${text}</a>`; if (/^[\d\s\-+()]+$/.test(text)) return `<a href="tel:${text.replace(/[^\d+]/g, '')}" style="color:var(--primary-accent);">${text}</a>`; if (text.startsWith('@')) return `<a href="https://t.me/${text.substring(1)}" target="_blank" style="color:var(--primary-accent);">${text}</a>`; return text; }
@@ -936,62 +916,42 @@ function formatDateToDMMMY(dateString) {
     if (isNaN(date.getTime()) || date.getTime() === 0) {
         return '';
     }
-
     const day = String(date.getUTCDate()).padStart(2, '0');
     const year = date.getUTCFullYear();
     const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
     const month = monthNames[date.getUTCMonth()];
-
     return `${day}-${month}-${year}`;
 }
 
 function parseSheetDate(dateString) {
-    // Return an invalid date for null/empty input for safe comparison
     if (!dateString) return new Date(0);
-
     const safeDateString = String(dateString).trim();
     const monthMap = { 'JAN': 0, 'FEB': 1, 'MAR': 2, 'APR': 3, 'MAY': 4, 'JUN': 5, 'JUL': 6, 'AUG': 7, 'SEP': 8, 'OCT': 9, 'NOV': 10, 'DEC': 11 };
-
     const parts = safeDateString.split(/[-\/]/);
-
     if (parts.length === 3) {
         let day, month, year;
-
-        // Case 1: DD-Mon-YYYY (e.g., "16-Jul-2025") - check if middle part is text
         if (isNaN(parseInt(parts[1], 10))) {
             day = parseInt(parts[0], 10);
             month = monthMap[parts[1].toUpperCase()];
             year = parseInt(parts[2], 10);
-        }
-        // Case 2: MM/DD/YYYY (e.g., "07/16/2025") - middle part is a number
-        else {
-            month = parseInt(parts[0], 10) - 1; // JS months are 0-indexed
+        } else {
+            month = parseInt(parts[0], 10) - 1;
             day = parseInt(parts[1], 10);
             year = parseInt(parts[2], 10);
         }
-
-        // Validate parsed components before creating a Date object
         if (!isNaN(day) && month !== undefined && !isNaN(year) && year > 1900 && day > 0 && day <= 31 && month >= 0 && month < 12) {
-            // Use Date.UTC to create a timezone-agnostic date
             const d = new Date(Date.UTC(year, month, day));
-            // Verify that the created date is valid (e.g., handles "Feb 30" correctly)
             if (d.getUTCFullYear() === year && d.getUTCMonth() === month && d.getUTCDate() === day) {
                 return d;
             }
         }
     }
-
-    // Fallback for any other format that new Date() might understand
     const fallbackDate = new Date(safeDateString);
     if (!isNaN(fallbackDate.getTime())) {
-        // Normalize to UTC midnight to ensure consistent time component for comparisons
         return new Date(Date.UTC(fallbackDate.getFullYear(), fallbackDate.getMonth(), fallbackDate.getDate()));
     }
-
-    // Return an invalid date if all parsing fails
     return new Date(0);
 }
-
 
 function calculateCommission() {
     const baseFare = parseFloat(document.getElementById('base_fare').value) || 0;
@@ -1012,23 +972,18 @@ function performSearch() {
 
     let searchStartDate = startDateVal ? parseSheetDate(startDateVal) : null;
     let searchEndDate = endDateVal ? parseSheetDate(endDateVal) : null;
-    if (searchStartDate) searchStartDate.setHours(0, 0, 0, 0);
-    if (searchEndDate) searchEndDate.setHours(23, 59, 59, 999);
-
+    if (searchStartDate) searchStartDate.setUTCHours(0, 0, 0, 0);
+    if (searchEndDate) searchEndDate.setUTCHours(23, 59, 59, 999);
     let searchTravelDate = travelDateVal ? parseSheetDate(travelDateVal) : null;
-    // if (searchTravelDate) searchTravelDate.setHours(0, 0, 0, 0); // <-- THIS LINE WAS THE BUG AND HAS BEEN REMOVED.
 
-    const results = allTickets.filter(t => {
+    const results = state.allTickets.filter(t => {
         const issuedDate = parseSheetDate(t.issued_date);
         const travelDate = parseSheetDate(t.departing_on);
         
         const nameMatch = !name || t.name.toUpperCase().includes(name);
         const bookRefMatch = !bookRef || t.booking_reference.toUpperCase().includes(bookRef);
-
         const issuedDateMatch = (!searchStartDate || issuedDate >= searchStartDate) && (!searchEndDate || issuedDate <= searchEndDate);
-        
-        const travelDateMatch = !searchTravelDate || (travelDate.getTime() === searchTravelDate.getTime());
-
+        const travelDateMatch = !searchTravelDate || (travelDate && travelDate.getTime() === searchTravelDate.getTime());
         const departureMatch = !departure || (t.departure && t.departure.toUpperCase() === departure);
         const destinationMatch = !destination || (t.destination && t.destination.toUpperCase() === destination);
         const airlineMatch = !airline || (t.airline && t.airline.toUpperCase() === airline);
@@ -1037,28 +992,22 @@ function performSearch() {
         return nameMatch && bookRefMatch && issuedDateMatch && travelDateMatch && departureMatch && destinationMatch && airlineMatch && paidMatch;
     }).sort((a, b) => parseSheetDate(b.issued_date) - parseSheetDate(a.issued_date) || b.rowIndex - a.rowIndex);
 
-    filteredTickets = results;
-    displayTickets(filteredTickets, 1);
+    state.filteredTickets = results;
+    displayTickets(state.filteredTickets, 1);
 }
 
 function clearSearch() {
-    document.getElementById('searchName').value = '';
-    document.getElementById('searchBooking').value = '';
-    document.getElementById('searchStartDate').value = '';
-    document.getElementById('searchEndDate').value = '';
-    document.getElementById('searchTravelDate').value = '';
-    document.getElementById('searchDeparture').selectedIndex = 0;
-    document.getElementById('searchDestination').selectedIndex = 0;
-    document.getElementById('searchAirline').selectedIndex = 0;
-    document.getElementById('searchNotPaidToggle').checked = false;
-    displayAllTickets();
+    document.getElementById('searchForm').reset();
+    document.querySelectorAll('#searchForm select').forEach(sel => {
+        for(const opt of sel.options) { opt.disabled = false; }
+    });
+    displayInitialTickets();
 }
-
 
 function setupPagination(items) {
     const container = document.getElementById('pagination');
     container.innerHTML = '';
-    const pageCount = Math.ceil(items.length / rowsPerPage);
+    const pageCount = Math.ceil(items.length / state.rowsPerPage);
     if (pageCount <= 1) return;
     const btn = (txt, pg, en=true) => {
         const b = document.createElement('button');
@@ -1066,16 +1015,39 @@ function setupPagination(items) {
         b.innerHTML=txt;
         b.disabled=!en;
         if(en) b.onclick=()=>displayTickets(items,pg);
-        if(pg===currentPage)b.classList.add('active');
+        if(pg===state.currentPage)b.classList.add('active');
         return b;
     };
-    container.append(btn('&laquo;', currentPage - 1, currentPage > 1));
+    container.append(btn('&laquo;', state.currentPage - 1, state.currentPage > 1));
     for (let i = 1; i <= pageCount; i++) container.append(btn(i,i));
-    container.append(btn('&raquo;', currentPage + 1, currentPage < pageCount));
+    container.append(btn('&raquo;', state.currentPage + 1, state.currentPage < pageCount));
 }
 
 // --- FORM SUBMISSIONS ---
-async function handleSellTicket(e) { e.preventDefault(); if (isSubmitting) return; isSubmitting = true; const submitButton = e.target.querySelector('button[type="submit"]'); if (submitButton) submitButton.disabled = true; try { const ticketData = collectFormData(e.target); if (!ticketData.name || !ticketData.booking_reference) throw new Error('Missing required fields.'); await saveTicket(ticketData); showToast('Ticket saved successfully!', 'success'); e.target.reset(); await loadTicketData(); showView('home'); } catch (error) { showToast(`Error: ${error.message || 'Could not save ticket.'}`, 'error'); } finally { isSubmitting = false; if (submitButton) submitButton.disabled = false; } }
+async function handleSellTicket(e) {
+    e.preventDefault(); 
+    if (state.isSubmitting) return; 
+    state.isSubmitting = true; 
+    const submitButton = e.target.querySelector('button[type="submit"]'); 
+    if (submitButton) submitButton.disabled = true; 
+    try { 
+        const ticketData = collectFormData(e.target); 
+        if (!ticketData.name || !ticketData.booking_reference) throw new Error('Missing required fields.'); 
+        await saveTicket(ticketData); 
+        showToast('Ticket saved successfully!', 'success'); 
+        e.target.reset();
+        populateFlightLocations();
+        updateToggleLabels();
+        state.cache['ticketData'] = null; 
+        await loadTicketData(); 
+        showView('home'); 
+    } catch (error) { 
+        showToast(`Error: ${error.message || 'Could not save ticket.'}`, 'error'); 
+    } finally { 
+        state.isSubmitting = false; 
+        if (submitButton) submitButton.disabled = false; 
+    } 
+}
 
 function collectFormData(form) {
     const data = {};
@@ -1085,7 +1057,7 @@ function collectFormData(form) {
         const el = form.querySelector(`#${field}`);
         if (el) {
             let value = el.type === 'checkbox' ? el.checked : el.value;
-            if (typeof value === 'string') {
+            if (typeof value === 'string' && field !== 'account_link') {
                 value = value.toUpperCase();
             }
             data[field] = value;
@@ -1123,7 +1095,7 @@ async function saveTicket(data) {
 function findTicketForModify() {
     const pnr = document.getElementById('modifyPnr').value.toUpperCase();
     if (!pnr) return showToast('Please enter a PNR code.', 'error');
-    const found = allTickets.filter(t => t.booking_reference === pnr);
+    const found = state.allTickets.filter(t => t.booking_reference === pnr);
     displayModifyResults(found);
 }
 
@@ -1168,7 +1140,7 @@ function displayModifyResults(tickets) {
 }
 
 function openModifyModal(rowIndex) {
-    const ticket = allTickets.find(t => t.rowIndex === rowIndex);
+    const ticket = state.allTickets.find(t => t.rowIndex === rowIndex);
     if (!ticket) return showToast('Ticket not found.', 'error');
 
     let travelDateForInput = '';
@@ -1233,15 +1205,14 @@ function openModifyModal(rowIndex) {
     document.getElementById('updateForm').addEventListener('submit', handleUpdateTicket);
 }
 
-
 async function handleUpdateTicket(e) {
     e.preventDefault();
     const form = e.target;
     const pnr = form.dataset.pnr;
     let historyDetails = [];
 
-    const ticketsToUpdate = allTickets.filter(t => t.booking_reference === pnr);
-    const originalTicket = allTickets.find(t => t.booking_reference === pnr);
+    const ticketsToUpdate = state.allTickets.filter(t => t.booking_reference === pnr);
+    const originalTicket = state.allTickets.find(t => t.booking_reference === pnr);
 
     let newTravelDateVal = document.getElementById('update_departing_on').value;
     const newBaseFare = parseFloat(document.getElementById('update_base_fare').value);
@@ -1304,12 +1275,13 @@ async function handleUpdateTicket(e) {
             resource: { valueInputOption: 'USER_ENTERED', data: dataForBatchUpdate }
         });
         await saveHistory(CONFIG.MODIFICATION_HISTORY_SHEET, originalTicket, historyDetails.join('; '));
+        state.cache['ticketData'] = null;
+        state.cache['modHistoryData'] = null;
         showToast('Tickets updated successfully!', 'success');
         modifyModal.classList.remove('show');
         document.getElementById('modifyResultsContainer').innerHTML = '';
         document.getElementById('modifyPnr').value = '';
-        await loadTicketData();
-        await loadModificationHistory();
+        await Promise.all([loadTicketData(), loadModificationHistory()]);
     } catch (error) {
         showToast(`Update Error: ${error.result?.error?.message || 'Could not update.'}`, 'error');
     }
@@ -1323,7 +1295,7 @@ function findTicketForCancel() {
         showToast('Please enter a PNR code.', 'error');
         return;
     }
-    const found = allTickets.filter(t => t.booking_reference === pnr);
+    const found = state.allTickets.filter(t => t.booking_reference === pnr);
     displayCancelResults(found);
 }
 
@@ -1375,7 +1347,7 @@ function displayCancelResults(tickets) {
 }
 
 function openCancelModal(rowIndex, type) {
-    const ticket = allTickets.find(t => t.rowIndex === rowIndex);
+    const ticket = state.allTickets.find(t => t.rowIndex === rowIndex);
     if (!ticket) {
         showToast('Ticket not found.', 'error');
         return;
@@ -1420,7 +1392,7 @@ function openCancelModal(rowIndex, type) {
 }
 
 async function handleCancelTicket(rowIndex, type, refundAmount = 0) {
-    const ticket = allTickets.find(t => t.rowIndex === rowIndex);
+    const ticket = state.allTickets.find(t => t.rowIndex === rowIndex);
     if (!ticket) {
         showToast('Ticket not found for cancellation.', 'error');
         return;
@@ -1428,25 +1400,30 @@ async function handleCancelTicket(rowIndex, type, refundAmount = 0) {
 
     let updatedValues = [];
     let historyDetails = '';
+    const now = new Date();
+    const dateStr = `${String(now.getMonth() + 1).padStart(2, '0')}/${String(now.getDate()).padStart(2, '0')}/${now.getFullYear()}`;
+
     if (type === 'refund') {
+        const remark = `Full Refund on ${dateStr}`;
         updatedValues = [
             ticket.issued_date, ticket.name, ticket.nrc_no, ticket.phone,
             ticket.account_name, ticket.account_type, ticket.account_link,
             ticket.departure, ticket.destination, ticket.departing_on,
             ticket.airline, 0, ticket.booking_reference, 0,
             ticket.paid, ticket.payment_method, ticket.paid_date,
-            0, "Full Refund", 0, 0 
+            0, remark, 0, 0 
         ];
         historyDetails = "Full Refund processed.";
     } else {
         const newNetAmount = (ticket.net_amount || 0) - refundAmount;
+        const remark = `Canceled on ${dateStr} with ${refundAmount.toLocaleString()} refund`;
         updatedValues = [
             ticket.issued_date, ticket.name, ticket.nrc_no, ticket.phone,
             ticket.account_name, ticket.account_type, ticket.account_link,
             ticket.departure, ticket.destination, ticket.departing_on,
             ticket.airline, ticket.base_fare, ticket.booking_reference, newNetAmount,
             ticket.paid, ticket.payment_method, ticket.paid_date,
-            ticket.commission, `Canceled with ${refundAmount.toLocaleString()} refund`, ticket.extra_fare,
+            ticket.commission, remark, ticket.extra_fare,
             ticket.date_change 
         ];
         historyDetails = `Partial Cancellation. Refunded: ${refundAmount.toLocaleString()} MMK.`;
@@ -1461,12 +1438,13 @@ async function handleCancelTicket(rowIndex, type, refundAmount = 0) {
             resource: { values: [updatedValues] }
         });
         await saveHistory(CONFIG.CANCELLATION_HISTORY_SHEET, ticket, historyDetails);
+        state.cache['ticketData'] = null;
+        state.cache['cancelHistoryData'] = null;
         showToast('Ticket updated successfully!', 'success');
         cancelModal.classList.remove('show');
         document.getElementById('cancelResultsContainer').innerHTML = '';
         document.getElementById('cancelPnr').value = '';
-        await loadTicketData();
-        await loadCancellationHistory();
+        await Promise.all([loadTicketData(), loadCancellationHistory()]);
     } catch (error) {
         showToast(`Cancellation Error: ${error.result?.error?.message || 'Could not update.'}`, 'error');
     }
@@ -1476,11 +1454,8 @@ async function handleCancelTicket(rowIndex, type, refundAmount = 0) {
 // --- HISTORY FUNCTIONS ---
 async function loadModificationHistory() {
     try {
-        const response = await gapi.client.sheets.spreadsheets.values.get({
-            spreadsheetId: CONFIG.SHEET_ID,
-            range: `${CONFIG.MODIFICATION_HISTORY_SHEET}!A:D`
-        });
-        modificationHistory = parseHistoryData(response.result.values);
+        const response = await fetchFromSheet(`${CONFIG.MODIFICATION_HISTORY_SHEET}!A:D`, 'modHistoryData');
+        state.modificationHistory = parseHistoryData(response.values);
         displayModificationHistory(1);
     } catch (error) {
         showToast('Could not load modification history. Ensure the sheet exists.', 'error');
@@ -1490,11 +1465,8 @@ async function loadModificationHistory() {
 
 async function loadCancellationHistory() {
     try {
-        const response = await gapi.client.sheets.spreadsheets.values.get({
-            spreadsheetId: CONFIG.SHEET_ID,
-            range: `${CONFIG.CANCELLATION_HISTORY_SHEET}!A:D`
-        });
-        cancellationHistory = parseHistoryData(response.result.values);
+        const response = await fetchFromSheet(`${CONFIG.CANCELLATION_HISTORY_SHEET}!A:D`, 'cancelHistoryData');
+        state.cancellationHistory = parseHistoryData(response.values);
         displayCancellationHistory(1);
     } catch (error) {
         showToast('Could not load cancellation history. Ensure the sheet exists.', 'error');
@@ -1533,14 +1505,14 @@ async function saveHistory(sheetName, ticket, details) {
 }
 
 function displayModificationHistory(page) {
-    modHistoryPage = page;
+    state.modHistoryPage = page;
     const container = document.getElementById('modificationHistoryContainer');
     const tbody = document.getElementById('modificationHistoryBody');
-    const sortedHistory = modificationHistory;
+    const sortedHistory = state.modificationHistory;
 
     if (sortedHistory.length > 0) container.style.display = 'block';
 
-    const paginated = sortedHistory.slice((page - 1) * rowsPerPage, page * rowsPerPage);
+    const paginated = sortedHistory.slice((page - 1) * state.rowsPerPage, page * state.rowsPerPage);
     tbody.innerHTML = '';
     paginated.forEach(entry => {
         const row = tbody.insertRow();
@@ -1550,14 +1522,14 @@ function displayModificationHistory(page) {
 }
 
 function displayCancellationHistory(page) {
-    cancelHistoryPage = page;
+    state.cancelHistoryPage = page;
     const container = document.getElementById('cancellationHistoryContainer');
     const tbody = document.getElementById('cancellationHistoryBody');
-    const sortedHistory = cancellationHistory;
+    const sortedHistory = state.cancellationHistory;
 
     if (sortedHistory.length > 0) container.style.display = 'block';
 
-    const paginated = sortedHistory.slice((page - 1) * rowsPerPage, page * rowsPerPage);
+    const paginated = sortedHistory.slice((page - 1) * state.rowsPerPage, page * state.rowsPerPage);
     tbody.innerHTML = '';
     paginated.forEach(entry => {
         const row = tbody.insertRow();
@@ -1571,7 +1543,7 @@ function setupHistoryPagination(type, items, currentPage) {
     const renderFn = type === 'modification' ? displayModificationHistory : displayCancellationHistory;
     const container = document.getElementById(containerId);
     container.innerHTML = '';
-    const pageCount = Math.ceil(items.length / rowsPerPage);
+    const pageCount = Math.ceil(items.length / state.rowsPerPage);
     if (pageCount <= 1) return;
 
     const createBtn = (txt, pg, enabled = true) => {
@@ -1615,7 +1587,7 @@ function populateSearchAirlines() {
     const searchAirlineSelect = document.getElementById('searchAirline');
     const defaultAirlines = new Set(["MNA", "MAI", "MANYADANARPON", "AIRTHANWLIN"]);
 
-    const airlinesFromTickets = new Set(allTickets.map(t => t.airline ? t.airline.toUpperCase() : null).filter(Boolean));
+    const airlinesFromTickets = new Set(state.allTickets.map(t => t.airline ? t.airline.toUpperCase() : null).filter(Boolean));
 
     const allAvailableAirlines = new Set([...defaultAirlines, ...airlinesFromTickets]);
 
@@ -1719,7 +1691,6 @@ function initializeUISettings() {
         showToast('UI settings have been reset.', 'info');
     });
     
-    // Apply and update on load
     applySettings();
     updateSlidersAndValues();
 }
@@ -1727,7 +1698,7 @@ function initializeUISettings() {
 
 // --- PDF EXPORT FUNCTION ---
 function exportToPdf() {
-    if (filteredTickets.length === 0) {
+    if (state.filteredTickets.length === 0) {
         showToast('No search results to export.', 'info');
         return;
     }
@@ -1741,30 +1712,26 @@ function exportToPdf() {
         return;
     }
 
-    // MODIFIED: Sort by oldest issue date first for the report
-    const sortedTickets = [...filteredTickets].sort((a, b) => 
+    const sortedTickets = [...state.filteredTickets].sort((a, b) => 
         parseSheetDate(a.issued_date) - parseSheetDate(b.issued_date)
     );
 
     const tableColumns = ["Issued Date", "Name", "Booking Ref", "Route", "Airline", "Net Amount", "Date Change", "Commission"];
     const tableRows = [];
 
-    // MODIFIED: Initialize totals
     let totalNetAmount = 0;
     let totalDateChange = 0;
     let totalCommission = 0;
 
     sortedTickets.forEach(ticket => {
-        // MODIFIED: Sum up totals
         totalNetAmount += ticket.net_amount || 0;
         totalDateChange += ticket.date_change || 0;
         totalCommission += ticket.commission || 0;
 
         const ticketData = [
-            formatDateToDMMMY(ticket.issued_date) || '', // Use consistent date format
+            formatDateToDMMMY(ticket.issued_date) || '',
             ticket.name || '',
             ticket.booking_reference || '',
-            // MODIFIED: Use a hyphen and full names for the route
             ticket.departure && ticket.destination ? `${ticket.departure} - ${ticket.destination}` : 'N/A',
             ticket.airline || '',
             (ticket.net_amount || 0).toLocaleString(),
@@ -1774,7 +1741,6 @@ function exportToPdf() {
         tableRows.push(ticketData);
     });
 
-    // MODIFIED: Create a formatted footer row for totals
     const footerRow = [
         { 
             content: 'Total', 
@@ -1794,7 +1760,7 @@ function exportToPdf() {
     doc.autoTable({
         head: [tableColumns],
         body: tableRows,
-        foot: [footerRow], // MODIFIED: Add the footer data
+        foot: [footerRow],
         startY: 25,
         theme: 'grid',
         headStyles: {
@@ -1806,26 +1772,18 @@ function exportToPdf() {
             textColor: [0, 0, 0],
             fontStyle: 'bold'
         },
-        // MODIFIED: Use standard font and adjust styles for better fit
         styles: {
             font: 'helvetica',
             fontSize: 7.5,
             cellPadding: 2,
             valign: 'middle'
         },
-        // MODIFIED: Re-adjusted column widths for perfect fit
         columnStyles: {
-            0: { cellWidth: 22 }, // Issued Date
-            1: { cellWidth: 40 }, // Name
-            2: { cellWidth: 25 }, // Booking Ref
-            3: { cellWidth: 75 }, // Route (Expanded)
-            4: { cellWidth: 28 }, // Airline
-            5: { halign: 'right', cellWidth: 23 }, // Net Amount
-            6: { halign: 'right', cellWidth: 23 }, // Date Change
-            7: { halign: 'right', cellWidth: 23 }  // Commission
+            0: { cellWidth: 22 }, 1: { cellWidth: 40 }, 2: { cellWidth: 25 },
+            3: { cellWidth: 75 }, 4: { cellWidth: 28 }, 5: { halign: 'right', cellWidth: 23 },
+            6: { cellWidth: 23, halign: 'right' }, 7: { cellWidth: 23, halign: 'right' }
         },
         didDrawPage: function (data) {
-            // Header
             doc.setFontSize(18);
             doc.setTextColor(40);
             doc.text(title, data.settings.margin.left, 15);
@@ -1834,7 +1792,6 @@ function exportToPdf() {
             doc.setTextColor(100);
             doc.text(exportedDate, data.settings.margin.left, 20);
             
-            // Footer
             const pageCount = doc.internal.getNumberOfPages();
             doc.setFontSize(10);
             doc.text("Page " + String(data.pageNumber) + " of " + String(pageCount), data.settings.margin.left, doc.internal.pageSize.height - 10);

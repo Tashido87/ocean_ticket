@@ -206,7 +206,6 @@ function debounce(func, delay = 300) {
 }
 
 
-// --- EVENT LISTENERS ---
 function setupEventListeners() {
     navBtns.forEach(btn => btn.addEventListener('click', (e) => showView(e.currentTarget.dataset.view)));
     authorizeButton.addEventListener('click', handleAuthClick);
@@ -218,7 +217,7 @@ function setupEventListeners() {
     document.getElementById('searchName').addEventListener('keyup', () => debounce(performSearch));
     document.getElementById('searchBooking').addEventListener('keyup', () => debounce(performSearch));
     
-    ['searchTravelDate', 'searchStartDate', 'searchEndDate', 'searchDeparture', 'searchDestination', 'searchAirline'].forEach(id => {
+    ['searchTravelDate', 'searchStartDate', 'searchEndDate', 'searchDeparture', 'searchDestination'].forEach(id => {
          document.getElementById(id).addEventListener('change', performSearch);
     });
      document.getElementById('searchNotPaidToggle').addEventListener('change', performSearch);

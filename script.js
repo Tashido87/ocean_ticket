@@ -1038,7 +1038,8 @@ async function handleSellTicket(e) {
         populateFlightLocations();
         updateToggleLabels();
         state.cache['ticketData'] = null; 
-        await loadTicketData(); 
+        await loadTicketData();
+        updateDashboardData();
         showView('home'); 
     } catch (error) { 
         showToast(`Error: ${error.message || 'Could not save ticket.'}`, 'error'); 
@@ -1281,6 +1282,7 @@ async function handleUpdateTicket(e) {
         document.getElementById('modifyResultsContainer').innerHTML = '';
         document.getElementById('modifyPnr').value = '';
         await Promise.all([loadTicketData(), loadModificationHistory()]);
+        updateDashboardData();
     } catch (error) {
         showToast(`Update Error: ${error.result?.error?.message || 'Could not update.'}`, 'error');
     }
@@ -1444,6 +1446,7 @@ async function handleCancelTicket(rowIndex, type, refundAmount = 0) {
         document.getElementById('cancelResultsContainer').innerHTML = '';
         document.getElementById('cancelPnr').value = '';
         await Promise.all([loadTicketData(), loadCancellationHistory()]);
+        updateDashboardData();
     } catch (error) {
         showToast(`Cancellation Error: ${error.result?.error?.message || 'Could not update.'}`, 'error');
     }

@@ -86,10 +86,6 @@ function initializeDatepickers() {
         autohide: true, 
         todayHighlight: true 
     };
-    const sellTicketOptions = {
-        ...defaultOptions,
-        minDate: 'today'
-    };
     const endDateOptions = {
         ...defaultOptions,
         maxDate: 'today'
@@ -97,7 +93,7 @@ function initializeDatepickers() {
 
     ['searchStartDate', 'searchTravelDate', 'booking_departing_on'].forEach(id => new Datepicker(document.getElementById(id), defaultOptions));
     new Datepicker(document.getElementById('searchEndDate'), endDateOptions);
-    ['issued_date', 'departing_on', 'paid_date'].forEach(id => new Datepicker(document.getElementById(id), sellTicketOptions));
+    ['issued_date', 'departing_on', 'paid_date'].forEach(id => new Datepicker(document.getElementById(id), defaultOptions));
 }
 
 

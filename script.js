@@ -229,8 +229,16 @@ function setupEventListeners() {
 
     document.getElementById('sellForm').addEventListener('submit', handleSellTicket);
     document.getElementById('airline').addEventListener('change', handleAirlineChange);
-    document.getElementById('base_fare').addEventListener('input', calculateCommission);
-    document.getElementById('extra_fare').addEventListener('input', calculateCommission);
+
+    document.getElementById('passenger-forms-container').addEventListener('input', (e) => {
+        if (e.target.classList.contains('passenger-base-fare')) {
+            calculateCommission(e.target);
+        }
+    });
+    
+    document.getElementById('addPassengerBtn').addEventListener('click', addPassengerForm);
+    document.getElementById('removePassengerBtn').addEventListener('click', removePassengerForm);
+
     document.getElementById('findTicketBtn').addEventListener('click', findTicketForModify);
     document.getElementById('clearModifyBtn').addEventListener('click', clearModifyResults);
     document.getElementById('findCancelBtn').addEventListener('click', findTicketForCancel);
@@ -948,9 +956,11 @@ function parseSheetDate(dateString) {
     return new Date(0);
 }
 
-function calculateCommission() {
-    const baseFare = parseFloat(document.getElementById('base_fare').value) || 0;
-    document.getElementById('commission').value = Math.round((baseFare * 0.05) * 0.60);
+function calculateCommission(baseFareInput) {
+    const passengerForm = baseFareInput.closest('.passenger-form');
+    const commissionInput = passengerForm.querySelector('.passenger-commission');
+    const baseFare = parseFloat(baseFareInput.value) || 0;
+    commissionInput.value = Math.round((baseFare * 0.05) * 0.60);
 }
 
 // --- SEARCH & PAGINATION ---
@@ -1018,74 +1028,163 @@ function setupPagination(items) {
     container.append(btn('&raquo;', state.currentPage + 1, state.currentPage < pageCount));
 }
 
-// --- FORM SUBMISSIONS ---
+// --- FORM SUBMISSIONS (SELL TICKET) ---
 async function handleSellTicket(e) {
-    e.preventDefault(); 
-    if (state.isSubmitting) return; 
-    state.isSubmitting = true; 
-    const submitButton = e.target.querySelector('button[type="submit"]'); 
-    if (submitButton) submitButton.disabled = true; 
-    try { 
-        const ticketData = collectFormData(e.target); 
-        if (!ticketData.name || !ticketData.booking_reference) throw new Error('Missing required fields.'); 
-        await saveTicket(ticketData); 
-        showToast('Ticket saved successfully!', 'success'); 
+    e.preventDefault();
+    if (state.isSubmitting) return;
+    state.isSubmitting = true;
+    const submitButton = e.target.querySelector('button[type="submit"]');
+    if (submitButton) submitButton.disabled = true;
+
+    try {
+        const { sharedData, passengerData } = collectFormData(e.target);
+        if (passengerData.length === 0) throw new Error('At least one passenger is required.');
+        if (!sharedData.booking_reference) throw new Error('PNR Code is required.');
+
+        await saveTicket(sharedData, passengerData);
+
+        showToast('Ticket(s) saved successfully!', 'success');
         e.target.reset();
+        resetPassengerForms();
         populateFlightLocations();
         updateToggleLabels();
-        state.cache['ticketData'] = null; 
+        state.cache['ticketData'] = null;
         await loadTicketData();
         updateDashboardData();
-        showView('home'); 
-    } catch (error) { 
-        showToast(`Error: ${error.message || 'Could not save ticket.'}`, 'error'); 
-    } finally { 
-        state.isSubmitting = false; 
-        if (submitButton) submitButton.disabled = false; 
-    } 
+        showView('home');
+    } catch (error) {
+        showToast(`Error: ${error.message || 'Could not save ticket.'}`, 'error');
+    } finally {
+        state.isSubmitting = false;
+        if (submitButton) submitButton.disabled = false;
+    }
 }
 
 function collectFormData(form) {
-    const data = {};
-    const fields = ['issued_date', 'name', 'nrc_no', 'phone', 'account_name', 'account_type', 'account_link', 'departure', 'destination', 'departing_on', 'airline', 'custom_airline', 'base_fare', 'booking_reference', 'net_amount', 'paid', 'payment_method', 'paid_date', 'commission', 'remarks', 'extra_fare', 'date_change'];
-    
-    fields.forEach(field => {
-        const el = form.querySelector(`#${field}`);
-        if (el) {
-            let value = el.type === 'checkbox' ? el.checked : el.value;
-            if (typeof value === 'string' && field !== 'account_link') {
-                value = value.toUpperCase();
-            }
-            data[field] = value;
+    const sharedData = {
+        issued_date: form.querySelector('#issued_date').value,
+        phone: form.querySelector('#phone').value,
+        account_name: form.querySelector('#account_name').value,
+        account_type: form.querySelector('#account_type').value,
+        account_link: form.querySelector('#account_link').value,
+        departure: form.querySelector('#departure').value,
+        destination: form.querySelector('#destination').value,
+        departing_on: form.querySelector('#departing_on').value,
+        airline: form.querySelector('#airline').value === 'CUSTOM' ? form.querySelector('#custom_airline').value : form.querySelector('#airline').value,
+        booking_reference: form.querySelector('#booking_reference').value.toUpperCase(),
+        paid: form.querySelector('#paid').checked,
+        payment_method: form.querySelector('#payment_method').value,
+        paid_date: form.querySelector('#paid_date').value,
+        remarks: form.querySelector('#remarks').value
+    };
+
+    const passengerData = [];
+    const passengerForms = form.querySelectorAll('.passenger-form');
+    passengerForms.forEach(pForm => {
+        const passenger = {
+            name: pForm.querySelector('.passenger-name').value.toUpperCase(),
+            nrc_no: pForm.querySelector('.passenger-nrc').value.toUpperCase(),
+            base_fare: parseFloat(pForm.querySelector('.passenger-base-fare').value) || 0,
+            net_amount: parseFloat(pForm.querySelector('.passenger-net-amount').value) || 0,
+            extra_fare: parseFloat(pForm.querySelector('.passenger-extra-fare').value) || 0,
+            commission: parseFloat(pForm.querySelector('.passenger-commission').value) || 0
+        };
+        if(passenger.name) { // Only add if passenger has a name
+             passengerData.push(passenger);
         }
     });
 
-    if (data.airline === 'CUSTOM') {
-        data.airline = data.custom_airline;
-    }
-    delete data.custom_airline;
-
-    return data;
+    return { sharedData, passengerData };
 }
 
-async function saveTicket(data) {
-    const values = [[
-        formatDateForSheet(data.issued_date), data.name, data.nrc_no,
-        data.phone, data.account_name, data.account_type,
-        data.account_link, data.departure, data.destination,
-        formatDateForSheet(data.departing_on), data.airline, parseFloat(data.base_fare) || 0,
-        data.booking_reference, parseFloat(data.net_amount) || 0, data.paid,
-        data.payment_method, formatDateForSheet(data.paid_date), parseFloat(data.commission) || 0,
-        data.remarks, parseFloat(data.extra_fare) || 0,
-        parseFloat(data.date_change) || 0 
-    ]];
+async function saveTicket(sharedData, passengerData) {
+    const values = passengerData.map(p => [
+        formatDateForSheet(sharedData.issued_date),
+        p.name,
+        p.nrc_no,
+        sharedData.phone,
+        sharedData.account_name,
+        sharedData.account_type,
+        sharedData.account_link,
+        sharedData.departure,
+        sharedData.destination,
+        formatDateForSheet(sharedData.departing_on),
+        sharedData.airline,
+        p.base_fare,
+        sharedData.booking_reference,
+        p.net_amount,
+        sharedData.paid,
+        sharedData.payment_method,
+        formatDateForSheet(sharedData.paid_date),
+        p.commission,
+        sharedData.remarks,
+        p.extra_fare,
+        0 // Date change is 0 on initial sale
+    ]);
+
     await gapi.client.sheets.spreadsheets.values.append({
         spreadsheetId: CONFIG.SHEET_ID,
-        range: `${CONFIG.SHEET_NAME}!A:U`, 
+        range: `${CONFIG.SHEET_NAME}!A:U`,
         valueInputOption: 'USER_ENTERED',
         resource: { values },
     });
 }
+
+function addPassengerForm() {
+    const container = document.getElementById('passenger-forms-container');
+    const passengerCount = container.children.length;
+    
+    const newForm = document.createElement('div');
+    newForm.className = 'passenger-form';
+    newForm.innerHTML = `
+        <hr style="border-color: rgba(255,255,255,0.1); margin-bottom: 1rem;">
+        <h4>Passenger ${passengerCount + 1}</h4>
+        <div class="form-grid">
+            <div class="form-group"><label>Client Name</label><input type="text" class="passenger-name" required></div>
+            <div class="form-group"><label>NRC Number</label><input type="text" class="passenger-nrc" required></div>
+            <div class="form-group"><label>Base Fare (MMK)</label><input type="number" class="passenger-base-fare" step="1" required></div>
+            <div class="form-group"><label>Net Amount (MMK)</label><input type="number" class="passenger-net-amount" step="1" required></div>
+            <div class="form-group"><label>Extra Fare (Optional)</label><input type="number" class="passenger-extra-fare" step="1"></div>
+            <div class="form-group"><label>Commission</label><input type="number" class="passenger-commission" step="1" readonly></div>
+        </div>
+    `;
+    container.appendChild(newForm);
+    updateRemovePassengerButton();
+}
+
+function removePassengerForm() {
+    const container = document.getElementById('passenger-forms-container');
+    if (container.children.length > 1) {
+        container.removeChild(container.lastChild);
+    }
+    updateRemovePassengerButton();
+}
+
+function resetPassengerForms() {
+    const container = document.getElementById('passenger-forms-container');
+    container.innerHTML = `
+        <div class="passenger-form">
+            <h4>Passenger 1</h4>
+            <div class="form-grid">
+                <div class="form-group"><label>Client Name</label><input type="text" class="passenger-name" required></div>
+                <div class="form-group"><label>NRC Number</label><input type="text" class="passenger-nrc" required></div>
+                <div class="form-group"><label>Base Fare (MMK)</label><input type="number" class="passenger-base-fare" step="1" required></div>
+                <div class="form-group"><label>Net Amount (MMK)</label><input type="number" class="passenger-net-amount" step="1" required></div>
+                <div class="form-group"><label>Extra Fare (Optional)</label><input type="number" class="passenger-extra-fare" step="1"></div>
+                <div class="form-group"><label>Commission</label><input type="number" class="passenger-commission" step="1" readonly></div>
+            </div>
+        </div>
+    `;
+    updateRemovePassengerButton();
+}
+
+
+function updateRemovePassengerButton() {
+    const container = document.getElementById('passenger-forms-container');
+    const removeBtn = document.getElementById('removePassengerBtn');
+    removeBtn.style.display = container.children.length > 1 ? 'inline-flex' : 'none';
+}
+
 
 // --- MODIFY & UPDATE TICKET ---
 function findTicketForModify() {

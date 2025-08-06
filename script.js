@@ -1107,9 +1107,7 @@ function displayModifyResults(tickets) {
         return;
     }
     let html = `<div class="table-container"><table><thead><tr><th>Name</th><th>Route</th><th>Travel Date</th><th>Status / Action</th></tr></thead><tbody>`;
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-
+    
     const remarkCheck = (r) => {
         if (!r) return false;
         const lowerRemark = r.toLowerCase();
@@ -1117,15 +1115,11 @@ function displayModifyResults(tickets) {
     };
 
     tickets.forEach(t => {
-        const travelDate = parseSheetDate(t.departing_on);
-        const isPast = travelDate < today;
         let actionButton = '';
 
         if (remarkCheck(t.remarks)) {
             const statusText = t.remarks.toLowerCase().includes('refund') ? 'Fully Refunded' : 'Canceled';
             actionButton = `<button class="btn btn-secondary" disabled>${statusText}</button>`;
-        } else if (isPast) {
-            actionButton = `<button class="btn btn-primary" disabled>Date Passed</button>`;
         } else {
             actionButton = `<button class="btn btn-primary" onclick="openModifyModal(${t.rowIndex})">Modify</button>`;
         }
@@ -1146,6 +1140,11 @@ function openModifyModal(rowIndex) {
             travelDateForInput = `${String(d.getUTCMonth() + 1).padStart(2, '0')}/${String(d.getUTCDate()).padStart(2, '0')}/${d.getUTCFullYear()}`;
         }
     }
+    
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const travelDate = parseSheetDate(ticket.departing_on);
+    const isPast = travelDate < today;
 
     let paymentUpdateHtml = '';
     if (!ticket.paid) {
@@ -1180,7 +1179,7 @@ function openModifyModal(rowIndex) {
         <form id="updateForm" data-pnr="${ticket.booking_reference}" data-master-row-index="${rowIndex}">
             <h4>Ticket Details</h4>
             <div class="form-grid" style="margin-top: 1rem;">
-                <div class="form-group"><label>New Travel Date (for all in PNR)</label><input type="text" id="update_departing_on" placeholder="MM/DD/YYYY" value="${travelDateForInput}"></div>
+                <div class="form-group"><label>New Travel Date (for all in PNR)</label><input type="text" id="update_departing_on" placeholder="MM/DD/YYYY" value="${travelDateForInput}" ${isPast ? 'disabled' : ''}></div>
                 <div class="form-group"><label>New Base Fare (Optional)</label><input type="number" id="update_base_fare" placeholder="${(ticket.base_fare||0).toLocaleString()}"></div>
                 <div class="form-group"><label>New Net Amount (Optional)</label><input type="number" id="update_net_amount" placeholder="${(ticket.net_amount||0).toLocaleString()}"></div>
                 <div class="form-group"><label>Date Change Fees (Optional)</label><input type="number" id="date_change_fees"></div>

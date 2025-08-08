@@ -57,10 +57,13 @@ const bookingDetailModal = document.getElementById('bookingDetailModal');
 const bookingDetailModalBody = document.getElementById('bookingDetailModalBody');
 const bookingConfirmModal = document.getElementById('bookingConfirmModal');
 const bookingConfirmModalBody = document.getElementById('bookingConfirmModalBody');
+const sellConfirmModal = document.getElementById('sellConfirmModal');
+const sellConfirmModalBody = document.getElementById('sellConfirmModalBody');
 const settingsPanel = document.getElementById('settings-panel');
 const monthSelector = document.getElementById('dashboard-month');
 const yearSelector = document.getElementById('dashboard-year');
 const flightTypeToggle = document.getElementById('flightTypeToggle');
+const searchCurrentMonthToggle = document.getElementById('searchCurrentMonthToggle');
 
 // --- INITIALIZATION ---
 window.onload = async () => {
@@ -206,18 +209,19 @@ function setupEventListeners() {
     navBtns.forEach(btn => btn.addEventListener('click', (e) => showView(e.currentTarget.dataset.view)));
     authorizeButton.addEventListener('click', handleAuthClick);
     
+    // Live Search Event Listeners
+    document.getElementById('searchName').addEventListener('input', () => debounce(performSearch, 300));
+    document.getElementById('searchBooking').addEventListener('input', () => debounce(performSearch, 300));
+    
+    ['searchTravelDate', 'searchStartDate', 'searchEndDate', 'searchDeparture', 'searchDestination', 'searchAirline', 'searchNotPaidToggle', 'searchCurrentMonthToggle'].forEach(id => {
+         document.getElementById(id).addEventListener('change', performSearch);
+    });
+
+    // Keep buttons for manual action if needed
     document.getElementById('searchBtn').addEventListener('click', performSearch);
     document.getElementById('clearBtn').addEventListener('click', clearSearch);
     document.getElementById('exportPdfBtn').addEventListener('click', exportToPdf); 
     
-    document.getElementById('searchName').addEventListener('keyup', () => debounce(performSearch));
-    document.getElementById('searchBooking').addEventListener('keyup', () => debounce(performSearch));
-    
-    ['searchTravelDate', 'searchStartDate', 'searchEndDate', 'searchDeparture', 'searchDestination'].forEach(id => {
-         document.getElementById(id).addEventListener('change', performSearch);
-    });
-     document.getElementById('searchNotPaidToggle').addEventListener('change', performSearch);
-
     monthSelector.addEventListener('change', updateDashboardData);
     yearSelector.addEventListener('change', updateDashboardData);
     
@@ -268,6 +272,7 @@ function setupEventListeners() {
         if (event.target == cancelModal) cancelModal.classList.remove('show');
         if (event.target == bookingDetailModal) bookingDetailModal.classList.remove('show');
         if (event.target == bookingConfirmModal) bookingConfirmModal.classList.remove('show');
+        if (event.target == sellConfirmModal) sellConfirmModal.classList.remove('show');
         if (!settingsPanel.contains(event.target) && event.target !== document.getElementById('settings-btn') && !document.getElementById('settings-btn').contains(event.target) ) {
             settingsPanel.classList.remove('show');
         }
@@ -341,6 +346,7 @@ async function loadTicketData() {
         if (response.values && response.values.length > 1) {
             state.allTickets = parseTicketData(response.values);
             populateSearchAirlines();
+            updateUnpaidCount();
             displayInitialTickets();
         }
         loading.style.display = 'none';
@@ -964,21 +970,51 @@ function calculateCommission(baseFareInput) {
 }
 
 // --- SEARCH & PAGINATION ---
+
+function updateUnpaidCount() {
+    const unpaidTickets = state.allTickets.filter(t => !t.paid);
+    const count = unpaidTickets.length;
+    const label = document.getElementById('unpaid-only-label');
+    const numberEmojis = ["0️⃣", "1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣"];
+
+    if (count > 0) {
+        const countString = count > 9 ? `(${count})` : numberEmojis[count];
+        label.innerHTML = `Unpaid Only <span style="color: #F85149; margin-left: 4px;">${countString}</span>`;
+    } else {
+        label.textContent = 'Unpaid Only';
+    }
+}
+
+
 function performSearch() {
     const name = (document.getElementById('searchName')?.value || '').toUpperCase();
     const bookRef = (document.getElementById('searchBooking')?.value || '').toUpperCase();
-    const startDateVal = document.getElementById('searchStartDate')?.value;
-    const endDateVal = document.getElementById('searchEndDate')?.value;
+    let startDateVal = document.getElementById('searchStartDate')?.value;
+    let endDateVal = document.getElementById('searchEndDate')?.value;
     const travelDateVal = document.getElementById('searchTravelDate')?.value || '';
     const departure = document.getElementById('searchDeparture')?.value.toUpperCase();
     const destination = document.getElementById('searchDestination')?.value.toUpperCase();
     const airline = document.getElementById('searchAirline')?.value.toUpperCase();
     const notPaidOnly = document.getElementById('searchNotPaidToggle')?.checked;
+    const currentMonthOnly = document.getElementById('searchCurrentMonthToggle')?.checked;
 
     let searchStartDate = startDateVal ? parseSheetDate(startDateVal) : null;
     let searchEndDate = endDateVal ? parseSheetDate(endDateVal) : null;
-    if (searchStartDate) searchStartDate.setUTCHours(0, 0, 0, 0);
-    if (searchEndDate) searchEndDate.setUTCHours(23, 59, 59, 999);
+    
+    if (currentMonthOnly) {
+        const now = new Date();
+        now.setHours(0, 0, 0, 0);
+        const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+        const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+        searchStartDate = startOfMonth;
+        searchEndDate = endOfMonth;
+        document.getElementById('searchStartDate').value = '';
+        document.getElementById('searchEndDate').value = '';
+    } else {
+        if (searchStartDate) searchStartDate.setUTCHours(0, 0, 0, 0);
+        if (searchEndDate) searchEndDate.setUTCHours(23, 59, 59, 999);
+    }
+
     let searchTravelDate = travelDateVal ? parseSheetDate(travelDateVal) : null;
 
     const results = state.allTickets.filter(t => {
@@ -1006,7 +1042,7 @@ function clearSearch() {
     document.querySelectorAll('#searchForm select').forEach(sel => {
         for(const opt of sel.options) { opt.disabled = false; }
     });
-    displayInitialTickets();
+    performSearch(); // Re-run search to reset to initial view
 }
 
 function setupPagination(items) {
@@ -1032,19 +1068,77 @@ function setupPagination(items) {
 async function handleSellTicket(e) {
     e.preventDefault();
     if (state.isSubmitting) return;
+
+    const form = e.target;
+    const { sharedData, passengerData } = collectFormData(form);
+
+    if (passengerData.length === 0) {
+        showToast('At least one passenger is required.', 'error');
+        return;
+    }
+    if (!sharedData.booking_reference) {
+        showToast('PNR Code is required.', 'error');
+        return;
+    }
+
+    // Build confirmation modal content
+    let passengerHtml = '';
+    let totalNet = 0;
+    passengerData.forEach((p, index) => {
+        totalNet += p.net_amount;
+        passengerHtml += `
+            <div class="passenger-summary">
+                <strong>Passenger ${index + 1}: ${p.name}</strong>
+                <div class="details-grid">
+                    <div class="details-item"><div class="details-item-content"><div class="label">NRC</div><div class="value">${p.nrc_no || 'N/A'}</div></div></div>
+                    <div class="details-item"><div class="details-item-content"><div class="label">Net Amount</div><div class="value">${p.net_amount.toLocaleString()} MMK</div></div></div>
+                    <div class="details-item"><div class="details-item-content"><div class="label">Commission</div><div class="value">${p.commission.toLocaleString()} MMK</div></div></div>
+                </div>
+            </div>
+        `;
+    });
+
+    sellConfirmModalBody.innerHTML = `
+        <h2>Confirm Ticket Sale</h2>
+        <p>Please review the details below before confirming the sale.</p>
+        <div class="details-section">
+            <div class="details-section-title">Flight & Booking</div>
+            <div class="details-grid">
+                <div class="details-item"><div class="details-item-content"><div class="label">PNR</div><div class="value">${sharedData.booking_reference}</div></div></div>
+                <div class="details-item"><div class="details-item-content"><div class="label">Route</div><div class="value">${sharedData.departure} → ${sharedData.destination}</div></div></div>
+                <div class="details-item"><div class="details-item-content"><div class="label">Travel Date</div><div class="value">${sharedData.departing_on}</div></div></div>
+                <div class="details-item"><div class="details-item-content"><div class="label">Airline</div><div class="value">${sharedData.airline}</div></div></div>
+            </div>
+        </div>
+         <div class="details-section">
+            <div class="details-section-title">Passengers (${passengerData.length}) - Total: ${totalNet.toLocaleString()} MMK</div>
+            ${passengerHtml}
+        </div>
+        <div class="form-actions" style="margin-top: 2rem;">
+            <button type="button" class="btn btn-secondary" onclick="sellConfirmModal.classList.remove('show')">Cancel</button>
+            <button id="confirmSaleBtn" type="button" class="btn btn-primary">Confirm Sale</button>
+        </div>
+    `;
+
+    sellConfirmModal.classList.add('show');
+
+    // Add event listener to the confirm button inside the modal
+    document.getElementById('confirmSaleBtn').onclick = () => {
+        confirmAndSaveTicket(form, sharedData, passengerData);
+    };
+}
+
+async function confirmAndSaveTicket(form, sharedData, passengerData) {
     state.isSubmitting = true;
-    const submitButton = e.target.querySelector('button[type="submit"]');
+    const submitButton = form.querySelector('button[type="submit"]');
     if (submitButton) submitButton.disabled = true;
+    sellConfirmModal.classList.remove('show');
 
     try {
-        const { sharedData, passengerData } = collectFormData(e.target);
-        if (passengerData.length === 0) throw new Error('At least one passenger is required.');
-        if (!sharedData.booking_reference) throw new Error('PNR Code is required.');
-
         await saveTicket(sharedData, passengerData);
 
         showToast('Ticket(s) saved successfully!', 'success');
-        e.target.reset();
+        form.reset();
         resetPassengerForms();
         populateFlightLocations();
         updateToggleLabels();
@@ -1060,6 +1154,7 @@ async function handleSellTicket(e) {
     }
 }
 
+
 function collectFormData(form) {
     const sharedData = {
         issued_date: form.querySelector('#issued_date').value,
@@ -1074,8 +1169,7 @@ function collectFormData(form) {
         booking_reference: form.querySelector('#booking_reference').value.toUpperCase(),
         paid: form.querySelector('#paid').checked,
         payment_method: form.querySelector('#payment_method').value,
-        paid_date: form.querySelector('#paid_date').value,
-        remarks: form.querySelector('#remarks').value
+        paid_date: form.querySelector('#paid_date').value
     };
 
     const passengerData = [];
@@ -1087,7 +1181,8 @@ function collectFormData(form) {
             base_fare: parseFloat(pForm.querySelector('.passenger-base-fare').value) || 0,
             net_amount: parseFloat(pForm.querySelector('.passenger-net-amount').value) || 0,
             extra_fare: parseFloat(pForm.querySelector('.passenger-extra-fare').value) || 0,
-            commission: parseFloat(pForm.querySelector('.passenger-commission').value) || 0
+            commission: parseFloat(pForm.querySelector('.passenger-commission').value) || 0,
+            remarks: pForm.querySelector('.passenger-remarks').value
         };
         if(passenger.name) { // Only add if passenger has a name
              passengerData.push(passenger);
@@ -1117,7 +1212,7 @@ async function saveTicket(sharedData, passengerData) {
         sharedData.payment_method,
         formatDateForSheet(sharedData.paid_date),
         p.commission,
-        sharedData.remarks,
+        p.remarks,
         p.extra_fare,
         0 // Date change is 0 on initial sale
     ]);
@@ -1146,6 +1241,7 @@ function addPassengerForm() {
             <div class="form-group"><label>Net Amount (MMK)</label><input type="number" class="passenger-net-amount" step="1" required></div>
             <div class="form-group"><label>Extra Fare (Optional)</label><input type="number" class="passenger-extra-fare" step="1"></div>
             <div class="form-group"><label>Commission</label><input type="number" class="passenger-commission" step="1" readonly></div>
+            <div class="form-group"><label>Remarks (Optional)</label><textarea class="passenger-remarks" rows="1"></textarea></div>
         </div>
     `;
     container.appendChild(newForm);
@@ -1172,6 +1268,7 @@ function resetPassengerForms() {
                 <div class="form-group"><label>Net Amount (MMK)</label><input type="number" class="passenger-net-amount" step="1" required></div>
                 <div class="form-group"><label>Extra Fare (Optional)</label><input type="number" class="passenger-extra-fare" step="1"></div>
                 <div class="form-group"><label>Commission</label><input type="number" class="passenger-commission" step="1" readonly></div>
+                <div class="form-group"><label>Remarks (Optional)</label><textarea class="passenger-remarks" rows="1"></textarea></div>
             </div>
         </div>
     `;

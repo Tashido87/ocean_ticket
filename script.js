@@ -358,7 +358,7 @@ async function loadTicketData() {
 }
 
 function parseTicketData(values) {
-    const headers = values[0].map(h => h.toLowerCase().replace(/\s+/g, '_'));
+    const headers = values[0].map(h => h.toLowerCase().replace(/\s+/g, '_').replace('nrc', 'id'));
     return values.slice(1).map((row, i) => {
         const ticket = {};
         headers.forEach((h, j) => {
@@ -394,7 +394,7 @@ async function loadBookingData() {
 
 function parseBookingData(values) {
     if (values.length < 1) return [];
-    const headers = values[0].map(h => h.toLowerCase().replace(/\s+/g, '_'));
+    const headers = values[0].map(h => h.toLowerCase().replace(/\s+/g, '_').replace('nrc', 'id'));
     return values.slice(1).map((row, i) => {
         const booking = {};
         headers.forEach((h, j) => {
@@ -508,7 +508,7 @@ function showBookingDetails(rowIndex) {
         bookingDetailModalBody.innerHTML = `
             <h3>Booking Request Details</h3>
             <p><strong>Name:</strong> ${booking.name || 'N/A'}</p>
-            <p><strong>NRC No:</strong> ${booking.nrc_no || 'N/A'}</p>
+            <p><strong>ID No:</strong> ${booking.id_no || 'N/A'}</p>
             <p><strong>Phone:</strong> ${makeClickable(booking.phone)}</p>
             <p><strong>Pax No:</strong> ${booking.pax_no || 'N/A'}</p>
             <hr style="border-color: rgba(255,255,255,0.2); margin: 1rem 0;">
@@ -548,7 +548,7 @@ async function handleNewBookingSubmit(e) {
     try {
         const bookingData = {
             name: document.getElementById('booking_name').value.toUpperCase(),
-            nrc_no: document.getElementById('booking_nrc_no').value.toUpperCase(),
+            id_no: document.getElementById('booking_id_no').value.toUpperCase(),
             phone: document.getElementById('booking_phone').value,
             account_name: document.getElementById('booking_account_name').value.toUpperCase(),
             account_type: document.getElementById('booking_account_type').value.toUpperCase(),
@@ -564,7 +564,7 @@ async function handleNewBookingSubmit(e) {
         }
 
         const values = [[
-            bookingData.name, bookingData.nrc_no, bookingData.phone,
+            bookingData.name, bookingData.id_no, bookingData.phone,
             bookingData.account_name, bookingData.account_type, bookingData.account_link,
             bookingData.departure, bookingData.destination,
             formatDateForSheet(bookingData.departing_on),
@@ -794,7 +794,7 @@ function showDetails(rowIndex) {
         <div class="details-section">
             <div class="details-section-title">Client Information</div>
             <div class="details-grid">
-                <div class="details-item"><i class="fa-solid fa-id-card"></i><div class="details-item-content"><div class="label">NRC No.</div><div class="value">${ticket.nrc_no || 'N/A'}</div></div></div>
+                <div class="details-item"><i class="fa-solid fa-id-card"></i><div class="details-item-content"><div class="label">ID No.</div><div class="value">${ticket.id_no || 'N/A'}</div></div></div>
                 <div class="details-item"><i class="fa-solid fa-phone"></i><div class="details-item-content"><div class="label">Phone</div><div class="value">${makeClickable(ticket.phone) || 'N/A'}</div></div></div>
                 <div class="details-item"><i class="fa-solid fa-hashtag"></i><div class="details-item-content"><div class="label">Social Media</div><div class="value">${ticket.account_name || 'N/A'} (${ticket.account_type || 'N/A'})</div></div></div>
                 <div class="details-item"><i class="fa-solid fa-link"></i><div class="details-item-content"><div class="label">Account Link</div><div class="value">${makeClickable(ticket.account_link) || 'N/A'}</div></div></div>
@@ -1090,7 +1090,7 @@ async function handleSellTicket(e) {
             <div class="passenger-summary">
                 <strong>Passenger ${index + 1}: ${p.name}</strong>
                 <div class="details-grid">
-                    <div class="details-item"><div class="details-item-content"><div class="label">NRC</div><div class="value">${p.nrc_no || 'N/A'}</div></div></div>
+                    <div class="details-item"><div class="details-item-content"><div class="label">ID</div><div class="value">${p.id_no || 'N/A'}</div></div></div>
                     <div class="details-item"><div class="details-item-content"><div class="label">Net Amount</div><div class="value">${p.net_amount.toLocaleString()} MMK</div></div></div>
                     <div class="details-item"><div class="details-item-content"><div class="label">Commission</div><div class="value">${p.commission.toLocaleString()} MMK</div></div></div>
                 </div>
@@ -1177,7 +1177,7 @@ function collectFormData(form) {
     passengerForms.forEach(pForm => {
         const passenger = {
             name: pForm.querySelector('.passenger-name').value.toUpperCase(),
-            nrc_no: pForm.querySelector('.passenger-nrc').value.toUpperCase(),
+            id_no: pForm.querySelector('.passenger-id').value.toUpperCase(),
             base_fare: parseFloat(pForm.querySelector('.passenger-base-fare').value) || 0,
             net_amount: parseFloat(pForm.querySelector('.passenger-net-amount').value) || 0,
             extra_fare: parseFloat(pForm.querySelector('.passenger-extra-fare').value) || 0,
@@ -1196,7 +1196,7 @@ async function saveTicket(sharedData, passengerData) {
     const values = passengerData.map(p => [
         formatDateForSheet(sharedData.issued_date),
         p.name,
-        p.nrc_no,
+        p.id_no,
         sharedData.phone,
         sharedData.account_name,
         sharedData.account_type,
@@ -1236,7 +1236,7 @@ function addPassengerForm() {
         <h4>Passenger ${passengerCount + 1}</h4>
         <div class="form-grid">
             <div class="form-group"><label>Client Name</label><input type="text" class="passenger-name" required></div>
-            <div class="form-group"><label>NRC Number</label><input type="text" class="passenger-nrc" required></div>
+            <div class="form-group"><label>ID Number</label><input type="text" class="passenger-id" required></div>
             <div class="form-group"><label>Base Fare (MMK)</label><input type="number" class="passenger-base-fare" step="1" required></div>
             <div class="form-group"><label>Net Amount (MMK)</label><input type="number" class="passenger-net-amount" step="1" required></div>
             <div class="form-group"><label>Extra Fare (Optional)</label><input type="number" class="passenger-extra-fare" step="1"></div>
@@ -1263,7 +1263,7 @@ function resetPassengerForms() {
             <h4>Passenger 1</h4>
             <div class="form-grid">
                 <div class="form-group"><label>Client Name</label><input type="text" class="passenger-name" required></div>
-                <div class="form-group"><label>NRC Number</label><input type="text" class="passenger-nrc" required></div>
+                <div class="form-group"><label>ID Number</label><input type="text" class="passenger-id" required></div>
                 <div class="form-group"><label>Base Fare (MMK)</label><input type="number" class="passenger-base-fare" step="1" required></div>
                 <div class="form-group"><label>Net Amount (MMK)</label><input type="number" class="passenger-net-amount" step="1" required></div>
                 <div class="form-group"><label>Extra Fare (Optional)</label><input type="number" class="passenger-extra-fare" step="1"></div>
@@ -1449,7 +1449,7 @@ async function handleUpdateTicket(e) {
         return {
             range: `${CONFIG.SHEET_NAME}!A${ticket.rowIndex}:U${ticket.rowIndex}`, 
             values: [[
-                ticket.issued_date, ticket.name, ticket.nrc_no, ticket.phone,
+                ticket.issued_date, ticket.name, ticket.id_no, ticket.phone,
                 ticket.account_name, ticket.account_type, ticket.account_link,
                 ticket.departure, ticket.destination, formattedNewTravelDateForSheet || ticket.departing_on,
                 ticket.airline, finalBaseFare, ticket.booking_reference, finalNetAmount,
@@ -1598,7 +1598,7 @@ async function handleCancelTicket(rowIndex, type, refundAmount = 0) {
     if (type === 'refund') {
         const remark = `Full Refund on ${dateStr}`;
         updatedValues = [
-            ticket.issued_date, ticket.name, ticket.nrc_no, ticket.phone,
+            ticket.issued_date, ticket.name, ticket.id_no, ticket.phone,
             ticket.account_name, ticket.account_type, ticket.account_link,
             ticket.departure, ticket.destination, ticket.departing_on,
             ticket.airline, 0, ticket.booking_reference, 0,
@@ -1610,7 +1610,7 @@ async function handleCancelTicket(rowIndex, type, refundAmount = 0) {
         const newNetAmount = (ticket.net_amount || 0) - refundAmount;
         const remark = `Canceled on ${dateStr} with ${refundAmount.toLocaleString()} refund`;
         updatedValues = [
-            ticket.issued_date, ticket.name, ticket.nrc_no, ticket.phone,
+            ticket.issued_date, ticket.name, ticket.id_no, ticket.phone,
             ticket.account_name, ticket.account_type, ticket.account_link,
             ticket.departure, ticket.destination, ticket.departing_on,
             ticket.airline, ticket.base_fare, ticket.booking_reference, newNetAmount,

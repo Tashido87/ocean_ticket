@@ -243,9 +243,16 @@
                                         <option value="MNA">MNA</option><option value="MAI">MAI</option><option value="ManYadanarpon">ManYadanarpon</option><option value="AirThanwlin">AirThanwlin</option>
                                     </select>
                                     <div class="toggle-switch">
-                                        <label for="searchNotPaidToggle">Not Paid Only</label>
+                                        <label for="searchNotPaidToggle" id="unpaid-only-label">Unpaid Only</label>
                                         <label class="switch">
                                             <input type="checkbox" id="searchNotPaidToggle">
+                                            <span class="slider round"></span>
+                                        </label>
+                                    </div>
+                                    <div class="toggle-switch">
+                                        <label for="searchCurrentMonthToggle">Current Month Only</label>
+                                        <label class="switch">
+                                            <input type="checkbox" id="searchCurrentMonthToggle">
                                             <span class="slider round"></span>
                                         </label>
                                     </div>
@@ -521,7 +528,6 @@
                            <div class="form-group"><label for="payment_method">Payment Method</label><select id="payment_method"><option value="">Select Payment Method</option><option value="KBZ Pay">KBZ Pay</option><option value="Mobile Banking">Mobile Banking</option><option value="Aya Pay">Aya Pay</option><option value="Cash">Cash</option></select></div>
                            <div class="form-group"><label for="paid_date">Paid Date</label><input type="text" id="paid_date" placeholder="MM/DD/YYYY"></div>
                            <div class="form-group checkbox-group"><label for="paid">Paid</label><input type="checkbox" id="paid"></div>
-                           <div class="form-group"><label for="remarks">Remarks (Shared)</label><textarea id="remarks" rows="1"></textarea></div>
                        </div>
                        <hr style="border-color: rgba(255,255,255,0.2); margin: 1.5rem 0;">
                        <div id="passenger-forms-container">
@@ -534,6 +540,7 @@
                                    <div class="form-group"><label>Net Amount (MMK)</label><input type="number" class="passenger-net-amount" step="1" required></div>
                                    <div class="form-group"><label>Extra Fare (Optional)</label><input type="number" class="passenger-extra-fare" step="1"></div>
                                    <div class="form-group"><label>Commission</label><input type="number" class="passenger-commission" step="1" readonly></div>
+                                   <div class="form-group"><label>Remarks (Optional)</label><textarea class="passenger-remarks" rows="1"></textarea></div>
                                </div>
                            </div>
                        </div>
@@ -652,6 +659,7 @@
     <div id="cancelModal" class="modal"><div class="modal-content glass-card"><span class="close">&times;</span><div id="cancelModalBody"></div></div></div>
     <div id="bookingDetailModal" class="modal"><div class="modal-content glass-card"><span class="close">&times;</span><div id="bookingDetailModalBody"></div></div></div>
     <div id="bookingConfirmModal" class="modal"><div class="modal-content glass-card small-modal"><div id="bookingConfirmModalBody"></div></div></div>
+    <div id="sellConfirmModal" class="modal"><div class="modal-content glass-card"><div id="sellConfirmModalBody"></div></div></div>
 
     <div id="toast"><span id="toastMessage"></span></div>
 

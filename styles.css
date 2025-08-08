@@ -16,7 +16,7 @@
     --text-secondary: #cecece;
     --border-color: rgba(255, 255, 255, 0.1);
     --glass-bg: rgba(255, 255, 255, 0.05);
-    --glass-bg-hover: rgba(255, 255, 255, 0.08);
+    --glass-bg-hover: rgba(255, 255, 255, 0.05);
     --glass-border: rgba(255, 255, 255, 0.2);
     --shadow: rgba(0, 0, 0, 0.3);
     --blur-amount: 20px;
@@ -420,10 +420,6 @@ body::before {
                 0 8px 32px rgba(0, 0, 0, 0.3);
     background: rgba(255, 255, 255, 0.08);
     transform: translateY(-2px);
-}
-
-.search-inputs select:invalid {
-    color: var(--text-secondary);
 }
 
 .date-range-group {

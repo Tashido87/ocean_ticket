@@ -72,7 +72,7 @@ window.onload = async () => {
     setupEventListeners();
     initializeBackgroundChanger();
     initializeUISettings();
-    populateFlightLocations();
+    initializeCityDropdowns(); // Populates all city dropdowns on load
     updateToggleLabels();
     if (typeof gapi === 'undefined' || !google.accounts) { showToast('Google API scripts not loaded.', 'error'); return; }
     try {
@@ -288,6 +288,56 @@ function setupEventListeners() {
     });
 }
 
+// --- NEW/MODIFIED DROPDOWN LOGIC ---
+/**
+ * Populates a single select dropdown with city options formatted as 'CODE - City Name'.
+ * @param {HTMLSelectElement} selectElement The dropdown element to populate.
+ * @param {string[]} locations Array of city strings, e.g., "Yangon (RGN)".
+ */
+function populateCitySelect(selectElement, locations) {
+    const firstOption = selectElement.options[0];
+    selectElement.innerHTML = '';
+    if (firstOption && firstOption.disabled) {
+        selectElement.appendChild(firstOption);
+    }
+
+    locations.forEach(location => {
+        const match = location.match(/(.+) \((.+)\)/);
+        let text, value;
+        if (match) {
+            text = `${match[2]} - ${match[1]}`; // New format: "RGN - Yangon"
+            value = location;                 // Original value: "Yangon (RGN)"
+        } else {
+            text = location;
+            value = location;
+        }
+        selectElement.add(new Option(text, value));
+    });
+}
+
+/**
+ * Populates all city-related dropdowns when the application starts.
+ */
+function initializeCityDropdowns() {
+    const allLocations = [...new Set([...CITIES.DOMESTIC, ...CITIES.INTERNATIONAL])].sort();
+    
+    const dropdownsToPopulate = [
+        document.getElementById('searchDeparture'),
+        document.getElementById('searchDestination'),
+        document.getElementById('booking_departure'),
+        document.getElementById('booking_destination')
+    ];
+    
+    dropdownsToPopulate.forEach(dropdown => {
+        if (dropdown) {
+            populateCitySelect(dropdown, allLocations);
+        }
+    });
+
+    // Also populate the 'Sell Ticket' form dropdowns initially
+    populateFlightLocations();
+}
+
 // --- ROUTE & FLIGHT TYPE LOGIC ---
 function populateFlightLocations() {
     const isDomestic = !flightTypeToggle.checked;
@@ -296,13 +346,9 @@ function populateFlightLocations() {
     const departureSelect = document.getElementById('departure');
     const destinationSelect = document.getElementById('destination');
 
-    departureSelect.innerHTML = '<option value="" disabled selected>Select Departure</option>';
-    destinationSelect.innerHTML = '<option value="" disabled selected>Select Destination</option>';
-
-    locations.sort().forEach(location => {
-        departureSelect.add(new Option(location, location));
-        destinationSelect.add(new Option(location, location));
-    });
+    // Use the new centralized populator function
+    populateCitySelect(departureSelect, locations.sort());
+    populateCitySelect(destinationSelect, locations.sort());
 }
 
 function updateToggleLabels() {

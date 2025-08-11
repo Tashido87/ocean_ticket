@@ -35,7 +35,7 @@ let gisInited = false;
 
 // --- City data for flight type toggle ---
 const CITIES = {
-    DOMESTIC: ["Bhamo (BMO)", "Bokpyin (VBP)", "Dawei (TVY)", "Heho (HEH)", "Hommalinn (HOX)", "Kalemyo (KMV)", "Kawtung (KET)", "Khamti (KHM)", "Kyaukpyu (KYP)", "Lashio (LSH)", "Loikaw (LIW)", "Mandalay (MDL)", "Mawlamyaing (MNU)", "Monywa (NYW)", "Myeik (MGZ)", "Myitkyina (MYT)", "Nay Pyi Taw (NYT)", "Nyaung U (NYU)", "Putao (PBU)", "Sittwe (AKY)", "Tachilek (THL)", "Thandwe (SNW)", "Yangon (RGN)"],
+    DOMESTIC: ["Bhamo (BMO)", "Bokpyin (VBP)", "Dawei (TVY)", "Heho (HEH)", "Hommalinn (HOX)", "Kalemyo (KMV)", "Kengtung (KET)", "Khamti (KHM)", "Kyaukpyu (KYP)", "Lashio (LSH)", "Loikaw (LIW)", "Mandalay (MDL)", "Mawlamyaing (MNU)", "Monywa (NYW)", "Myeik (MGZ)", "Myitkyina (MYT)", "Nay Pyi Taw (NYT)", "Nyaung U (NYU)", "Putao (PBU)", "Sittwe (AKY)", "Tachilek (THL)", "Thandwe (SNW)", "Yangon (RGN)"],
     INTERNATIONAL: ["Mandalay (MDL)", "Yangon (RGN)", "Ann (VBA)", "Anni Sakhan (VBK)", "Bangalore (BLR)", "Bangkok (BKK)", "Bassein (BSX)", "Brisbane (BNE)", "Busan (PUS)", "Chengdu (CTU)", "Chaing Mai (CNX)", "Coco Islands (VCC)", "Colombo (CMB)", "Cox's bazar (CXB)", "Denpasar (DPS)", "Dhaka (DAC)", "Don Mueang (DMK)", "Fukuoka (FUK)", "Gaya (GAY)", "Haikou (HAK)", "Hanoi (HAN)", "Ho Chi Minh City (SGN)", "Hong Kong (HKG)", "Incheon (ICN)", "Jakarta (CGK)", "Kolkata (CCU)", "Krabi (KBV)", "Kuala Lumpur (KUL)", "Kumming (KMG)", "Mae Sot (MAQ)", "Manaung (MGU)", "Mangrere (AKL)", "Mangshi (LUM)", "Manila (MNL)", "Melbourne (MEL)", "Monghsat (MOG)", "Mumbai (BOM)", "Nagoya (NGO)", "Naming (NMS)", "Nanning (NNG)", "Phuket (HKT)", "Siem Reap (SAI)", "Singapore (SIN)", "Subang (SZB)", "Surbung (SRU)", "Sydney (SYD)", "Taipei (TPE)", "Tokyo - Narita (NRT)", "Vientiane (VTE)", "Xiamen (XMN)"]
 };
 
@@ -64,6 +64,7 @@ const monthSelector = document.getElementById('dashboard-month');
 const yearSelector = document.getElementById('dashboard-year');
 const flightTypeToggle = document.getElementById('flightTypeToggle');
 const searchCurrentMonthToggle = document.getElementById('searchCurrentMonthToggle');
+const exportConfirmModal = document.getElementById('exportConfirmModal');
 
 // --- INITIALIZATION ---
 window.onload = async () => {
@@ -94,7 +95,7 @@ function initializeDatepickers() {
         maxDate: 'today'
     };
 
-    ['searchStartDate', 'searchTravelDate', 'booking_departing_on'].forEach(id => new Datepicker(document.getElementById(id), defaultOptions));
+    ['searchStartDate', 'searchTravelDate', 'booking_departing_on', 'exportStartDate', 'exportEndDate'].forEach(id => new Datepicker(document.getElementById(id), defaultOptions));
     new Datepicker(document.getElementById('searchEndDate'), endDateOptions);
     ['issued_date', 'departing_on', 'paid_date'].forEach(id => new Datepicker(document.getElementById(id), defaultOptions));
 }
@@ -220,8 +221,15 @@ function setupEventListeners() {
     // Keep buttons for manual action if needed
     document.getElementById('searchBtn').addEventListener('click', performSearch);
     document.getElementById('clearBtn').addEventListener('click', clearSearch);
-    document.getElementById('exportPdfBtn').addEventListener('click', exportToPdf); 
+    document.getElementById('exportPdfBtn').addEventListener('click', () => exportConfirmModal.classList.add('show'));
+    document.getElementById('confirmExportBtn').addEventListener('click', exportToPdf);
     
+    document.querySelectorAll('input[name="exportType"]').forEach(radio => {
+        radio.addEventListener('change', (e) => {
+            document.getElementById('exportDateRange').style.display = e.target.value === 'range' ? 'block' : 'none';
+        });
+    });
+
     monthSelector.addEventListener('change', updateDashboardData);
     yearSelector.addEventListener('change', updateDashboardData);
     
@@ -273,6 +281,7 @@ function setupEventListeners() {
         if (event.target == bookingDetailModal) bookingDetailModal.classList.remove('show');
         if (event.target == bookingConfirmModal) bookingConfirmModal.classList.remove('show');
         if (event.target == sellConfirmModal) sellConfirmModal.classList.remove('show');
+        if (event.target == exportConfirmModal) exportConfirmModal.classList.remove('show');
         if (!settingsPanel.contains(event.target) && event.target !== document.getElementById('settings-btn') && !document.getElementById('settings-btn').contains(event.target) ) {
             settingsPanel.classList.remove('show');
         }
@@ -975,11 +984,12 @@ function updateUnpaidCount() {
     const unpaidTickets = state.allTickets.filter(t => !t.paid);
     const count = unpaidTickets.length;
     const label = document.getElementById('unpaid-only-label');
-    const numberEmojis = ["0️⃣", "1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣"];
-
+    
     if (count > 0) {
-        const countString = count > 9 ? `(${count})` : numberEmojis[count];
-        label.innerHTML = `Unpaid Only <span style="color: #F85149; margin-left: 4px;">${countString}</span>`;
+        // Using a simple number in parentheses for clarity and visibility.
+        const countString = `(${count})`; 
+        // The span is styled with a red color (#F85149) and bolded to make it more visible.
+        label.innerHTML = `Unpaid Only <span style="color: #F85149; font-weight: 700; margin-left: 4px;">${countString}</span>`;
     } else {
         label.textContent = 'Unpaid Only';
     }
@@ -1891,11 +1901,34 @@ function initializeUISettings() {
 
 // --- PDF EXPORT FUNCTION ---
 function exportToPdf() {
-    if (state.filteredTickets.length === 0) {
-        showToast('No search results to export.', 'info');
+    const exportType = document.querySelector('input[name="exportType"]:checked').value;
+    let ticketsToExport;
+
+    if (exportType === 'range') {
+        const startDate = parseSheetDate(document.getElementById('exportStartDate').value);
+        const endDate = parseSheetDate(document.getElementById('exportEndDate').value);
+        if (!startDate || !endDate) {
+            showToast('Please select a valid date range.', 'error');
+            return;
+        }
+        ticketsToExport = state.allTickets.filter(t => {
+            const issuedDate = parseSheetDate(t.issued_date);
+            return issuedDate >= startDate && issuedDate <= endDate;
+        });
+    } else {
+        ticketsToExport = state.filteredTickets;
+    }
+
+    if (ticketsToExport.length === 0) {
+        showToast('No data to export for the selected criteria.', 'info');
         return;
     }
 
+    exportConfirmModal.classList.remove('show');
+    generatePdf(ticketsToExport);
+}
+
+function generatePdf(tickets) {
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF({ orientation: 'landscape' });
 
@@ -1905,7 +1938,7 @@ function exportToPdf() {
         return;
     }
 
-    const sortedTickets = [...state.filteredTickets].sort((a, b) => 
+    const sortedTickets = [...tickets].sort((a, b) => 
         parseSheetDate(a.issued_date) - parseSheetDate(b.issued_date)
     );
 
@@ -1977,6 +2010,7 @@ function exportToPdf() {
             6: { cellWidth: 23, halign: 'right' }, 7: { cellWidth: 23, halign: 'right' }
         },
         didDrawPage: function (data) {
+            // Header
             doc.setFontSize(18);
             doc.setTextColor(40);
             doc.text(title, data.settings.margin.left, 15);
@@ -1985,6 +2019,7 @@ function exportToPdf() {
             doc.setTextColor(100);
             doc.text(exportedDate, data.settings.margin.left, 20);
             
+            // Footer
             const pageCount = doc.internal.getNumberOfPages();
             doc.setFontSize(10);
             doc.text("Page " + String(data.pageNumber) + " of " + String(pageCount), data.settings.margin.left, doc.internal.pageSize.height - 10);

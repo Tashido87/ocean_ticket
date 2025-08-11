@@ -929,6 +929,10 @@ td .action-checkbox {
     transform: scale(1) translateY(0);
 }
 
+.modal-content.small-modal {
+    max-width: 450px;
+}
+
 /* --- AESTHETIC DETAILS MODAL (COMPACT) --- */
 #modalBody {
     padding: 0;
@@ -1190,6 +1194,60 @@ td .action-checkbox {
 }
 
 
+/* --- Export Modal Styles --- */
+#exportConfirmModal .modal-content {
+    max-width: 450px;
+}
+
+.export-options {
+    margin-top: 1.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.radio-group {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.radio-group label {
+    font-weight: 500;
+    color: var(--text-primary);
+}
+
+.radio-group input[type="radio"] {
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    appearance: none;
+    width: 20px;
+    height: 20px;
+    border: 2px solid var(--border-color);
+    border-radius: 50%;
+    transition: all 0.2s ease-in-out;
+    cursor: pointer;
+    position: relative;
+}
+
+.radio-group input[type="radio"]:checked {
+    border-color: var(--primary-accent);
+}
+
+.radio-group input[type="radio"]:checked::before {
+    content: '';
+    display: block;
+    width: 10px;
+    height: 10px;
+    background-color: var(--primary-accent);
+    border-radius: 50%;
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+}
+
+
 /* --- RESPONSIVE DESIGN --- */
 @media (max-width: 1200px) {
     .actions-grid {
@@ -1310,4 +1368,57 @@ td .action-checkbox {
         padding: 0.5rem 1rem;
         font-size: 0.8rem;
     }
+}
+
+/* --- Export Modal Styles --- */
+#exportConfirmModal .modal-content {
+    max-width: 450px;
+}
+
+.export-options {
+    margin-top: 1.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.radio-group {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.radio-group label {
+    font-weight: 500;
+    color: var(--text-primary);
+}
+
+.radio-group input[type="radio"] {
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    appearance: none;
+    width: 20px;
+    height: 20px;
+    border: 2px solid var(--border-color);
+    border-radius: 50%;
+    transition: all 0.2s ease-in-out;
+    cursor: pointer;
+    position: relative;
+}
+
+.radio-group input[type="radio"]:checked {
+    border-color: var(--primary-accent);
+}
+
+.radio-group input[type="radio"]:checked::before {
+    content: '';
+    display: block;
+    width: 10px;
+    height: 10px;
+    background-color: var(--primary-accent);
+    border-radius: 50%;
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
 }

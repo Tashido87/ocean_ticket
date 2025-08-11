@@ -123,7 +123,7 @@
                                         <option value="Incheon (ICN)">Incheon (ICN)</option>
                                         <option value="Jakarta (CGK)">Jakarta (CGK)</option>
                                         <option value="Kalemyo (KMV)">Kalemyo (KMV)</option>
-                                        <option value="Kawtung (KET)">Kawtung (KET)</option>
+                                        <option value="Kengtung (KET)">Kengtung (KET)</option>
                                         <option value="Khamti (KHM)">Khamti (KHM)</option>
                                         <option value="Kolkata (CCU)">Kolkata (CCU)</option>
                                         <option value="Krabi (KBV)">Krabi (KBV)</option>
@@ -197,7 +197,7 @@
                                         <option value="Incheon (ICN)">Incheon (ICN)</option>
                                         <option value="Jakarta (CGK)">Jakarta (CGK)</option>
                                         <option value="Kalemyo (KMV)">Kalemyo (KMV)</option>
-                                        <option value="Kawtung (KET)">Kawtung (KET)</option>
+                                        <option value="Kengtung (KET)">Kengtung (KET)</option>
                                         <option value="Khamti (KHM)">Khamti (KHM)</option>
                                         <option value="Kolkata (CCU)">Kolkata (CCU)</option>
                                         <option value="Krabi (KBV)">Krabi (KBV)</option>
@@ -331,7 +331,7 @@
                             <option value="Incheon (ICN)">Incheon (ICN)</option>
                             <option value="Jakarta (CGK)">Jakarta (CGK)</option>
                             <option value="Kalemyo (KMV)">Kalemyo (KMV)</option>
-                            <option value="Kawtung (KET)">Kawtung (KET)</option>
+                            <option value="Kengtung (KET)">Kengtung (KET)</option>
                             <option value="Khamti (KHM)">Khamti (KHM)</option>
                             <option value="Kolkata (CCU)">Kolkata (CCU)</option>
                             <option value="Krabi (KBV)">Krabi (KBV)</option>
@@ -404,7 +404,7 @@
                             <option value="Incheon (ICN)">Incheon (ICN)</option>
                             <option value="Jakarta (CGK)">Jakarta (CGK)</option>
                             <option value="Kalemyo (KMV)">Kalemyo (KMV)</option>
-                            <option value="Kawtung (KET)">Kawtung (KET)</option>
+                            <option value="Kengtung (KET)">Kengtung (KET)</option>
                             <option value="Khamti (KHM)">Khamti (KHM)</option>
                             <option value="Kolkata (CCU)">Kolkata (CCU)</option>
                             <option value="Krabi (KBV)">Krabi (KBV)</option>
@@ -664,6 +664,41 @@
     <div id="bookingDetailModal" class="modal"><div class="modal-content glass-card"><span class="close">&times;</span><div id="bookingDetailModalBody"></div></div></div>
     <div id="bookingConfirmModal" class="modal"><div class="modal-content glass-card small-modal"><div id="bookingConfirmModalBody"></div></div></div>
     <div id="sellConfirmModal" class="modal"><div class="modal-content glass-card"><div id="sellConfirmModalBody"></div></div></div>
+    <div id="exportConfirmModal" class="modal">
+        <div class="modal-content glass-card small-modal">
+            <div id="exportConfirmModalBody">
+                <h2>Confirm PDF Export</h2>
+                <p>Please select the data you want to export.</p>
+                <div class="export-options">
+                    <div class="radio-group">
+                        <input type="radio" id="exportFiltered" name="exportType" value="filtered" checked>
+                        <label for="exportFiltered">Export current search results</label>
+                    </div>
+                    <div class="radio-group">
+                        <input type="radio" id="exportRange" name="exportType" value="range">
+                        <label for="exportRange">Export by date range</label>
+                    </div>
+                </div>
+                <div id="exportDateRange" style="display: none; margin-top: 1rem;">
+                    <div class="form-grid">
+                         <div class="form-group">
+                            <label>Start Date</label>
+                            <input type="text" id="exportStartDate" placeholder="MM/DD/YYYY">
+                        </div>
+                         <div class="form-group">
+                            <label>End Date</label>
+                            <input type="text" id="exportEndDate" placeholder="MM/DD/YYYY">
+                        </div>
+                    </div>
+                </div>
+                 <div class="form-actions" style="margin-top: 2rem;">
+                    <button type="button" class="btn btn-secondary" onclick="document.getElementById('exportConfirmModal').classList.remove('show')">Cancel</button>
+                    <button id="confirmExportBtn" type="button" class="btn btn-primary">Export PDF</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
 
     <div id="toast"><span id="toastMessage"></span></div>
 

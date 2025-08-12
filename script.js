@@ -7,8 +7,7 @@ const CONFIG = {
     DISCOVERY_DOC: 'https://sheets.googleapis.com/$discovery/rest?version=v4',
     SHEET_NAME: '2025',
     BOOKING_SHEET_NAME: 'booking',
-    MODIFICATION_HISTORY_SHEET: 'modification_history',
-    CANCELLATION_HISTORY_SHEET: 'cancellation_history'
+    HISTORY_SHEET: 'history' // Consolidated history sheet
 };
 
 // --- GLOBAL STATE & CACHE ---
@@ -17,17 +16,21 @@ const state = {
     filteredTickets: [],
     allBookings: [],
     filteredBookings: [],
-    modificationHistory: [],
-    cancellationHistory: [],
+    allClients: [],
+    history: [],
     charts: {},
     isSubmitting: false,
     rowsPerPage: 10,
     currentPage: 1,
     bookingCurrentPage: 1,
-    modHistoryPage: 1,
-    cancelHistoryPage: 1,
+    historyPage: 1,
+    clientPage: 1,
     searchTimeout: null,
-    cache: {} // In-memory cache
+    cache: {}, // In-memory cache
+    commissionRates: { // Default commission rates
+        rate: 0.05, // 5%
+        cut: 0.60   // 60%
+    }
 };
 let tokenClient;
 let gapiInited = false;
@@ -45,25 +48,14 @@ const navBtns = document.querySelectorAll('.nav-btn');
 const views = document.querySelectorAll('.view');
 const loading = document.getElementById('loading');
 const dashboardContent = document.getElementById('dashboard-content');
-const detailsModal = document.getElementById('modal');
-const detailsModalBody = document.getElementById('modalBody');
-const modifyModal = document.getElementById('modifyModal');
-const modifyModalBody = document.getElementById('modifyModalBody');
-const cancelModal = document.getElementById('cancelModal');
-const cancelModalBody = document.getElementById('cancelModalBody');
+const modal = document.getElementById('modal');
+const modalBody = document.getElementById('modalBody');
 const toast = document.getElementById('toast');
 const authorizeButton = document.getElementById('authorize_button');
-const bookingDetailModal = document.getElementById('bookingDetailModal');
-const bookingDetailModalBody = document.getElementById('bookingDetailModalBody');
-const bookingConfirmModal = document.getElementById('bookingConfirmModal');
-const bookingConfirmModalBody = document.getElementById('bookingConfirmModalBody');
-const sellConfirmModal = document.getElementById('sellConfirmModal');
-const sellConfirmModalBody = document.getElementById('sellConfirmModalBody');
 const settingsPanel = document.getElementById('settings-panel');
 const monthSelector = document.getElementById('dashboard-month');
 const yearSelector = document.getElementById('dashboard-year');
 const flightTypeToggle = document.getElementById('flightTypeToggle');
-const searchCurrentMonthToggle = document.getElementById('searchCurrentMonthToggle');
 const exportConfirmModal = document.getElementById('exportConfirmModal');
 
 // --- INITIALIZATION ---
@@ -72,8 +64,9 @@ window.onload = async () => {
     setupEventListeners();
     initializeBackgroundChanger();
     initializeUISettings();
-    initializeCityDropdowns(); // Populates all city dropdowns on load
+    initializeCityDropdowns();
     updateToggleLabels();
+    resetPassengerForms(); // Initialize the first passenger form
     if (typeof gapi === 'undefined' || !google.accounts) { showToast('Google API scripts not loaded.', 'error'); return; }
     try {
         await Promise.all([loadGapiClient(), loadGisClient()]);
@@ -85,19 +78,16 @@ window.onload = async () => {
 };
 
 function initializeDatepickers() {
-    const defaultOptions = { 
-        format: 'mm/dd/yyyy', 
-        autohide: true, 
-        todayHighlight: true 
+    const defaultOptions = {
+        format: 'mm/dd/yyyy',
+        autohide: true,
+        todayHighlight: true
     };
-    const endDateOptions = {
-        ...defaultOptions,
-        maxDate: 'today'
-    };
-
-    ['searchStartDate', 'searchTravelDate', 'booking_departing_on', 'exportStartDate', 'exportEndDate'].forEach(id => new Datepicker(document.getElementById(id), defaultOptions));
-    new Datepicker(document.getElementById('searchEndDate'), endDateOptions);
-    ['issued_date', 'departing_on', 'paid_date'].forEach(id => new Datepicker(document.getElementById(id), defaultOptions));
+    const allDatePickers = ['searchStartDate', 'searchEndDate', 'searchTravelDate', 'booking_departing_on', 'exportStartDate', 'exportEndDate', 'issued_date', 'departing_on', 'paid_date'];
+    allDatePickers.forEach(id => {
+        const el = document.getElementById(id);
+        if (el) new Datepicker(el, defaultOptions);
+    });
 }
 
 
@@ -159,10 +149,12 @@ async function initializeApp() {
         await Promise.all([
             loadTicketData(),
             loadBookingData(),
-            loadModificationHistory(),
-            loadCancellationHistory()
+            loadHistory()
         ]);
         initializeDashboardSelectors();
+        buildClientList(); // This now performs the auto-merge
+        renderClientsView();
+        loadSavedSearches();
     } catch (error) {
         console.error("Initialization failed:", error);
         showToast('A critical error occurred during data initialization. Please check the console (F12) for details.', 'error');
@@ -209,21 +201,29 @@ function debounce(func, delay = 300) {
 function setupEventListeners() {
     navBtns.forEach(btn => btn.addEventListener('click', (e) => showView(e.currentTarget.dataset.view)));
     authorizeButton.addEventListener('click', handleAuthClick);
-    
+
     // Live Search Event Listeners
     document.getElementById('searchName').addEventListener('input', () => debounce(performSearch, 300));
     document.getElementById('searchBooking').addEventListener('input', () => debounce(performSearch, 300));
-    
-    ['searchTravelDate', 'searchStartDate', 'searchEndDate', 'searchDeparture', 'searchDestination', 'searchAirline', 'searchNotPaidToggle', 'searchCurrentMonthToggle'].forEach(id => {
+
+    ['searchTravelDate', 'searchStartDate', 'searchEndDate', 'searchDeparture', 'searchDestination', 'searchAirline', 'searchNotPaidToggle'].forEach(id => {
          document.getElementById(id).addEventListener('change', performSearch);
     });
 
-    // Keep buttons for manual action if needed
+    document.querySelectorAll('.preset-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            setDateRangePreset(e.target.dataset.range);
+            document.querySelectorAll('.preset-btn').forEach(b => b.classList.remove('active'));
+            e.target.classList.add('active');
+        });
+    });
+
     document.getElementById('searchBtn').addEventListener('click', performSearch);
     document.getElementById('clearBtn').addEventListener('click', clearSearch);
+    document.getElementById('saveSearchBtn').addEventListener('click', saveSearchQuery);
     document.getElementById('exportPdfBtn').addEventListener('click', () => exportConfirmModal.classList.add('show'));
     document.getElementById('confirmExportBtn').addEventListener('click', exportToPdf);
-    
+
     document.querySelectorAll('input[name="exportType"]').forEach(radio => {
         radio.addEventListener('change', (e) => {
             document.getElementById('exportDateRange').style.display = e.target.value === 'range' ? 'block' : 'none';
@@ -232,7 +232,7 @@ function setupEventListeners() {
 
     monthSelector.addEventListener('change', updateDashboardData);
     yearSelector.addEventListener('change', updateDashboardData);
-    
+
     flightTypeToggle.addEventListener('change', () => {
         populateFlightLocations();
         updateToggleLabels();
@@ -247,53 +247,46 @@ function setupEventListeners() {
             calculateCommission(e.target);
         }
     });
-    
+
     document.getElementById('addPassengerBtn').addEventListener('click', addPassengerForm);
     document.getElementById('removePassengerBtn').addEventListener('click', removePassengerForm);
 
-    document.getElementById('findTicketBtn').addEventListener('click', findTicketForModify);
-    document.getElementById('clearModifyBtn').addEventListener('click', clearModifyResults);
-    document.getElementById('findCancelBtn').addEventListener('click', findTicketForCancel);
-    document.getElementById('clearCancelBtn').addEventListener('click', clearCancelResults);
-    
-    document.getElementById('modifyPnr').addEventListener('keyup', (e) => {
+    document.getElementById('findTicketBtn').addEventListener('click', () => findTicketForManage());
+    document.getElementById('clearManageBtn').addEventListener('click', clearManageResults);
+
+    document.getElementById('managePnr').addEventListener('keyup', (e) => {
         if (e.key === 'Enter') document.getElementById('findTicketBtn').click();
     });
-    document.getElementById('cancelPnr').addEventListener('keyup', (e) => {
-        if (e.key === 'Enter') document.getElementById('findCancelBtn').click();
-    });
-    
+
     document.getElementById('newBookingBtn').addEventListener('click', showNewBookingForm);
     document.getElementById('cancelNewBookingBtn').addEventListener('click', hideNewBookingForm);
     document.getElementById('newBookingForm').addEventListener('submit', handleNewBookingSubmit);
     document.getElementById('bookingSearchBtn').addEventListener('click', performBookingSearch);
     document.getElementById('bookingClearBtn').addEventListener('click', clearBookingSearch);
-    bookingDetailModal.querySelector('.close').addEventListener('click', () => bookingDetailModal.classList.remove('show'));
 
     ['departure', 'destination', 'searchDeparture', 'searchDestination'].forEach(id => {
         document.getElementById(id).addEventListener('change', handleRouteValidation);
     });
 
+    // Client autosuggest listeners
+    document.getElementById('phone').addEventListener('input', (e) => handleAutosuggest(e.target, 'phone'));
+    document.getElementById('account_name').addEventListener('input', (e) => handleAutosuggest(e.target, 'account_name'));
+
+
     window.addEventListener('click', (event) => {
-        if (event.target == detailsModal) detailsModal.classList.remove('show');
-        if (event.target == modifyModal) modifyModal.classList.remove('show');
-        if (event.target == cancelModal) cancelModal.classList.remove('show');
-        if (event.target == bookingDetailModal) bookingDetailModal.classList.remove('show');
-        if (event.target == bookingConfirmModal) bookingConfirmModal.classList.remove('show');
-        if (event.target == sellConfirmModal) sellConfirmModal.classList.remove('show');
+        if (event.target == modal) closeModal();
         if (event.target == exportConfirmModal) exportConfirmModal.classList.remove('show');
         if (!settingsPanel.contains(event.target) && event.target !== document.getElementById('settings-btn') && !document.getElementById('settings-btn').contains(event.target) ) {
             settingsPanel.classList.remove('show');
+        }
+        // Hide autosuggest boxes if clicking outside
+        if (!event.target.closest('.client-autosuggest-group')) {
+            document.querySelectorAll('.autosuggest-box').forEach(box => box.style.display = 'none');
         }
     });
 }
 
 // --- NEW/MODIFIED DROPDOWN LOGIC ---
-/**
- * Populates a single select dropdown with city options formatted as 'CODE - City Name'.
- * @param {HTMLSelectElement} selectElement The dropdown element to populate.
- * @param {string[]} locations Array of city strings, e.g., "Yangon (RGN)".
- */
 function populateCitySelect(selectElement, locations) {
     const firstOption = selectElement.options[0];
     selectElement.innerHTML = '';
@@ -305,8 +298,8 @@ function populateCitySelect(selectElement, locations) {
         const match = location.match(/(.+) \((.+)\)/);
         let text, value;
         if (match) {
-            text = `${match[2]} - ${match[1]}`; // New format: "RGN - Yangon"
-            value = location;                 // Original value: "Yangon (RGN)"
+            text = `${match[2]} - ${match[1]}`;
+            value = location;
         } else {
             text = location;
             value = location;
@@ -315,26 +308,22 @@ function populateCitySelect(selectElement, locations) {
     });
 }
 
-/**
- * Populates all city-related dropdowns when the application starts.
- */
 function initializeCityDropdowns() {
     const allLocations = [...new Set([...CITIES.DOMESTIC, ...CITIES.INTERNATIONAL])].sort();
-    
+
     const dropdownsToPopulate = [
         document.getElementById('searchDeparture'),
         document.getElementById('searchDestination'),
         document.getElementById('booking_departure'),
         document.getElementById('booking_destination')
     ];
-    
+
     dropdownsToPopulate.forEach(dropdown => {
         if (dropdown) {
             populateCitySelect(dropdown, allLocations);
         }
     });
 
-    // Also populate the 'Sell Ticket' form dropdowns initially
     populateFlightLocations();
 }
 
@@ -342,11 +331,10 @@ function initializeCityDropdowns() {
 function populateFlightLocations() {
     const isDomestic = !flightTypeToggle.checked;
     const locations = isDomestic ? CITIES.DOMESTIC : CITIES.INTERNATIONAL;
-    
+
     const departureSelect = document.getElementById('departure');
     const destinationSelect = document.getElementById('destination');
 
-    // Use the new centralized populator function
     populateCitySelect(departureSelect, locations.sort());
     populateCitySelect(destinationSelect, locations.sort());
 }
@@ -369,15 +357,15 @@ function handleRouteValidation(event) {
     if (!form) return;
 
     const isDeparture = changedSelect.id.includes('departure');
-    const otherSelectId = isDeparture 
+    const otherSelectId = isDeparture
         ? changedSelect.id.replace('departure', 'destination')
         : changedSelect.id.replace('destination', 'departure');
-    
+
     const otherSelect = form.querySelector(`#${otherSelectId}`);
     if (!otherSelect) return;
 
     const selectedValue = changedSelect.value;
-    
+
     for (const option of otherSelect.options) {
         option.disabled = false;
     }
@@ -397,12 +385,14 @@ async function loadTicketData() {
         loading.style.display = 'block';
         dashboardContent.style.display = 'none';
         const response = await fetchFromSheet(`${CONFIG.SHEET_NAME}!A:U`, 'ticketData');
-        
+
         if (response.values && response.values.length > 1) {
             state.allTickets = parseTicketData(response.values);
             populateSearchAirlines();
             updateUnpaidCount();
             displayInitialTickets();
+        } else {
+            renderEmptyState('resultsBodyContainer', 'fa-ticket', 'No Tickets Found', 'There are no tickets in the system yet. Start by selling a new ticket.');
         }
         loading.style.display = 'none';
         dashboardContent.style.display = 'flex';
@@ -443,7 +433,7 @@ async function loadBookingData() {
         displayBookings();
     } catch (error) {
         showToast(`Error loading booking data: ${error.result?.error?.message || error}`, 'error');
-        document.getElementById('bookingTableBody').innerHTML = `<tr><td colspan="7" style="text-align:center; color: #F85149;">Failed to load data.</td></tr>`;
+        renderEmptyState('bookingTableContainer', 'fa-calendar-xmark', 'Failed to load bookings', 'Could not retrieve booking data from the sheet. Please check permissions and try again.');
     }
 }
 
@@ -462,9 +452,9 @@ function parseBookingData(values) {
 }
 
 function displayBookings(bookingsToDisplay) {
-    const tbody = document.getElementById('bookingTableBody');
-    tbody.innerHTML = '';
-    
+    const container = document.getElementById('bookingTableContainer');
+    container.innerHTML = '';
+
     let bookings;
     if (bookingsToDisplay) {
         bookings = bookingsToDisplay;
@@ -488,11 +478,28 @@ function displayBookings(bookingsToDisplay) {
     state.filteredBookings = bookings;
 
     if (state.filteredBookings.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;">No bookings found.</td></tr>`;
+        renderEmptyState('bookingTableContainer', 'fa-calendar-check', 'No Active Bookings', 'There are no current booking requests. Add one to get started!');
         setupBookingPagination([]);
         return;
     }
-    
+
+    const table = document.createElement('table');
+    table.innerHTML = `
+        <thead>
+            <tr>
+                <th>Travel Date</th>
+                <th>Client Name</th>
+                <th>Route</th>
+                <th>Pax</th>
+                <th>Get Ticket</th>
+                <th>Cancel</th>
+                <th>Details</th>
+            </tr>
+        </thead>
+        <tbody id="bookingTableBody"></tbody>
+    `;
+    container.appendChild(table);
+
     state.bookingCurrentPage = 1;
     renderBookingPage(1);
 }
@@ -500,6 +507,7 @@ function displayBookings(bookingsToDisplay) {
 function renderBookingPage(page) {
     state.bookingCurrentPage = page;
     const tbody = document.getElementById('bookingTableBody');
+    if (!tbody) return;
     tbody.innerHTML = '';
 
     const paginated = state.filteredBookings.slice((page - 1) * state.rowsPerPage, page * state.rowsPerPage);
@@ -513,23 +521,23 @@ function renderBookingPage(page) {
             <td>${booking.pax_no || ''}</td>
             <td><input type="checkbox" class="action-checkbox" onclick="handleGetTicket(${booking.rowIndex})"></td>
             <td><input type="checkbox" class="action-checkbox" onclick="handleCancelBooking(${booking.rowIndex})"></td>
-            <td><button class="btn btn-secondary" style="padding:0.5rem 1rem;" onclick="showBookingDetails(${booking.rowIndex})">Details</button></td>
+            <td><button class="icon-btn icon-btn-table" onclick="showBookingDetails(${booking.rowIndex})"><i class="fa-solid fa-eye"></i></button></td>
         `;
     });
-    
+
     setupBookingPagination(state.filteredBookings);
 }
 
 function handleGetTicket(rowIndex) {
     const booking = state.allBookings.find(b => b.rowIndex === rowIndex);
     const message = `Are you sure you want to mark booking for <strong>${booking.name}</strong> as "Get Ticket"? This will remove it from the list.`;
-    showBookingConfirmModal(message, () => updateBookingStatus(rowIndex, 'Get Ticket'));
+    showConfirmModal(message, () => updateBookingStatus(rowIndex, 'Get Ticket'));
 }
 
 function handleCancelBooking(rowIndex) {
     const booking = state.allBookings.find(b => b.rowIndex === rowIndex);
     const message = `Are you sure you want to <strong>CANCEL</strong> the booking for <strong>${booking.name}</strong>? This will remove it from the list.`;
-    showBookingConfirmModal(message, () => updateBookingStatus(rowIndex, 'Canceled'));
+    showConfirmModal(message, () => updateBookingStatus(rowIndex, 'Canceled'));
 }
 
 async function updateBookingStatus(rowIndex, remarks) {
@@ -553,14 +561,14 @@ async function updateBookingStatus(rowIndex, remarks) {
         await loadBookingData();
     } finally {
         state.isSubmitting = false;
-        bookingConfirmModal.classList.remove('show');
+        closeModal();
     }
 }
 
 function showBookingDetails(rowIndex) {
     const booking = state.allBookings.find(b => b.rowIndex === rowIndex);
     if (booking) {
-        bookingDetailModalBody.innerHTML = `
+        const content = `
             <h3>Booking Request Details</h3>
             <p><strong>Name:</strong> ${booking.name || 'N/A'}</p>
             <p><strong>ID No:</strong> ${booking.id_no || 'N/A'}</p>
@@ -574,11 +582,11 @@ function showBookingDetails(rowIndex) {
             <p><strong>Route:</strong> ${booking.departure || 'N/A'} → ${booking.destination || 'N/A'}</p>
             <p><strong>Travel Date:</strong> ${booking.departing_on || 'N/A'}</p>
             <p><strong>Remarks:</strong> ${booking.remarks || 'N/A'}</p>
-            <div style="text-align: center; margin-top: 1.5rem;">
-                <button class="btn btn-secondary" onclick="document.getElementById('bookingDetailModal').classList.remove('show')">Close</button>
+            <div class="form-actions" style="margin-top: 1.5rem;">
+                <button class="btn btn-secondary" onclick="closeModal()">Close</button>
             </div>
         `;
-        bookingDetailModal.classList.add('show');
+        openModal(content);
     }
 }
 
@@ -673,23 +681,6 @@ function setupBookingPagination(items) {
     container.append(createBtn('&raquo;', state.bookingCurrentPage + 1, state.bookingCurrentPage < pageCount));
 }
 
-function showBookingConfirmModal(message, onConfirm) {
-    bookingConfirmModalBody.innerHTML = `
-        <p style="margin-bottom: 1.5rem; line-height: 1.5;">${message}</p>
-        <div class="form-actions">
-            <button id="confirmCancelBtn" type="button" class="btn btn-secondary">Back</button>
-            <button id="confirmActionBtn" type="button" class="btn btn-primary">Confirm</button>
-        </div>
-    `;
-    bookingConfirmModal.classList.add('show');
-
-    document.getElementById('confirmActionBtn').onclick = onConfirm;
-    document.getElementById('confirmCancelBtn').onclick = async () => {
-        bookingConfirmModal.classList.remove('show');
-        await loadBookingData();
-    };
-}
-
 function populateBookingSearchOptions() {
     const select = document.getElementById('bookingSearchRoute');
     select.innerHTML = '<option value="">-- SEARCH BY ROUTE --</option>';
@@ -704,7 +695,7 @@ function populateBookingSearchOptions() {
     });
 
     const routes = [...new Set(activeBookings.map(b => `${b.departure || ''}→${b.destination || ''}`))];
-    
+
     routes.sort().forEach(route => {
         const option = document.createElement('option');
         option.value = route;
@@ -719,7 +710,7 @@ function performBookingSearch() {
         showToast('Please select a route to search.', 'info');
         return;
     }
-    
+
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
@@ -775,13 +766,22 @@ function initializeBackgroundChanger() {
 function showView(viewName) {
     navBtns.forEach(btn => btn.classList.toggle('active', btn.dataset.view === viewName));
     views.forEach(view => view.classList.toggle('active', view.id === `${viewName}-view`));
+
     if (viewName === 'sell') {
         document.getElementById('sellForm').reset();
+        resetPassengerForms();
         populateFlightLocations();
         updateToggleLabels();
     }
     if (viewName === 'booking') {
         hideNewBookingForm();
+    }
+    if (viewName === 'clients') {
+        renderClientsView();
+    }
+    if (viewName === 'manage') {
+        clearManageResults();
+        displayHistory(1);
     }
 }
 
@@ -793,11 +793,31 @@ function displayInitialTickets() {
 }
 
 function displayTickets(tickets, page = 1) {
+    const container = document.getElementById('resultsBodyContainer');
+    container.innerHTML = '';
+
+    if (tickets.length === 0) {
+        renderEmptyState('resultsBodyContainer', 'fa-magnifying-glass', 'No Results Found', 'Your search did not match any tickets. Try adjusting your filters.');
+        setupPagination([]);
+        return;
+    }
+
+    const table = document.createElement('table');
+    table.id = 'resultsTable';
+    table.innerHTML = `
+        <thead>
+            <tr>
+                <th>Issued Date</th><th>Name</th><th>Booking Ref</th><th>Route</th><th>Airline</th><th>Actions</th>
+            </tr>
+        </thead>
+        <tbody id="resultsBody"></tbody>
+    `;
+    container.appendChild(table);
     const tbody = document.getElementById('resultsBody');
-    tbody.innerHTML = ''; 
+
     state.currentPage = page;
     const paginated = tickets.slice((page - 1) * state.rowsPerPage, page * state.rowsPerPage);
-    
+
     paginated.forEach((ticket) => {
         const row = tbody.insertRow();
 
@@ -808,12 +828,20 @@ function displayTickets(tickets, page = 1) {
             }
         }
 
-        row.innerHTML = `<td>${ticket.issued_date||''}</td><td>${ticket.name||''}</td><td>${ticket.booking_reference||''}</td><td>${(ticket.departure||'').split(' ')[0]}→${(ticket.destination||'').split(' ')[0]}</td><td>${ticket.airline||''}</td><td><button class="btn btn-secondary" style="padding:0.5rem 1rem;" onclick="showDetails(${ticket.rowIndex})">Details</button></td>`;
+        row.innerHTML = `
+            <td>${ticket.issued_date||''}</td>
+            <td>${ticket.name||''}</td>
+            <td>${ticket.booking_reference||''}</td>
+            <td>${(ticket.departure||'').split(' ')[0]}→${(ticket.destination||'').split(' ')[0]}</td>
+            <td>${ticket.airline||''}</td>
+            <td class="actions-cell">
+                <button class="icon-btn icon-btn-table" title="View Details" onclick="showDetails(${ticket.rowIndex})"><i class="fa-solid fa-eye"></i></button>
+                <button class="icon-btn icon-btn-table" title="Manage Ticket" onclick="showView('manage'); findTicketForManage('${ticket.booking_reference}')"><i class="fa-solid fa-pen-to-square"></i></button>
+            </td>
+        `;
     });
     setupPagination(tickets);
 }
-
-function closeDetailsModal() { document.getElementById('modal').classList.remove('show'); }
 
 function showDetails(rowIndex) {
     const ticket = state.allTickets.find(t => t.rowIndex === rowIndex);
@@ -837,7 +865,7 @@ function showDetails(rowIndex) {
         }
     }
 
-    detailsModalBody.innerHTML = `
+    const content = `
         <div class="details-header">
             <div>
                 <div class="client-name">${ticket.name || 'N/A'}</div>
@@ -875,8 +903,11 @@ function showDetails(rowIndex) {
                 <div class="details-item"><i class="fa-solid fa-credit-card"></i><div class="details-item-content"><div class="label">Payment Status</div><div class="value">${ticket.paid ? `Paid via ${ticket.payment_method || 'N/A'}` : 'Not Paid'}</div></div></div>
             </div>
         </div>
+        <div class="form-actions" style="margin-top: 1rem;">
+            <button class="btn btn-secondary" onclick="closeModal()">Close</button>
+        </div>
     `;
-    detailsModal.classList.add('show');
+    openModal(content);
 }
 
 
@@ -888,11 +919,11 @@ function initializeDashboardSelectors() {
     const years = [...new Set(state.allTickets.map(t => parseSheetDate(t.issued_date).getFullYear()))].filter(Boolean).sort((a,b) => b-a);
     if(years.length === 0) years.push(new Date().getFullYear());
     yearSelector.innerHTML = years.map(y => `<option value="${y}">${y}</option>`).join('');
-    
+
     const now = new Date();
     monthSelector.value = now.getMonth();
     yearSelector.value = now.getFullYear();
-    
+
     updateDashboardData();
 }
 
@@ -913,7 +944,7 @@ function updateDashboardData() {
     const totalRevenue = ticketsThisPeriod.reduce((sum, t) => sum + (t.net_amount || 0) + (t.date_change || 0), 0);
     const revenueBox = document.getElementById('monthly-revenue-box');
     revenueBox.innerHTML = `<div class="info-card-content"><h3>Total Revenue</h3><div class="main-value">${totalRevenue.toLocaleString()}</div><span class="sub-value">MMK</span><i class="icon fa-solid fa-sack-dollar"></i></div>`;
-    
+
     const totalCommission = ticketsThisPeriod.reduce((sum, t) => sum + (t.commission || 0), 0);
     const commissionBox = document.getElementById('monthly-commission-box');
     commissionBox.innerHTML = `<div class="info-card-content"><h3>Total Commission</h3><div class="main-value">${totalCommission.toLocaleString()}</div><span class="sub-value">MMK</span><i class="icon fa-solid fa-hand-holding-dollar"></i></div>`;
@@ -921,7 +952,7 @@ function updateDashboardData() {
     const totalExtraFare = ticketsThisPeriod.reduce((sum, t) => sum + (t.extra_fare || 0), 0);
     const extraFareBox = document.getElementById('monthly-extra-fare-box');
     extraFareBox.innerHTML = `<div class="info-card-content"><h3>Total Extra Fare</h3><div class="main-value">${totalExtraFare.toLocaleString()}</div><span class="sub-value">MMK</span><i class="icon fa-solid fa-dollar-sign"></i></div>`;
-    
+
     if (state.charts.airlineChart) state.charts.airlineChart.destroy();
     createAirlineChart(ticketsThisPeriod);
 }
@@ -970,7 +1001,7 @@ function createAirlineChart(tickets) {
 }
 
 // --- UTILITY FUNCTIONS ---
-function makeClickable(text) { if (!text) return 'N/A'; if (text.toLowerCase().startsWith('http')) return `<a href="${text}" target="_blank" style="color:var(--primary-accent);">${text}</a>`; if (/^[\d\s\-+()]+$/.test(text)) return `<a href="tel:${text.replace(/[^\d+]/g, '')}" style="color:var(--primary-accent);">${text}</a>`; if (text.startsWith('@')) return `<a href="https://t.me/${text.substring(1)}" target="_blank" style="color:var(--primary-accent);">${text}</a>`; return text; }
+function makeClickable(text) { if (!text) return 'N/A'; if (text.toLowerCase().startsWith('http')) return `<a href="${text}" target="_blank" rel="noopener noreferrer">${text}</a>`; if (/^[\d\s\-+()]+$/.test(text)) return `<a href="tel:${text.replace(/[^\d+]/g, '')}">${text}</a>`; if (text.startsWith('@')) return `<a href="https://t.me/${text.substring(1)}" target="_blank" rel="noopener noreferrer">${text}</a>`; return text; }
 function showToast(message, type = 'info') { document.getElementById('toastMessage').textContent = message; const toastEl = document.getElementById('toast'); toastEl.className = `show ${type}`; setTimeout(() => toastEl.className = toastEl.className.replace('show', ''), 4000); }
 function formatDateForSheet(dateString) { if (!dateString) return ''; const date = new Date(dateString); return isNaN(date.getTime()) ? dateString : `${String(date.getMonth() + 1).padStart(2, '0')}/${String(date.getDate()).padStart(2, '0')}/${date.getFullYear()}`; }
 
@@ -1021,7 +1052,27 @@ function calculateCommission(baseFareInput) {
     const passengerForm = baseFareInput.closest('.passenger-form');
     const commissionInput = passengerForm.querySelector('.passenger-commission');
     const baseFare = parseFloat(baseFareInput.value) || 0;
-    commissionInput.value = Math.round((baseFare * 0.05) * 0.60);
+    commissionInput.value = Math.round((baseFare * state.commissionRates.rate) * state.commissionRates.cut);
+}
+
+function renderEmptyState(containerId, iconClass, title, message, buttonText = '', buttonAction = null) {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+    let buttonHtml = '';
+    if (buttonText && buttonAction) {
+        buttonHtml = `<button class="btn btn-primary">${buttonText}</button>`;
+    }
+    container.innerHTML = `
+        <div class="empty-state">
+            <i class="fa-solid ${iconClass}"></i>
+            <h4>${title}</h4>
+            <p>${message}</p>
+            ${buttonHtml}
+        </div>
+    `;
+    if (buttonAction) {
+        container.querySelector('button').addEventListener('click', buttonAction);
+    }
 }
 
 // --- SEARCH & PAGINATION ---
@@ -1030,17 +1081,33 @@ function updateUnpaidCount() {
     const unpaidTickets = state.allTickets.filter(t => !t.paid);
     const count = unpaidTickets.length;
     const label = document.getElementById('unpaid-only-label');
-    
+
     if (count > 0) {
-        // Using a simple number in parentheses for clarity and visibility.
-        const countString = `(${count})`; 
-        // The span is styled with a red color (#F85149) and bolded to make it more visible.
-        label.innerHTML = `Unpaid Only <span style="color: #F85149; font-weight: 700; margin-left: 4px;">${countString}</span>`;
+        const countString = `(${count})`;
+        label.innerHTML = `Unpaid Only <span style="color: var(--danger-accent); font-weight: 700; margin-left: 4px;">${countString}</span>`;
     } else {
         label.textContent = 'Unpaid Only';
     }
 }
 
+function setDateRangePreset(range) {
+    const startDateInput = document.getElementById('searchStartDate');
+    const endDateInput = document.getElementById('searchEndDate');
+    const today = new Date();
+    let startDate = new Date();
+
+    if (range === '7') {
+        startDate.setDate(today.getDate() - 7);
+    } else if (range === '30') {
+        startDate.setDate(today.getDate() - 30);
+    } else if (range === 'month') {
+        startDate = new Date(today.getFullYear(), today.getMonth(), 1);
+    }
+
+    startDateInput.value = formatDateForSheet(startDate);
+    endDateInput.value = formatDateForSheet(today);
+    performSearch();
+}
 
 function performSearch() {
     const name = (document.getElementById('searchName')?.value || '').toUpperCase();
@@ -1052,31 +1119,19 @@ function performSearch() {
     const destination = document.getElementById('searchDestination')?.value.toUpperCase();
     const airline = document.getElementById('searchAirline')?.value.toUpperCase();
     const notPaidOnly = document.getElementById('searchNotPaidToggle')?.checked;
-    const currentMonthOnly = document.getElementById('searchCurrentMonthToggle')?.checked;
 
     let searchStartDate = startDateVal ? parseSheetDate(startDateVal) : null;
     let searchEndDate = endDateVal ? parseSheetDate(endDateVal) : null;
-    
-    if (currentMonthOnly) {
-        const now = new Date();
-        now.setHours(0, 0, 0, 0);
-        const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-        const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
-        searchStartDate = startOfMonth;
-        searchEndDate = endOfMonth;
-        document.getElementById('searchStartDate').value = '';
-        document.getElementById('searchEndDate').value = '';
-    } else {
-        if (searchStartDate) searchStartDate.setUTCHours(0, 0, 0, 0);
-        if (searchEndDate) searchEndDate.setUTCHours(23, 59, 59, 999);
-    }
+
+    if (searchStartDate) searchStartDate.setUTCHours(0, 0, 0, 0);
+    if (searchEndDate) searchEndDate.setUTCHours(23, 59, 59, 999);
 
     let searchTravelDate = travelDateVal ? parseSheetDate(travelDateVal) : null;
 
     const results = state.allTickets.filter(t => {
         const issuedDate = parseSheetDate(t.issued_date);
         const travelDate = parseSheetDate(t.departing_on);
-        
+
         const nameMatch = !name || t.name.toUpperCase().includes(name);
         const bookRefMatch = !bookRef || t.booking_reference.toUpperCase().includes(bookRef);
         const issuedDateMatch = (!searchStartDate || issuedDate >= searchStartDate) && (!searchEndDate || issuedDate <= searchEndDate);
@@ -1098,7 +1153,8 @@ function clearSearch() {
     document.querySelectorAll('#searchForm select').forEach(sel => {
         for(const opt of sel.options) { opt.disabled = false; }
     });
-    performSearch(); // Re-run search to reset to initial view
+    document.querySelectorAll('.preset-btn').forEach(b => b.classList.remove('active'));
+    performSearch();
 }
 
 function setupPagination(items) {
@@ -1137,58 +1193,21 @@ async function handleSellTicket(e) {
         return;
     }
 
-    // Build confirmation modal content
-    let passengerHtml = '';
-    let totalNet = 0;
-    passengerData.forEach((p, index) => {
-        totalNet += p.net_amount;
-        passengerHtml += `
-            <div class="passenger-summary">
-                <strong>Passenger ${index + 1}: ${p.name}</strong>
-                <div class="details-grid">
-                    <div class="details-item"><div class="details-item-content"><div class="label">ID</div><div class="value">${p.id_no || 'N/A'}</div></div></div>
-                    <div class="details-item"><div class="details-item-content"><div class="label">Net Amount</div><div class="value">${p.net_amount.toLocaleString()} MMK</div></div></div>
-                    <div class="details-item"><div class="details-item-content"><div class="label">Commission</div><div class="value">${p.commission.toLocaleString()} MMK</div></div></div>
-                </div>
-            </div>
-        `;
-    });
-
-    sellConfirmModalBody.innerHTML = `
-        <h2>Confirm Ticket Sale</h2>
-        <p>Please review the details below before confirming the sale.</p>
-        <div class="details-section">
-            <div class="details-section-title">Flight & Booking</div>
-            <div class="details-grid">
-                <div class="details-item"><div class="details-item-content"><div class="label">PNR</div><div class="value">${sharedData.booking_reference}</div></div></div>
-                <div class="details-item"><div class="details-item-content"><div class="label">Route</div><div class="value">${sharedData.departure} → ${sharedData.destination}</div></div></div>
-                <div class="details-item"><div class="details-item-content"><div class="label">Travel Date</div><div class="value">${sharedData.departing_on}</div></div></div>
-                <div class="details-item"><div class="details-item-content"><div class="label">Airline</div><div class="value">${sharedData.airline}</div></div></div>
-            </div>
-        </div>
-         <div class="details-section">
-            <div class="details-section-title">Passengers (${passengerData.length}) - Total: ${totalNet.toLocaleString()} MMK</div>
-            ${passengerHtml}
-        </div>
-        <div class="form-actions" style="margin-top: 2rem;">
-            <button type="button" class="btn btn-secondary" onclick="sellConfirmModal.classList.remove('show')">Cancel</button>
-            <button id="confirmSaleBtn" type="button" class="btn btn-primary">Confirm Sale</button>
-        </div>
-    `;
-
-    sellConfirmModal.classList.add('show');
-
-    // Add event listener to the confirm button inside the modal
-    document.getElementById('confirmSaleBtn').onclick = () => {
+    // PNR Duplication Check
+    const pnrExists = state.allTickets.some(t => t.booking_reference === sharedData.booking_reference);
+    if (pnrExists) {
+        const message = `PNR <strong>${sharedData.booking_reference}</strong> already exists. Are you sure you want to add more passengers under this PNR?`;
+        showConfirmModal(message, () => confirmAndSaveTicket(form, sharedData, passengerData));
+    } else {
         confirmAndSaveTicket(form, sharedData, passengerData);
-    };
+    }
 }
 
 async function confirmAndSaveTicket(form, sharedData, passengerData) {
     state.isSubmitting = true;
     const submitButton = form.querySelector('button[type="submit"]');
     if (submitButton) submitButton.disabled = true;
-    sellConfirmModal.classList.remove('show');
+    closeModal();
 
     try {
         await saveTicket(sharedData, passengerData);
@@ -1201,6 +1220,7 @@ async function confirmAndSaveTicket(form, sharedData, passengerData) {
         state.cache['ticketData'] = null;
         await loadTicketData();
         updateDashboardData();
+        buildClientList();
         showView('home');
     } catch (error) {
         showToast(`Error: ${error.message || 'Could not save ticket.'}`, 'error');
@@ -1240,7 +1260,7 @@ function collectFormData(form) {
             commission: parseFloat(pForm.querySelector('.passenger-commission').value) || 0,
             remarks: pForm.querySelector('.passenger-remarks').value
         };
-        if(passenger.name) { // Only add if passenger has a name
+        if(passenger.name) {
              passengerData.push(passenger);
         }
     });
@@ -1284,7 +1304,7 @@ async function saveTicket(sharedData, passengerData) {
 function addPassengerForm() {
     const container = document.getElementById('passenger-forms-container');
     const passengerCount = container.children.length;
-    
+
     const newForm = document.createElement('div');
     newForm.className = 'passenger-form';
     newForm.innerHTML = `
@@ -1339,27 +1359,32 @@ function updateRemovePassengerButton() {
 }
 
 
-// --- MODIFY & UPDATE TICKET ---
-function findTicketForModify() {
-    const pnr = document.getElementById('modifyPnr').value.toUpperCase();
+// --- MANAGE TICKET (CONSOLIDATED) ---
+function findTicketForManage(pnrFromClick = null) {
+    const pnr = pnrFromClick || document.getElementById('managePnr').value.toUpperCase();
     if (!pnr) return showToast('Please enter a PNR code.', 'error');
+
+    if (pnrFromClick) {
+        document.getElementById('managePnr').value = pnr;
+    }
+
     const found = state.allTickets.filter(t => t.booking_reference === pnr);
-    displayModifyResults(found);
+    displayManageResults(found);
 }
 
-function clearModifyResults() {
-    document.getElementById('modifyPnr').value = '';
-    document.getElementById('modifyResultsContainer').innerHTML = '';
+function clearManageResults() {
+    document.getElementById('managePnr').value = '';
+    document.getElementById('manageResultsContainer').innerHTML = '';
 }
 
-function displayModifyResults(tickets) {
-    const container = document.getElementById('modifyResultsContainer');
+function displayManageResults(tickets) {
+    const container = document.getElementById('manageResultsContainer');
     if (tickets.length === 0) {
-        container.innerHTML = '<p style="text-align: center; margin-top: 1rem;">No tickets found for this PNR.</p>';
+        renderEmptyState('manageResultsContainer', 'fa-ticket-slash', 'No Tickets Found', `No tickets were found for PNR: ${document.getElementById('managePnr').value}.`);
         return;
     }
     let html = `<div class="table-container"><table><thead><tr><th>Name</th><th>Route</th><th>Travel Date</th><th>Status / Action</th></tr></thead><tbody>`;
-    
+
     const remarkCheck = (r) => {
         if (!r) return false;
         const lowerRemark = r.toLowerCase();
@@ -1373,15 +1398,15 @@ function displayModifyResults(tickets) {
             const statusText = t.remarks.toLowerCase().includes('refund') ? 'Fully Refunded' : 'Canceled';
             actionButton = `<button class="btn btn-secondary" disabled>${statusText}</button>`;
         } else {
-            actionButton = `<button class="btn btn-primary" onclick="openModifyModal(${t.rowIndex})">Modify</button>`;
+            actionButton = `<button class="btn btn-primary" onclick="openManageModal(${t.rowIndex})">Manage</button>`;
         }
-        
+
         html += `<tr><td>${t.name}</td><td>${t.departure.split(' ')[0]}→${t.destination.split(' ')[0]}</td><td>${t.departing_on}</td><td>${actionButton}</td></tr>`;
     });
     container.innerHTML = html + '</tbody></table></div>';
 }
 
-function openModifyModal(rowIndex) {
+function openManageModal(rowIndex) {
     const ticket = state.allTickets.find(t => t.rowIndex === rowIndex);
     if (!ticket) return showToast('Ticket not found.', 'error');
 
@@ -1392,7 +1417,7 @@ function openModifyModal(rowIndex) {
             travelDateForInput = `${String(d.getUTCMonth() + 1).padStart(2, '0')}/${String(d.getUTCDate()).padStart(2, '0')}/${d.getUTCFullYear()}`;
         }
     }
-    
+
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const travelDate = parseSheetDate(ticket.departing_on);
@@ -1426,10 +1451,10 @@ function openModifyModal(rowIndex) {
         `;
     }
 
-    modifyModalBody.innerHTML = `
-        <h2>Modify Ticket: ${ticket.name}</h2>
+    const content = `
+        <h2>Manage Ticket: ${ticket.name}</h2>
         <form id="updateForm" data-pnr="${ticket.booking_reference}" data-master-row-index="${rowIndex}">
-            <h4>Ticket Details</h4>
+            <h4>Modify Details</h4>
             <div class="form-grid" style="margin-top: 1rem;">
                 <div class="form-group"><label>New Travel Date (for all in PNR)</label><input type="text" id="update_departing_on" placeholder="MM/DD/YYYY" value="${travelDateForInput}" ${isPast ? 'disabled' : ''}></div>
                 <div class="form-group"><label>New Base Fare (Optional)</label><input type="number" id="update_base_fare" placeholder="${(ticket.base_fare||0).toLocaleString()}"></div>
@@ -1438,17 +1463,22 @@ function openModifyModal(rowIndex) {
                 <div class="form-group"><label>Extra Fare (Optional)</label><input type="number" id="update_extra_fare" placeholder="Adds to existing extra fare"></div>
             </div>
             ${paymentUpdateHtml}
-            <div class="form-actions" style="margin-top: 2rem;">
-                <button type="button" class="btn btn-secondary" onclick="document.getElementById('modifyModal').classList.remove('show')">Cancel</button>
-                <button type="submit" class="btn btn-primary">Update Ticket(s)</button>
+            <div class="form-actions" style="margin-top: 2rem; justify-content: space-between;">
+                <div>
+                    <button type="button" class="btn btn-secondary" style="background-color: rgba(248, 81, 73, 0.2); color: #F85149;" onclick="openCancelSubModal(${rowIndex})">Cancel/Refund...</button>
+                </div>
+                <div>
+                    <button type="button" class="btn btn-secondary" onclick="closeModal()">Back</button>
+                    <button type="submit" class="btn btn-primary">Update Ticket(s)</button>
+                </div>
             </div>
         </form>`;
-    
+
+    openModal(content, 'large');
     new Datepicker(document.getElementById('update_departing_on'), { format: 'mm/dd/yyyy', autohide: true, todayHighlight: true });
     if (!ticket.paid) {
         new Datepicker(document.getElementById('update_paid_date'), { format: 'mm/dd/yyyy', autohide: true, todayHighlight: true });
     }
-    modifyModal.classList.add('show');
     document.getElementById('updateForm').addEventListener('submit', handleUpdateTicket);
 }
 
@@ -1471,7 +1501,7 @@ async function handleUpdateTicket(e) {
     const newPaidStatus = updatePaidCheckbox ? updatePaidCheckbox.checked : null;
     const newPaymentMethod = document.getElementById('update_payment_method')?.value.toUpperCase();
     const newPaidDate = document.getElementById('update_paid_date')?.value;
-    
+
     const formattedNewTravelDateForSheet = newTravelDateVal ? formatDateForSheet(newTravelDateVal) : '';
 
     if (newTravelDateVal) {
@@ -1492,10 +1522,15 @@ async function handleUpdateTicket(e) {
         historyDetails.push(`Paid Date: ${formatDateToDMMMY(newPaidDate)}`);
     }
 
+    if (historyDetails.length === 0) {
+        showToast('No changes were made.', 'info');
+        return;
+    }
+
     const dataForBatchUpdate = ticketsToUpdate.map(ticket => {
         let finalBaseFare = isNaN(newBaseFare) ? ticket.base_fare : newBaseFare;
         let finalNetAmount = isNaN(newNetAmount) ? ticket.net_amount : newNetAmount;
-        let finalCommission = isNaN(newBaseFare) ? ticket.commission : Math.round((newBaseFare * 0.05) * 0.60);
+        let finalCommission = isNaN(newBaseFare) ? ticket.commission : calculateCommissionValue(newBaseFare);
         let finalExtraFare = (ticket.extra_fare || 0) + extraFare;
         let finalDateChangeFees = (ticket.date_change || 0) + dateChangeFees;
         let finalPaid = newPaidStatus !== null ? newPaidStatus : ticket.paid;
@@ -1503,14 +1538,14 @@ async function handleUpdateTicket(e) {
         let finalPaidDate = newPaidDate ? formatDateForSheet(newPaidDate) : ticket.paid_date;
 
         return {
-            range: `${CONFIG.SHEET_NAME}!A${ticket.rowIndex}:U${ticket.rowIndex}`, 
+            range: `${CONFIG.SHEET_NAME}!A${ticket.rowIndex}:U${ticket.rowIndex}`,
             values: [[
                 ticket.issued_date, ticket.name, ticket.id_no, ticket.phone,
                 ticket.account_name, ticket.account_type, ticket.account_link,
                 ticket.departure, ticket.destination, formattedNewTravelDateForSheet || ticket.departing_on,
                 ticket.airline, finalBaseFare, ticket.booking_reference, finalNetAmount,
                 finalPaid, finalPaymentMethod, finalPaidDate,
-                finalCommission, ticket.remarks, finalExtraFare, finalDateChangeFees 
+                finalCommission, ticket.remarks, finalExtraFare, finalDateChangeFees
             ]]
         };
     });
@@ -1521,14 +1556,13 @@ async function handleUpdateTicket(e) {
             spreadsheetId: CONFIG.SHEET_ID,
             resource: { valueInputOption: 'USER_ENTERED', data: dataForBatchUpdate }
         });
-        await saveHistory(CONFIG.MODIFICATION_HISTORY_SHEET, originalTicket, historyDetails.join('; '));
+        await saveHistory(originalTicket, `MODIFIED: ${historyDetails.join('; ')}`);
         state.cache['ticketData'] = null;
-        state.cache['modHistoryData'] = null;
+        state.cache['historyData'] = null;
         showToast('Tickets updated successfully!', 'success');
-        modifyModal.classList.remove('show');
-        document.getElementById('modifyResultsContainer').innerHTML = '';
-        document.getElementById('modifyPnr').value = '';
-        await Promise.all([loadTicketData(), loadModificationHistory()]);
+        closeModal();
+        clearManageResults();
+        await Promise.all([loadTicketData(), loadHistory()]);
         updateDashboardData();
     } catch (error) {
         showToast(`Update Error: ${error.result?.error?.message || 'Could not update.'}`, 'error');
@@ -1536,115 +1570,43 @@ async function handleUpdateTicket(e) {
 }
 
 
-// --- CANCEL TICKET ---
-function findTicketForCancel() {
-    const pnr = document.getElementById('cancelPnr').value.toUpperCase();
-    if (!pnr) {
-        showToast('Please enter a PNR code.', 'error');
-        return;
-    }
-    const found = state.allTickets.filter(t => t.booking_reference === pnr);
-    displayCancelResults(found);
-}
-
-function clearCancelResults() {
-    document.getElementById('cancelPnr').value = '';
-    document.getElementById('cancelResultsContainer').innerHTML = '';
-}
-
-function displayCancelResults(tickets) {
-    const container = document.getElementById('cancelResultsContainer');
-    if (tickets.length === 0) {
-        container.innerHTML = '<p style="text-align: center; margin-top: 1rem;">No tickets found for this PNR.</p>';
-        return;
-    }
-    let html = `<div class="table-container"><table><thead><tr><th>Name</th><th>Route</th><th>Travel Date</th><th>Status / Actions</th></tr></thead><tbody>`;
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    
-    const remarkCheck = (r) => {
-        if (!r) return false;
-        const lowerRemark = r.toLowerCase();
-        return lowerRemark.includes('refund') || lowerRemark.includes('cancel');
-    };
-
-    tickets.forEach(t => {
-        const travelDate = parseSheetDate(t.departing_on);
-        const isPast = travelDate < today;
-        let actionsHtml = '';
-
-        if (remarkCheck(t.remarks)) {
-             const statusText = t.remarks.toLowerCase().includes('refund') ? 'Fully Refunded' : 'Canceled';
-             actionsHtml = `<button class="btn btn-secondary" disabled>${statusText}</button>`;
-        } else if (isPast) {
-            actionsHtml = `<button class="btn btn-primary" disabled>Date Passed</button>`;
-        } else {
-            actionsHtml = `<button class="btn btn-primary" onclick="openCancelModal(${t.rowIndex}, 'refund')">Full Refund</button>
-                         <button class="btn btn-secondary" onclick="openCancelModal(${t.rowIndex}, 'cancel')">Cancel</button>`;
-        }
-
-        html += `
-            <tr>
-                <td>${t.name}</td>
-                <td>${t.departure.split(' ')[0]}→${t.destination.split(' ')[0]}</td>
-                <td>${t.departing_on}</td>
-                <td>${actionsHtml}</td>
-            </tr>`;
-    });
-    container.innerHTML = html + '</tbody></table></div>';
-}
-
-function openCancelModal(rowIndex, type) {
+function openCancelSubModal(rowIndex) {
     const ticket = state.allTickets.find(t => t.rowIndex === rowIndex);
-    if (!ticket) {
-        showToast('Ticket not found.', 'error');
-        return;
-    }
+    if (!ticket) return;
 
-    if (type === 'refund') {
-        cancelModalBody.innerHTML = `
-            <h2>Confirm Full Refund</h2>
-            <p>Are you sure you want to process a full refund for <strong>${ticket.name}</strong> (PNR: ${ticket.booking_reference})?</p>
-            <p>This will reset Base Fare, Net Amount, Commission, and Extra Fare to 0, and update the remark.</p>
-            <div class="form-actions">
-                <button type="button" class="btn btn-secondary" onclick="document.getElementById('cancelModal').classList.remove('show')">Back</button>
-                <button type="button" class="btn btn-primary" onclick="handleCancelTicket(${rowIndex}, 'refund')">Confirm Refund</button>
-            </div>`;
-    } else {
-        cancelModalBody.innerHTML = `
-            <h2>Cancel Ticket</h2>
-            <p>For <strong>${ticket.name}</strong> (PNR: ${ticket.booking_reference})</p>
-            <p>Current Net Amount: <strong>${(ticket.net_amount || 0).toLocaleString()} MMK</strong></p>
-            <form id="cancelForm">
+    const content = `
+        <h2>Cancel or Refund Ticket</h2>
+        <p>For <strong>${ticket.name}</strong> (PNR: ${ticket.booking_reference})</p>
+        <p>Current Net Amount: <strong>${(ticket.net_amount || 0).toLocaleString()} MMK</strong></p>
+        <div class="form-actions" style="flex-direction: column; gap: 1rem; margin-top: 1.5rem;">
+             <button type="button" class="btn btn-primary" style="background-color: var(--danger-accent); border-color: var(--danger-accent);" onclick="handleCancelTicket(${rowIndex}, 'refund')">Process Full Refund</button>
+             <form id="cancelForm" style="width: 100%;">
                 <div class="form-group">
-                    <label for="refund_amount">Refund Amount (MMK)</label>
-                    <input type="number" id="refund_amount" required>
+                    <label for="refund_amount">Partial Refund Amount (MMK)</label>
+                    <input type="number" id="refund_amount" required class="form-group input" style="text-align: center;">
                 </div>
-                <div class="form-actions">
-                    <button type="button" class="btn btn-secondary" onclick="document.getElementById('cancelModal').classList.remove('show')">Back</button>
-                    <button type="submit" class="btn btn-primary">Process Cancellation</button>
-                </div>
-            </form>`;
-        document.getElementById('cancelForm').addEventListener('submit', (e) => {
-            e.preventDefault();
-            const refundAmount = parseFloat(document.getElementById('refund_amount').value);
-            if (isNaN(refundAmount) || refundAmount < 0) {
-                showToast('Please enter a valid refund amount.', 'error');
-                return;
-            }
-            handleCancelTicket(rowIndex, 'cancel', refundAmount);
-        });
-    }
-
-    cancelModal.classList.add('show');
+                <button type="submit" class="btn btn-secondary" style="width: 100%;">Process Partial Cancellation</button>
+            </form>
+        </div>
+        <div class="form-actions" style="margin-top: 2rem;">
+            <button class="btn btn-secondary" onclick="openManageModal(${rowIndex})">Back to Modify</button>
+        </div>
+    `;
+    openModal(content);
+    document.getElementById('cancelForm').addEventListener('submit', (e) => {
+        e.preventDefault();
+        const refundAmount = parseFloat(document.getElementById('refund_amount').value);
+        if (isNaN(refundAmount) || refundAmount < 0) {
+            showToast('Please enter a valid refund amount.', 'error');
+            return;
+        }
+        handleCancelTicket(rowIndex, 'cancel', refundAmount);
+    });
 }
 
 async function handleCancelTicket(rowIndex, type, refundAmount = 0) {
     const ticket = state.allTickets.find(t => t.rowIndex === rowIndex);
-    if (!ticket) {
-        showToast('Ticket not found for cancellation.', 'error');
-        return;
-    }
+    if (!ticket) return;
 
     let updatedValues = [];
     let historyDetails = '';
@@ -1659,9 +1621,9 @@ async function handleCancelTicket(rowIndex, type, refundAmount = 0) {
             ticket.departure, ticket.destination, ticket.departing_on,
             ticket.airline, 0, ticket.booking_reference, 0,
             ticket.paid, ticket.payment_method, ticket.paid_date,
-            0, remark, 0, 0 
+            0, remark, 0, 0
         ];
-        historyDetails = "Full Refund processed.";
+        historyDetails = "CANCELED: Full Refund processed.";
     } else {
         const newNetAmount = (ticket.net_amount || 0) - refundAmount;
         const remark = `Canceled on ${dateStr} with ${refundAmount.toLocaleString()} refund`;
@@ -1672,27 +1634,26 @@ async function handleCancelTicket(rowIndex, type, refundAmount = 0) {
             ticket.airline, ticket.base_fare, ticket.booking_reference, newNetAmount,
             ticket.paid, ticket.payment_method, ticket.paid_date,
             ticket.commission, remark, ticket.extra_fare,
-            ticket.date_change 
+            ticket.date_change
         ];
-        historyDetails = `Partial Cancellation. Refunded: ${refundAmount.toLocaleString()} MMK.`;
+        historyDetails = `CANCELED: Partial. Refunded: ${refundAmount.toLocaleString()} MMK.`;
     }
-    
+
     try {
         showToast('Processing cancellation...', 'info');
         await gapi.client.sheets.spreadsheets.values.update({
             spreadsheetId: CONFIG.SHEET_ID,
-            range: `${CONFIG.SHEET_NAME}!A${rowIndex}:U${rowIndex}`, 
+            range: `${CONFIG.SHEET_NAME}!A${rowIndex}:U${rowIndex}`,
             valueInputOption: 'USER_ENTERED',
             resource: { values: [updatedValues] }
         });
-        await saveHistory(CONFIG.CANCELLATION_HISTORY_SHEET, ticket, historyDetails);
+        await saveHistory(ticket, historyDetails);
         state.cache['ticketData'] = null;
-        state.cache['cancelHistoryData'] = null;
+        state.cache['historyData'] = null;
         showToast('Ticket updated successfully!', 'success');
-        cancelModal.classList.remove('show');
-        document.getElementById('cancelResultsContainer').innerHTML = '';
-        document.getElementById('cancelPnr').value = '';
-        await Promise.all([loadTicketData(), loadCancellationHistory()]);
+        closeModal();
+        clearManageResults();
+        await Promise.all([loadTicketData(), loadHistory()]);
         updateDashboardData();
     } catch (error) {
         showToast(`Cancellation Error: ${error.result?.error?.message || 'Could not update.'}`, 'error');
@@ -1701,25 +1662,14 @@ async function handleCancelTicket(rowIndex, type, refundAmount = 0) {
 
 
 // --- HISTORY FUNCTIONS ---
-async function loadModificationHistory() {
+async function loadHistory() {
     try {
-        const response = await fetchFromSheet(`${CONFIG.MODIFICATION_HISTORY_SHEET}!A:D`, 'modHistoryData');
-        state.modificationHistory = parseHistoryData(response.values);
-        displayModificationHistory(1);
+        const response = await fetchFromSheet(`${CONFIG.HISTORY_SHEET}!A:D`, 'historyData');
+        state.history = parseHistoryData(response.values);
+        displayHistory(1);
     } catch (error) {
-        showToast('Could not load modification history. Ensure the sheet exists.', 'error');
-        console.error("Modification History Error:", error);
-    }
-}
-
-async function loadCancellationHistory() {
-    try {
-        const response = await fetchFromSheet(`${CONFIG.CANCELLATION_HISTORY_SHEET}!A:D`, 'cancelHistoryData');
-        state.cancellationHistory = parseHistoryData(response.values);
-        displayCancellationHistory(1);
-    } catch (error) {
-        showToast('Could not load cancellation history. Ensure the sheet exists.', 'error');
-        console.error("Cancellation History Error:", error);
+        showToast('Could not load history. Ensure the sheet exists.', 'error');
+        console.error("History Error:", error);
     }
 }
 
@@ -1736,7 +1686,7 @@ function parseHistoryData(values) {
     return data.reverse();
 }
 
-async function saveHistory(sheetName, ticket, details) {
+async function saveHistory(ticket, details) {
     if (!details) return;
     const now = new Date();
     const date = `${String(now.getMonth() + 1).padStart(2, '0')}/${String(now.getDate()).padStart(2, '0')}/${now.getFullYear()}`;
@@ -1744,7 +1694,7 @@ async function saveHistory(sheetName, ticket, details) {
     try {
         await gapi.client.sheets.spreadsheets.values.append({
             spreadsheetId: CONFIG.SHEET_ID,
-            range: `${sheetName}!A:D`,
+            range: `${CONFIG.HISTORY_SHEET}!A:D`,
             valueInputOption: 'USER_ENTERED',
             resource: { values }
         });
@@ -1753,30 +1703,17 @@ async function saveHistory(sheetName, ticket, details) {
     }
 }
 
-function displayModificationHistory(page) {
-    state.modHistoryPage = page;
+function displayHistory(page) {
+    state.historyPage = page;
     const container = document.getElementById('modificationHistoryContainer');
     const tbody = document.getElementById('modificationHistoryBody');
-    const sortedHistory = state.modificationHistory;
+    const sortedHistory = state.history;
 
-    if (sortedHistory.length > 0) container.style.display = 'block';
-
-    const paginated = sortedHistory.slice((page - 1) * state.rowsPerPage, page * state.rowsPerPage);
-    tbody.innerHTML = '';
-    paginated.forEach(entry => {
-        const row = tbody.insertRow();
-        row.innerHTML = `<td>${formatDateToDMMMY(entry.date)}</td><td>${entry.name}</td><td>${entry.booking_ref}</td><td>${entry.details}</td>`;
-    });
-    setupHistoryPagination('modification', sortedHistory, page);
-}
-
-function displayCancellationHistory(page) {
-    state.cancelHistoryPage = page;
-    const container = document.getElementById('cancellationHistoryContainer');
-    const tbody = document.getElementById('cancellationHistoryBody');
-    const sortedHistory = state.cancellationHistory;
-
-    if (sortedHistory.length > 0) container.style.display = 'block';
+    if (sortedHistory.length > 0) {
+        container.style.display = 'block';
+    } else {
+        container.style.display = 'none';
+    }
 
     const paginated = sortedHistory.slice((page - 1) * state.rowsPerPage, page * state.rowsPerPage);
     tbody.innerHTML = '';
@@ -1784,13 +1721,11 @@ function displayCancellationHistory(page) {
         const row = tbody.insertRow();
         row.innerHTML = `<td>${formatDateToDMMMY(entry.date)}</td><td>${entry.name}</td><td>${entry.booking_ref}</td><td>${entry.details}</td>`;
     });
-    setupHistoryPagination('cancellation', sortedHistory, page);
+    setupHistoryPagination(sortedHistory, page);
 }
 
-function setupHistoryPagination(type, items, currentPage) {
-    const containerId = type === 'modification' ? 'modificationHistoryPagination' : 'cancellationHistoryPagination';
-    const renderFn = type === 'modification' ? displayModificationHistory : displayCancellationHistory;
-    const container = document.getElementById(containerId);
+function setupHistoryPagination(items, currentPage) {
+    const container = document.getElementById('modificationHistoryPagination');
     container.innerHTML = '';
     const pageCount = Math.ceil(items.length / state.rowsPerPage);
     if (pageCount <= 1) return;
@@ -1801,7 +1736,7 @@ function setupHistoryPagination(type, items, currentPage) {
         btn.innerHTML = txt;
         btn.disabled = !enabled;
         if (enabled) {
-            btn.onclick = () => renderFn(pg);
+            btn.onclick = () => displayHistory(pg);
         }
         if (pg === currentPage) {
             btn.classList.add('active');
@@ -1835,14 +1770,13 @@ function handleAirlineChange(e) {
 function populateSearchAirlines() {
     const searchAirlineSelect = document.getElementById('searchAirline');
     const defaultAirlines = new Set(["MNA", "MAI", "MANYADANARPON", "AIRTHANWLIN"]);
-
     const airlinesFromTickets = new Set(state.allTickets.map(t => t.airline ? t.airline.toUpperCase() : null).filter(Boolean));
-
     const allAvailableAirlines = new Set([...defaultAirlines, ...airlinesFromTickets]);
 
-    while (searchAirlineSelect.options.length > 1) {
-        searchAirlineSelect.remove(1);
-    }
+    // Clear existing options except the disabled one
+    const firstOption = searchAirlineSelect.options[0];
+    searchAirlineSelect.innerHTML = '';
+    searchAirlineSelect.appendChild(firstOption);
 
     Array.from(allAvailableAirlines).sort().forEach(airline => {
         const option = document.createElement('option');
@@ -1853,34 +1787,42 @@ function populateSearchAirlines() {
 }
 
 
-// --- UI SETTINGS ---
+// --- UI SETTINGS & DYNAMIC COMMISSION ---
 function initializeUISettings() {
     const settingsBtn = document.getElementById('settings-btn');
     const resetBtn = document.getElementById('reset-settings-btn');
+    // UI Sliders
     const opacitySlider = document.getElementById('opacity-slider');
     const blurSlider = document.getElementById('blur-slider');
     const overlaySlider = document.getElementById('overlay-slider');
     const glassSlider = document.getElementById('glass-slider');
-    const opacityValue = document.getElementById('opacity-value');
-    const blurValue = document.getElementById('blur-value');
-    const overlayValue = document.getElementById('overlay-value');
-    const glassValue = document.getElementById('glass-value');
+    // Commission Sliders
+    const commissionRateSlider = document.getElementById('commission-rate-slider');
+    const agentCutSlider = document.getElementById('agent-cut-slider');
+
     const root = document.documentElement;
 
     const defaults = {
         opacity: 0.05,
         blur: 20,
         overlay: 0.5,
-        glass: 0.15
+        glass: 0.15,
+        commissionRate: 5, // in percent
+        agentCut: 60 // in percent
     };
 
     let settings = JSON.parse(localStorage.getItem('uiSettings')) || { ...defaults };
+    state.commissionRates.rate = settings.commissionRate / 100;
+    state.commissionRates.cut = settings.agentCut / 100;
 
     function applySettings() {
         root.style.setProperty('--glass-bg', `rgba(255, 255, 255, ${settings.opacity})`);
         root.style.setProperty('--blur-amount', `${settings.blur}px`);
         root.style.setProperty('--overlay-opacity', settings.overlay);
         root.style.setProperty('--liquid-border', `1px solid rgba(255, 255, 255, ${settings.glass})`);
+
+        state.commissionRates.rate = settings.commissionRate / 100;
+        state.commissionRates.cut = settings.agentCut / 100;
     }
 
     function updateSlidersAndValues() {
@@ -1888,11 +1830,15 @@ function initializeUISettings() {
         blurSlider.value = settings.blur;
         overlaySlider.value = settings.overlay;
         glassSlider.value = settings.glass;
+        commissionRateSlider.value = settings.commissionRate;
+        agentCutSlider.value = settings.agentCut;
 
-        opacityValue.textContent = Number(settings.opacity).toFixed(2);
-        blurValue.textContent = settings.blur;
-        overlayValue.textContent = Number(settings.overlay).toFixed(2);
-        glassValue.textContent = Number(settings.glass).toFixed(2);
+        document.getElementById('opacity-value').textContent = Number(settings.opacity).toFixed(2);
+        document.getElementById('blur-value').textContent = settings.blur;
+        document.getElementById('overlay-value').textContent = Number(settings.overlay).toFixed(2);
+        document.getElementById('glass-value').textContent = Number(settings.glass).toFixed(2);
+        document.getElementById('commission-rate-value').textContent = `${settings.commissionRate}%`;
+        document.getElementById('agent-cut-value').textContent = `${settings.agentCut}%`;
     }
 
     function saveSettings() {
@@ -1904,34 +1850,13 @@ function initializeUISettings() {
         settingsPanel.classList.toggle('show');
     });
 
-    opacitySlider.addEventListener('input', (e) => {
-        settings.opacity = e.target.value;
-        opacityValue.textContent = Number(settings.opacity).toFixed(2);
-        applySettings();
-        saveSettings();
-    });
+    opacitySlider.addEventListener('input', (e) => { settings.opacity = e.target.value; updateSlidersAndValues(); applySettings(); saveSettings(); });
+    blurSlider.addEventListener('input', (e) => { settings.blur = e.target.value; updateSlidersAndValues(); applySettings(); saveSettings(); });
+    overlaySlider.addEventListener('input', (e) => { settings.overlay = e.target.value; updateSlidersAndValues(); applySettings(); saveSettings(); });
+    glassSlider.addEventListener('input', (e) => { settings.glass = e.target.value; updateSlidersAndValues(); applySettings(); saveSettings(); });
+    commissionRateSlider.addEventListener('input', (e) => { settings.commissionRate = e.target.value; updateSlidersAndValues(); applySettings(); saveSettings(); });
+    agentCutSlider.addEventListener('input', (e) => { settings.agentCut = e.target.value; updateSlidersAndValues(); applySettings(); saveSettings(); });
 
-    blurSlider.addEventListener('input', (e) => {
-        settings.blur = e.target.value;
-        blurValue.textContent = settings.blur;
-        applySettings();
-        saveSettings();
-    });
-
-    overlaySlider.addEventListener('input', (e) => {
-        settings.overlay = e.target.value;
-        overlayValue.textContent = Number(settings.overlay).toFixed(2);
-        applySettings();
-        saveSettings();
-    });
-    
-    glassSlider.addEventListener('input', (e) => {
-        settings.glass = e.target.value;
-        glassValue.textContent = Number(settings.glass).toFixed(2);
-        applySettings();
-        saveSettings();
-    });
-    
     resetBtn.addEventListener('click', () => {
         settings = { ...defaults };
         applySettings();
@@ -1939,9 +1864,13 @@ function initializeUISettings() {
         saveSettings();
         showToast('UI settings have been reset.', 'info');
     });
-    
+
     applySettings();
     updateSlidersAndValues();
+}
+
+function calculateCommissionValue(baseFare) {
+    return Math.round((baseFare * state.commissionRates.rate) * state.commissionRates.cut);
 }
 
 
@@ -1984,7 +1913,7 @@ function generatePdf(tickets) {
         return;
     }
 
-    const sortedTickets = [...tickets].sort((a, b) => 
+    const sortedTickets = [...tickets].sort((a, b) =>
         parseSheetDate(a.issued_date) - parseSheetDate(b.issued_date)
     );
 
@@ -2014,10 +1943,10 @@ function generatePdf(tickets) {
     });
 
     const footerRow = [
-        { 
-            content: 'Total', 
-            colSpan: 5, 
-            styles: { halign: 'right', fontStyle: 'bold' } 
+        {
+            content: 'Total',
+            colSpan: 5,
+            styles: { halign: 'right', fontStyle: 'bold' }
         },
         { content: totalNetAmount.toLocaleString(), styles: { halign: 'right', fontStyle: 'bold' } },
         { content: totalDateChange.toLocaleString(), styles: { halign: 'right', fontStyle: 'bold' } },
@@ -2036,7 +1965,7 @@ function generatePdf(tickets) {
         startY: 25,
         theme: 'grid',
         headStyles: {
-            fillColor: [33, 38, 45], 
+            fillColor: [33, 38, 45],
             textColor: [230, 237, 243]
         },
         footStyles: {
@@ -2056,7 +1985,6 @@ function generatePdf(tickets) {
             6: { cellWidth: 23, halign: 'right' }, 7: { cellWidth: 23, halign: 'right' }
         },
         didDrawPage: function (data) {
-            // Header
             doc.setFontSize(18);
             doc.setTextColor(40);
             doc.text(title, data.settings.margin.left, 15);
@@ -2064,8 +1992,7 @@ function generatePdf(tickets) {
             doc.setFontSize(11);
             doc.setTextColor(100);
             doc.text(exportedDate, data.settings.margin.left, 20);
-            
-            // Footer
+
             const pageCount = doc.internal.getNumberOfPages();
             doc.setFontSize(10);
             doc.text("Page " + String(data.pageNumber) + " of " + String(pageCount), data.settings.margin.left, doc.internal.pageSize.height - 10);
@@ -2074,4 +2001,378 @@ function generatePdf(tickets) {
 
     doc.save(`Ocean_Air_Report_${now.getFullYear()}-${String(now.getMonth()+1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}.pdf`);
     showToast('Report exported successfully!', 'success');
+}
+
+
+// --- MODAL & CONFIRMATION ---
+function openModal(content, size = 'default') {
+    modalBody.innerHTML = content;
+    modal.querySelector('.modal-content').className = `modal-content glass-card ${size === 'large' ? 'large-modal' : size === 'small' ? 'small-modal' : ''}`;
+    modal.classList.add('show');
+}
+
+function closeModal() {
+    modal.classList.remove('show');
+    modalBody.innerHTML = '';
+}
+
+function showConfirmModal(message, onConfirm) {
+    const content = `
+        <p style="margin-bottom: 1.5rem; line-height: 1.5;">${message}</p>
+        <div class="form-actions">
+            <button id="confirmCancelBtn" type="button" class="btn btn-secondary">Back</button>
+            <button id="confirmActionBtn" type="button" class="btn btn-primary">Confirm</button>
+        </div>
+    `;
+    openModal(content, 'small-modal');
+
+    document.getElementById('confirmActionBtn').onclick = onConfirm;
+    document.getElementById('confirmCancelBtn').onclick = async () => {
+        closeModal();
+        await loadBookingData();
+    };
+}
+
+// --- CLIENT MANAGEMENT (AUTO-MERGING) ---
+function buildClientList() {
+    const clientsMap = new Map();
+
+    state.allTickets.forEach(ticket => {
+        // Create a composite key from name and ID number for auto-merging
+        const key = `${(ticket.name || '').trim().toUpperCase()}|${(ticket.id_no || '').trim().toUpperCase()}`;
+        if (!ticket.name || !ticket.id_no) return; // Skip if essential merging info is missing
+
+        if (!clientsMap.has(key)) {
+            clientsMap.set(key, {
+                compositeKey: key,
+                name: ticket.name,
+                id_no: ticket.id_no,
+                phone: ticket.phone,
+                account_name: ticket.account_name,
+                account_type: ticket.account_type,
+                account_link: ticket.account_link,
+                ticketCount: 0,
+                totalSpent: 0,
+                lastContact: new Date(0)
+            });
+        }
+
+        const client = clientsMap.get(key);
+        client.ticketCount++;
+        client.totalSpent += (ticket.net_amount || 0) + (ticket.date_change || 0) + (ticket.extra_fare || 0);
+        
+        const ticketDate = parseSheetDate(ticket.issued_date);
+        if (ticketDate > client.lastContact) {
+            client.lastContact = ticketDate;
+            // Update contact details with the latest info from the most recent ticket
+            client.phone = ticket.phone;
+            client.account_name = ticket.account_name;
+            client.account_type = ticket.account_type;
+            client.account_link = ticket.account_link;
+        }
+    });
+    state.allClients = Array.from(clientsMap.values()).sort((a,b) => b.lastContact - a.lastContact);
+}
+
+function renderClientsView(filteredClients = null) {
+    const view = document.getElementById('clients-view');
+    view.innerHTML = `
+        <div class="clients-container glass-card">
+            <div class="clients-header">
+                <h2><i class="fa-solid fa-users"></i> Client Directory</h2>
+                <div class="client-search-box">
+                    <input type="text" id="clientSearchInput" placeholder="Search by name, ID, or phone...">
+                </div>
+            </div>
+            <div id="clientListContainer" class="table-container"></div>
+            <div id="clientPagination" class="pagination-container"></div>
+        </div>
+    `;
+
+    document.getElementById('clientSearchInput').addEventListener('input', (e) => {
+        const query = e.target.value.toLowerCase();
+        const filtered = state.allClients.filter(c =>
+            c.name.toLowerCase().includes(query) ||
+            (c.id_no && c.id_no.toLowerCase().includes(query)) ||
+            (c.phone && c.phone.includes(query))
+        );
+        renderClientListPage(1, filtered);
+    });
+
+    renderClientListPage(1, filteredClients || state.allClients);
+}
+
+
+function renderClientListPage(page, clients) {
+    state.clientPage = page;
+    const container = document.getElementById('clientListContainer');
+
+    if (!clients || clients.length === 0) {
+        renderEmptyState('clientListContainer', 'fa-user-slash', 'No Clients Found', 'Your client list is empty. Sell tickets to add clients.');
+        setupClientPagination([]);
+        return;
+    }
+
+    const table = `
+        <table id="clientListTable">
+            <thead>
+                <tr>
+                    <th>Client Name</th>
+                    <th>ID Number</th>
+                    <th>Account Name</th>
+                    <th>Account Type</th>
+                    <th>Phone Number</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody id="clientListBody"></tbody>
+        </table>
+    `;
+    container.innerHTML = table;
+    const tbody = document.getElementById('clientListBody');
+
+    const paginated = clients.slice((page - 1) * state.rowsPerPage, page * state.rowsPerPage);
+
+    paginated.forEach(client => {
+        const row = tbody.insertRow();
+        // Use single quotes for the string to allow double quotes inside for the client key
+        row.innerHTML = `
+            <td>${client.name}</td>
+            <td>${client.id_no || 'N/A'}</td>
+            <td>${client.account_name || 'N/A'}</td>
+            <td>${client.account_type || 'N/A'}</td>
+            <td>${client.phone || 'N/A'}</td>
+            <td class="client-actions">
+                <button class="icon-btn icon-btn-table" title="View History" onclick='renderClientHistory("${client.compositeKey}")'><i class="fa-solid fa-clock-rotate-left"></i></button>
+                <button class="icon-btn icon-btn-table" title="Sell New Ticket" onclick='sellToClient("${client.compositeKey}")'><i class="fa-solid fa-ticket"></i></button>
+            </td>
+        `;
+    });
+    setupClientPagination(clients);
+}
+
+function setupClientPagination(items) {
+    const container = document.getElementById('clientPagination');
+    container.innerHTML = '';
+    const pageCount = Math.ceil(items.length / state.rowsPerPage);
+    if (pageCount <= 1) return;
+
+    const createBtn = (txt, pg, enabled = true) => {
+        const btn = document.createElement('button');
+        btn.className = 'pagination-btn';
+        btn.innerHTML = txt;
+        btn.disabled = !enabled;
+        if (enabled) {
+            btn.onclick = () => renderClientListPage(pg, items);
+        }
+        if (pg === state.clientPage) {
+            btn.classList.add('active');
+        }
+        return btn;
+    };
+    container.append(createBtn('&laquo;', state.clientPage - 1, state.clientPage > 1));
+    for (let i = 1; i <= pageCount; i++) {
+        container.append(createBtn(i, i));
+    }
+    container.append(createBtn('&raquo;', state.clientPage + 1, state.clientPage < pageCount));
+}
+
+function renderClientHistory(clientKey) {
+    const client = state.allClients.find(c => c.compositeKey === clientKey);
+    if (!client) {
+        showToast('Could not find client details.', 'error');
+        return;
+    }
+    
+    // Filter all tickets that match the client's composite key (name and ID)
+    const clientTickets = state.allTickets.filter(t => 
+        (t.name || '').trim().toUpperCase() === client.name.trim().toUpperCase() &&
+        (t.id_no || '').trim().toUpperCase() === client.id_no.trim().toUpperCase()
+    ).sort((a,b) => parseSheetDate(b.issued_date) - parseSheetDate(a.issued_date));
+
+    const view = document.getElementById('clients-view');
+
+    const totalCommission = clientTickets.reduce((sum, t) => sum + (t.commission || 0), 0);
+    // client.totalSpent and client.ticketCount are already calculated during the buildClientList merge process
+    const totalSpent = client.totalSpent;
+    const ticketCount = client.ticketCount;
+
+    let ticketsHtml = '';
+    if (clientTickets.length > 0) {
+        ticketsHtml = `
+            <div class="table-container">
+                <table>
+                    <thead><tr><th>Issued</th><th>PNR</th><th>Route</th><th>Net Amount</th><th>Status</th><th></th></tr></thead>
+                    <tbody>
+                        ${clientTickets.map(t => `
+                            <tr class="${(t.remarks || '').toLowerCase().includes('cancel') ? 'canceled-row' : ''}">
+                                <td>${t.issued_date}</td>
+                                <td>${t.booking_reference}</td>
+                                <td>${t.departure.split(' ')[0]}→${t.destination.split(' ')[0]}</td>
+                                <td>${(t.net_amount || 0).toLocaleString()}</td>
+                                <td>${(t.remarks || '').toLowerCase().includes('cancel') ? 'Canceled' : 'Confirmed'}</td>
+                                <td><button class="icon-btn icon-btn-table" onclick="showDetails(${t.rowIndex})"><i class="fa-solid fa-eye"></i></button></td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            </div>
+        `;
+    } else {
+        ticketsHtml = `<p>No tickets found for this client.</p>`;
+    }
+
+    view.innerHTML = `
+        <div class="glass-card">
+            <div class="client-history-header">
+                <div class="client-history-info">
+                    <h2>${client.name}</h2>
+                    <p>ID: ${client.id_no}</p>
+                </div>
+                <div class="client-history-actions">
+                    <button class="btn btn-secondary" onclick="renderClientsView()"><i class="fa-solid fa-arrow-left"></i> Back to List</button>
+                    <button class="btn btn-primary" onclick='sellToClient("${client.compositeKey}")'><i class="fa-solid fa-plus"></i> Sell New Ticket</button>
+                </div>
+            </div>
+            <div class="client-history-stats">
+                <div class="stat-card"><div class="label">Total Tickets</div><div class="value">${ticketCount}</div></div>
+                <div class="stat-card"><div class="label">Total Spent</div><div class="value">${totalSpent.toLocaleString()} MMK</div></div>
+                <div class="stat-card"><div class="label">Total Commission</div><div class="value">${totalCommission.toLocaleString()} MMK</div></div>
+            </div>
+            <h3>Ticket History</h3>
+            ${ticketsHtml}
+        </div>
+    `;
+}
+
+function sellToClient(clientKey) {
+    const client = state.allClients.find(c => c.compositeKey === clientKey);
+    if (!client) return;
+
+    showView('sell');
+    // Pre-fill form with the latest client data
+    document.getElementById('phone').value = client.phone || '';
+    document.getElementById('account_name').value = client.account_name || '';
+    document.getElementById('account_type').value = client.account_type || '';
+    document.getElementById('account_link').value = client.account_link || '';
+
+    // Pre-fill first passenger name and ID
+    const firstPassengerNameInput = document.querySelector('#passenger-forms-container .passenger-name');
+    const firstPassengerIdInput = document.querySelector('#passenger-forms-container .passenger-id');
+    if (firstPassengerNameInput) {
+        firstPassengerNameInput.value = client.name;
+    }
+    if(firstPassengerIdInput){
+        firstPassengerIdInput.value = client.id_no;
+    }
+}
+
+// --- CLIENT AUTOSUGGEST WORKFLOW ---
+function handleAutosuggest(inputElement, field) {
+    const value = inputElement.value.toLowerCase();
+    const autosuggestBox = document.getElementById(`${field}_autosuggest`);
+    if (value.length < 2) {
+        autosuggestBox.style.display = 'none';
+        return;
+    }
+
+    const suggestions = state.allClients.filter(client =>
+        client[field] && client[field].toLowerCase().includes(value)
+    );
+
+    if (suggestions.length > 0) {
+        autosuggestBox.innerHTML = suggestions.slice(0, 5).map(client =>
+            `<div class="autosuggest-item" data-client-key="${client.compositeKey}">
+                <strong>${client.name}</strong> (${client[field]})
+            </div>`
+        ).join('');
+        autosuggestBox.style.display = 'block';
+
+        document.querySelectorAll('.autosuggest-item').forEach(item => {
+            item.addEventListener('click', () => {
+                const clientKey = item.dataset.clientKey;
+                const client = state.allClients.find(c => c.compositeKey === clientKey);
+                if (client) {
+                    // Fill form with selected client data
+                    document.getElementById('phone').value = client.phone || '';
+                    document.getElementById('account_name').value = client.account_name || '';
+                    document.getElementById('account_type').value = client.account_type || '';
+                    document.getElementById('account_link').value = client.account_link || '';
+                    document.querySelector('.passenger-name').value = client.name;
+                    document.querySelector('.passenger-id').value = client.id_no;
+                }
+                autosuggestBox.style.display = 'none';
+            });
+        });
+    } else {
+        autosuggestBox.style.display = 'none';
+    }
+}
+
+// --- SAVED SEARCHES ---
+function saveSearchQuery() {
+    const searchParams = {
+        name: document.getElementById('searchName').value,
+        bookingRef: document.getElementById('searchBooking').value,
+        startDate: document.getElementById('searchStartDate').value,
+        endDate: document.getElementById('searchEndDate').value,
+        travelDate: document.getElementById('searchTravelDate').value,
+        departure: document.getElementById('searchDeparture').value,
+        destination: document.getElementById('searchDestination').value,
+        airline: document.getElementById('searchAirline').value,
+        notPaidOnly: document.getElementById('searchNotPaidToggle').checked
+    };
+
+    // Simple prompt for naming the search
+    const searchName = prompt("Enter a name for this search:", "My Search");
+    if (!searchName) return;
+
+    let savedSearches = JSON.parse(localStorage.getItem('savedSearches')) || [];
+    savedSearches.push({ name: searchName, params: searchParams });
+    localStorage.setItem('savedSearches', JSON.stringify(savedSearches));
+    loadSavedSearches();
+    showToast('Search saved!', 'success');
+}
+
+function loadSavedSearches() {
+    const container = document.getElementById('saved-searches-container');
+    container.innerHTML = '';
+    let savedSearches = JSON.parse(localStorage.getItem('savedSearches')) || [];
+
+    savedSearches.forEach((search, index) => {
+        const tag = document.createElement('div');
+        tag.className = 'saved-search-tag';
+        tag.textContent = search.name;
+        tag.onclick = () => applySavedSearch(search.params);
+
+        const deleteBtn = document.createElement('button');
+        deleteBtn.className = 'delete-search-btn';
+        deleteBtn.innerHTML = '&times;';
+        deleteBtn.onclick = (e) => {
+            e.stopPropagation();
+            deleteSavedSearch(index);
+        };
+        tag.appendChild(deleteBtn);
+        container.appendChild(tag);
+    });
+}
+
+function applySavedSearch(params) {
+    document.getElementById('searchName').value = params.name;
+    document.getElementById('searchBooking').value = params.bookingRef;
+    document.getElementById('searchStartDate').value = params.startDate;
+    document.getElementById('searchEndDate').value = params.endDate;
+    document.getElementById('searchTravelDate').value = params.travelDate;
+    document.getElementById('searchDeparture').value = params.departure;
+    document.getElementById('searchDestination').value = params.destination;
+    document.getElementById('searchAirline').value = params.airline;
+    document.getElementById('searchNotPaidToggle').checked = params.notPaidOnly;
+    performSearch();
+}
+
+function deleteSavedSearch(index) {
+    let savedSearches = JSON.parse(localStorage.getItem('savedSearches')) || [];
+    savedSearches.splice(index, 1);
+    localStorage.setItem('savedSearches', JSON.stringify(savedSearches));
+    loadSavedSearches();
 }

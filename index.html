@@ -26,9 +26,9 @@
             </div>
             <nav class="nav">
                 <button class="nav-btn active" data-view="home"><i class="fa-solid fa-house"></i><span>Dashboard</span></button>
+                <button class="nav-btn" data-view="clients"><i class="fa-solid fa-users"></i><span>Clients</span></button>
                 <button class="nav-btn" data-view="sell"><i class="fa-solid fa-ticket"></i><span>Sell Ticket</span></button>
-                <button class="nav-btn" data-view="modify"><i class="fa-solid fa-pen-to-square"></i><span>Modify Ticket</span></button>
-                <button class="nav-btn" data-view="cancel"><i class="fa-solid fa-ban"></i><span>Cancel Ticket</span></button>
+                <button class="nav-btn" data-view="manage"><i class="fa-solid fa-pen-to-square"></i><span>Manage Ticket</span></button>
                 <button class="nav-btn" data-view="booking"><i class="fa-solid fa-calendar-check"></i><span>Booking</span></button>
             </nav>
             <div class="header-right">
@@ -87,6 +87,11 @@
                                 <div class="search-inputs">
                                     <input type="text" id="searchName" placeholder="Client Name">
                                     <input type="text" id="searchBooking" placeholder="Booking Reference">
+                                    <div class="date-range-presets">
+                                        <button type="button" class="preset-btn" data-range="7">Last 7 Days</button>
+                                        <button type="button" class="preset-btn" data-range="30">Last 30 Days</button>
+                                        <button type="button" class="preset-btn" data-range="month">This Month</button>
+                                    </div>
                                     <div class="date-range-group">
                                         <input type="text" id="searchStartDate" placeholder="Start Date">
                                         <input type="text" id="searchEndDate" placeholder="End Date">
@@ -100,7 +105,6 @@
                                     </select>
                                     <select id="searchAirline">
                                         <option value="" disabled selected>AIRLINE</option>
-                                        <option value="MNA">MNA</option><option value="MAI">MAI</option><option value="ManYadanarpon">ManYadanarpon</option><option value="AirThanwlin">AirThanwlin</option>
                                     </select>
                                     <div class="toggle-switch">
                                         <label for="searchNotPaidToggle" id="unpaid-only-label">Unpaid Only</label>
@@ -109,18 +113,13 @@
                                             <span class="slider round"></span>
                                         </label>
                                     </div>
-                                    <div class="toggle-switch">
-                                        <label for="searchCurrentMonthToggle">Current Month Only</label>
-                                        <label class="switch">
-                                            <input type="checkbox" id="searchCurrentMonthToggle">
-                                            <span class="slider round"></span>
-                                        </label>
-                                    </div>
                                 </div>
                                 <div class="search-buttons">
                                     <button id="searchBtn" class="btn btn-primary"><i class="fa-solid fa-search"></i> Search</button>
                                     <button id="clearBtn" class="btn btn-secondary"><i class="fa-solid fa-eraser"></i> Clear</button>
+                                    <button id="saveSearchBtn" class="btn btn-secondary"><i class="fa-solid fa-save"></i> Save</button>
                                 </div>
+                                <div id="saved-searches-container" class="saved-searches-container"></div>
                             </form>
                         </div>
 
@@ -132,21 +131,16 @@
                                     <span>Export PDF</span>
                                 </button>
                             </div>
-                            <div class="table-container">
-                                <table id="resultsTable">
-                                    <thead>
-                                        <tr>
-                                            <th>Issued Date</th><th>Name</th><th>Booking Ref</th><th>Route</th><th>Airline</th><th>Details</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody id="resultsBody"></tbody>
-                                </table>
-                            </div>
+                            <div id="resultsBodyContainer" class="table-container">
+                                </div>
                             <div id="pagination" class="pagination-container"></div>
                         </div>
                     </div>
                 </div>
             </section>
+
+            <section id="clients-view" class="view">
+                </section>
             
             <section id="booking-view" class="view">
                 <div id="booking-form-container" class="form-container glass-card" style="display: none;">
@@ -187,24 +181,8 @@
                         <button id="bookingSearchBtn" class="btn btn-primary"><i class="fa-solid fa-search"></i></button>
                         <button id="bookingClearBtn" class="btn btn-secondary"><i class="fa-solid fa-eraser"></i></button>
                     </div>
-                    <div class="table-container">
-                        <table id="bookingTable">
-                            <thead>
-                                <tr>
-                                    <th>Travel Date</th>
-                                    <th>Client Name</th>
-                                    <th>Route</th>
-                                    <th>Pax</th>
-                                    <th>Get Ticket</th>
-                                    <th>Cancel</th>
-                                    <th>Details</th>
-                                </tr>
-                            </thead>
-                            <tbody id="bookingTableBody">
-                                <tr><td colspan="7" style="text-align:center;">Loading bookings...</td></tr>
-                            </tbody>
-                        </table>
-                    </div>
+                    <div id="bookingTableContainer" class="table-container">
+                        </div>
                     <div id="bookingPagination" class="pagination-container"></div>
                 </div>
             </section>
@@ -226,8 +204,16 @@
                        <div class="form-grid">
                            <div class="form-group"><label for="issued_date">Issued Date</label><input type="text" id="issued_date" placeholder="MM/DD/YYYY" required></div>
                            <div class="form-group"><label for="booking_reference">PNR Code</label><input type="text" id="booking_reference" required></div>
-                           <div class="form-group"><label for="phone">Contact Phone</label><input type="tel" id="phone" required></div>
-                           <div class="form-group"><label for="account_name">Social Media Account Name</label><input type="text" id="account_name" required></div>
+                           <div class="form-group client-autosuggest-group">
+                               <label for="phone">Contact Phone</label>
+                               <input type="tel" id="phone" required autocomplete="off">
+                               <div class="autosuggest-box" id="phone_autosuggest"></div>
+                           </div>
+                           <div class="form-group client-autosuggest-group">
+                               <label for="account_name">Social Media Account Name</label>
+                               <input type="text" id="account_name" required autocomplete="off">
+                               <div class="autosuggest-box" id="account_name_autosuggest"></div>
+                            </div>
                            <div class="form-group"><label for="account_type">Social Media Account Type</label><select id="account_type" required><option value="" disabled selected>Select Account Type</option><option value="Facebook Page">Facebook Page</option><option value="Messenger">Messenger</option><option value="Viber">Viber</option><option value="Telegram">Telegram</option><option value="WeChat">WeChat</option><option value="Phone">Phone</option></select></div>
                            <div class="form-group"><label for="account_link">Account Link</label><input type="text" id="account_link" placeholder="URL, phone number or @username"></div>
                            <div class="form-group"><label for="departure">Departure</label><select id="departure" required><option value="" disabled selected>Select Departure</option></select></div>
@@ -251,19 +237,7 @@
                        </div>
                        <hr style="border-color: rgba(255,255,255,0.2); margin: 1.5rem 0;">
                        <div id="passenger-forms-container">
-                           <div class="passenger-form">
-                               <h4>Passenger 1</h4>
-                               <div class="form-grid">
-                                   <div class="form-group"><label>Client Name</label><input type="text" class="passenger-name" required></div>
-                                   <div class="form-group"><label>ID Number</label><input type="text" class="passenger-id" required></div>
-                                   <div class="form-group"><label>Base Fare (MMK)</label><input type="number" class="passenger-base-fare" step="1" required></div>
-                                   <div class="form-group"><label>Net Amount (MMK)</label><input type="number" class="passenger-net-amount" step="1" required></div>
-                                   <div class="form-group"><label>Extra Fare (Optional)</label><input type="number" class="passenger-extra-fare" step="1"></div>
-                                   <div class="form-group"><label>Commission</label><input type="number" class="passenger-commission" step="1" readonly></div>
-                                   <div class="form-group"><label>Remarks (Optional)</label><textarea class="passenger-remarks" rows="1"></textarea></div>
-                               </div>
                            </div>
-                       </div>
                        <div class="form-actions" style="justify-content: flex-start; margin-top: 1rem;">
                            <button type="button" class="btn btn-secondary" id="addPassengerBtn"><i class="fa-solid fa-plus"></i> Add Passenger</button>
                            <button type="button" class="btn btn-secondary" id="removePassengerBtn" style="display: none;"><i class="fa-solid fa-minus"></i> Remove Last</button>
@@ -277,23 +251,23 @@
                </div>
            </section>
             
-            <section id="modify-view" class="view">
+            <section id="manage-view" class="view">
                  <div class="form-container glass-card">
-                    <h2><i class="fa-solid fa-pen-to-square"></i> Modify Ticket</h2>
+                    <h2><i class="fa-solid fa-wrench"></i> Manage Ticket</h2>
                     <form class="centered-form" onsubmit="return false;">
                         <div class="form-group">
-                            <label for="modifyPnr">Enter PNR Code to Modify</label>
-                            <input type="text" id="modifyPnr" name="modifyPnr" placeholder="e.g., BDUVUU">
+                            <label for="managePnr">Enter PNR Code to Manage</label>
+                            <input type="text" id="managePnr" name="managePnr" placeholder="e.g., BDUVUU">
                         </div>
                         <div class="form-actions">
                             <button id="findTicketBtn" type="button" class="btn btn-primary"><i class="fa-solid fa-magnifying-glass"></i> Find Ticket</button>
-                            <button id="clearModifyBtn" type="button" class="btn btn-secondary"><i class="fa-solid fa-eraser"></i> Clear</button>
+                            <button id="clearManageBtn" type="button" class="btn btn-secondary"><i class="fa-solid fa-eraser"></i> Clear</button>
                         </div>
                     </form>
-                    <div id="modifyResultsContainer" class="results-section" style="padding: 1rem 0 0 0; background: transparent; border: none; box-shadow: none;"></div>
+                    <div id="manageResultsContainer" class="results-section" style="padding: 1rem 0 0 0; background: transparent; border: none; box-shadow: none;"></div>
                     
                     <div id="modificationHistoryContainer" class="results-section glass-card" style="margin-top: 2rem; display: none;">
-                        <h3><i class="fa-solid fa-clock-rotate-left"></i> Modification History</h3>
+                        <h3><i class="fa-solid fa-clock-rotate-left"></i> Modification & Cancellation History</h3>
                         <div class="table-container">
                             <table id="modificationHistoryTable">
                                 <thead>
@@ -307,35 +281,6 @@
                 </div>
             </section>
 
-            <section id="cancel-view" class="view">
-                <div class="form-container glass-card">
-                    <h2><i class="fa-solid fa-ban"></i> Cancel Ticket</h2>
-                     <form class="centered-form" onsubmit="return false;">
-                        <div class="form-group">
-                            <label for="cancelPnr">Enter PNR Code to Cancel</label>
-                            <input type="text" id="cancelPnr" name="cancelPnr" placeholder="e.g., BDUVUU">
-                        </div>
-                        <div class="form-actions">
-                            <button id="findCancelBtn" type="button" class="btn btn-primary"><i class="fa-solid fa-ban"></i> Find & Cancel</button>
-                            <button id="clearCancelBtn" type="button" class="btn btn-secondary"><i class="fa-solid fa-eraser"></i> Clear</button>
-                        </div>
-                    </form>
-                    <div id="cancelResultsContainer" class="results-section" style="padding: 1rem 0 0 0; background: transparent; border: none; box-shadow: none;"></div>
-
-                    <div id="cancellationHistoryContainer" class="results-section glass-card" style="margin-top: 2rem; display: none;">
-                        <h3><i class="fa-solid fa-clock-rotate-left"></i> Cancellation History</h3>
-                        <div class="table-container">
-                            <table id="cancellationHistoryTable">
-                                <thead>
-                                    <tr><th>Date</th><th>Name</th><th>Booking Ref</th><th>Details</th></tr>
-                                </thead>
-                                <tbody id="cancellationHistoryBody"></tbody>
-                            </table>
-                        </div>
-                        <div id="cancellationHistoryPagination" class="pagination-container"></div>
-                    </div>
-                </div>
-            </section>
         </main>
     </div>
 
@@ -371,15 +316,22 @@
                 <input type="range" id="glass-slider" min="0" max="1" step="0.01">
             </div>
         </div>
+        <div class="commission-settings">
+             <h4 class="settings-title" style="font-size: 1.1rem; margin-top: 1.5rem; margin-bottom: 1rem;">Commission Rates</h4>
+             <div class="setting-item">
+                <div class="setting-label-group"><label for="commission-rate-slider">Commission Rate</label><span id="commission-rate-value">5%</span></div>
+                <input type="range" id="commission-rate-slider" min="0" max="10" step="0.1" value="5">
+             </div>
+             <div class="setting-item">
+                <div class="setting-label-group"><label for="agent-cut-slider">Agent Cut</label><span id="agent-cut-value">60%</span></div>
+                <input type="range" id="agent-cut-slider" min="0" max="100" step="1" value="60">
+             </div>
+        </div>
         <button id="reset-settings-btn" class="btn btn-secondary">Reset</button>
     </div>
     
-    <div id="modal" class="modal"><div class="modal-content glass-card"><span class="close" onclick="closeDetailsModal()">&times;</span><div id="modalBody"></div></div></div>
-    <div id="modifyModal" class="modal"><div class="modal-content glass-card"><span id="closeModifyModal" class="close">&times;</span><div id="modifyModalBody"></div></div></div>
-    <div id="cancelModal" class="modal"><div class="modal-content glass-card"><span class="close">&times;</span><div id="cancelModalBody"></div></div></div>
-    <div id="bookingDetailModal" class="modal"><div class="modal-content glass-card"><span class="close">&times;</span><div id="bookingDetailModalBody"></div></div></div>
-    <div id="bookingConfirmModal" class="modal"><div class="modal-content glass-card small-modal"><div id="bookingConfirmModalBody"></div></div></div>
-    <div id="sellConfirmModal" class="modal"><div class="modal-content glass-card"><div id="sellConfirmModalBody"></div></div></div>
+    <div id="modal" class="modal"><div class="modal-content glass-card"><div id="modalBody"></div></div></div>
+    
     <div id="exportConfirmModal" class="modal">
         <div class="modal-content glass-card small-modal">
             <div id="exportConfirmModalBody">

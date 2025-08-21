@@ -1601,3 +1601,102 @@ td .icon-btn-table {
         font-size: 0.8rem;
     }
 }
+
+/* --- NOTIFICATIONS PANEL --- */
+.notification-panel {
+    padding: 1rem;
+}
+
+.notification-panel h3 {
+    text-align: left;
+    padding-left: 0.5rem;
+    margin-bottom: 0.75rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.notification-panel h3 .notification-count {
+    background-color: var(--primary-accent);
+    color: var(--bg-color);
+    font-size: 0.75rem;
+    font-weight: 700;
+    padding: 2px 8px;
+    border-radius: 10px;
+    margin-left: 0.5rem;
+    line-height: 1;
+}
+
+.notification-list {
+    max-height: 110px; /* Adjust height as needed */
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    padding-right: 5px; /* For scrollbar spacing */
+}
+
+/* Custom Scrollbar for Notification List */
+.notification-list::-webkit-scrollbar {
+    width: 5px;
+}
+.notification-list::-webkit-scrollbar-track {
+    background: rgba(0,0,0,0.2);
+    border-radius: 10px;
+}
+.notification-list::-webkit-scrollbar-thumb {
+    background: var(--primary-accent);
+    border-radius: 10px;
+}
+.notification-list::-webkit-scrollbar-thumb:hover {
+    background: var(--primary-accent-dark);
+}
+
+.notification-item {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.5rem;
+    border-radius: 12px;
+    background: rgba(0,0,0,0.15);
+    font-size: 0.8rem;
+}
+
+.notification-item i {
+    font-size: 1.2rem;
+    width: 20px;
+    text-align: center;
+}
+
+.notification-item div {
+    display: flex;
+    flex-direction: column;
+}
+
+.notification-item strong {
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.notification-item span {
+    color: var(--text-secondary);
+    font-size: 0.75rem;
+}
+
+.notification-item.deadline i {
+    color: var(--danger-accent);
+}
+
+.notification-item.unpaid i {
+    color: var(--primary-accent);
+}
+
+.notification-item.empty {
+    justify-content: center;
+    color: var(--text-secondary);
+    font-weight: 500;
+}
+
+.notification-item.empty i {
+    color: var(--secondary-accent);
+}

@@ -117,7 +117,6 @@
                                 <div class="search-buttons">
                                     <button id="searchBtn" class="btn btn-primary"><i class="fa-solid fa-search"></i> Search</button>
                                     <button id="clearBtn" class="btn btn-secondary"><i class="fa-solid fa-eraser"></i> Clear</button>
-                                    <button id="saveSearchBtn" class="btn btn-secondary"><i class="fa-solid fa-save"></i> Save</button>
                                 </div>
                                 <div id="saved-searches-container" class="saved-searches-container"></div>
                             </form>
@@ -147,9 +146,8 @@
                     <h2><i class="fa-solid fa-calendar-plus"></i> New Booking Request</h2>
                     <form id="newBookingForm">
                         <div class="form-grid">
-                           <div class="form-group"><label for="booking_name">Client Name</label><input type="text" id="booking_name" required></div>
-                           <div class="form-group"><label for="booking_id_no">ID Number</label><input type="text" id="booking_id_no"></div>
                            <div class="form-group"><label for="booking_phone">Phone</label><input type="tel" id="booking_phone"></div>
+                           <div class="form-group"><label for="booking_pnr">PNR Code (Optional)</label><input type="text" id="booking_pnr"></div>
                            <div class="form-group"><label for="booking_account_name">Social Account Name</label><input type="text" id="booking_account_name"></div>
                            <div class="form-group"><label for="booking_account_type">Social Account Type</label><select id="booking_account_type"><option value="" disabled selected>Select Type</option><option value="Facebook Page">Facebook Page</option><option value="Messenger">Messenger</option><option value="Viber">Viber</option><option value="Telegram">Telegram</option><option value="WeChat">WeChat</option><option value="Phone">Phone</option></select></div>
                            <div class="form-group"><label for="booking_account_link">Account Link</label><input type="text" id="booking_account_link" placeholder="URL, phone or @username"></div>
@@ -158,9 +156,29 @@
                            <div class="form-group"><label for="booking_destination">Destination</label><select id="booking_destination" required><option value="" disabled selected>Select Destination</option>
                         </select></div>
                            <div class="form-group"><label for="booking_departing_on">Travel Date</label><input type="text" id="booking_departing_on" placeholder="MM/DD/YYYY" required></div>
-                           <div class="form-group"><label for="booking_pax_no">Pax No.</label><input type="number" id="booking_pax_no" required min="1" value="1"></div>
+                           <div class="form-group"><label for="booking_end_date">Booking End Date</label><input type="text" id="booking_end_date" placeholder="MM/DD/YYYY"></div>
+                           <div class="form-group">
+                                <label for="booking_end_time_hour">Booking End Time</label>
+                                <div class="time-picker-group">
+                                    <select id="booking_end_time_hour">
+                                        </select>
+                                    <select id="booking_end_time_minute">
+                                        </select>
+                                    <select id="booking_end_time_ampm">
+                                        <option>AM</option>
+                                        <option>PM</option>
+                                    </select>
+                                </div>
+                            </div>
                         </div>
-                        <div class="form-actions">
+                        <hr style="border-color: rgba(255,255,255,0.2); margin: 1.5rem 0;">
+                        <div id="booking-passenger-forms-container">
+                        </div>
+                        <div class="form-actions" style="justify-content: flex-start; margin-top: 1rem;">
+                           <button type="button" class="btn btn-secondary" id="addBookingPassengerBtn"><i class="fa-solid fa-plus"></i> Add Passenger</button>
+                           <button type="button" class="btn btn-secondary" id="removeBookingPassengerBtn" style="display: none;"><i class="fa-solid fa-minus"></i> Remove Last</button>
+                        </div>
+                        <div class="form-actions" style="margin-top: 2rem;">
                            <button type="button" class="btn btn-secondary" id="cancelNewBookingBtn"><i class="fa-solid fa-xmark"></i> Cancel</button>
                            <button type="submit" class="btn btn-primary"><i class="fa-solid fa-check"></i> Save Booking</button>
                         </div>

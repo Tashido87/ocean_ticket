@@ -17,6 +17,7 @@ const state = {
     allBookings: [],
     filteredBookings: [],
     allClients: [],
+    featuredClients: [], // For starred clients
     history: [],
     charts: {},
     isSubmitting: false,
@@ -27,6 +28,7 @@ const state = {
     clientPage: 1,
     searchTimeout: null,
     cache: {}, // In-memory cache
+    bookingToUpdate: null,
     commissionRates: { // Default commission rates
         rate: 0.05, // 5%
         cut: 0.60   // 60%
@@ -61,12 +63,14 @@ const exportConfirmModal = document.getElementById('exportConfirmModal');
 // --- INITIALIZATION ---
 window.onload = async () => {
     initializeDatepickers();
+    initializeTimePicker();
     setupEventListeners();
     initializeBackgroundChanger();
     initializeUISettings();
     initializeCityDropdowns();
     updateToggleLabels();
-    resetPassengerForms(); // Initialize the first passenger form
+    resetPassengerForms();
+    resetBookingPassengerForms();
     if (typeof gapi === 'undefined' || !google.accounts) { showToast('Google API scripts not loaded.', 'error'); return; }
     try {
         await Promise.all([loadGapiClient(), loadGisClient()]);
@@ -83,11 +87,23 @@ function initializeDatepickers() {
         autohide: true,
         todayHighlight: true
     };
-    const allDatePickers = ['searchStartDate', 'searchEndDate', 'searchTravelDate', 'booking_departing_on', 'exportStartDate', 'exportEndDate', 'issued_date', 'departing_on', 'paid_date'];
+    const allDatePickers = ['searchStartDate', 'searchEndDate', 'searchTravelDate', 'booking_departing_on', 'exportStartDate', 'exportEndDate', 'issued_date', 'departing_on', 'paid_date', 'booking_end_date'];
     allDatePickers.forEach(id => {
         const el = document.getElementById(id);
         if (el) new Datepicker(el, defaultOptions);
     });
+}
+
+function initializeTimePicker() {
+    const hourSelect = document.getElementById('booking_end_time_hour');
+    const minuteSelect = document.getElementById('booking_end_time_minute');
+
+    for (let i = 1; i <= 12; i++) {
+        hourSelect.add(new Option(String(i).padStart(2, '0'), i));
+    }
+    for (let i = 0; i < 60; i += 5) {
+        minuteSelect.add(new Option(String(i).padStart(2, '0'), i));
+    }
 }
 
 
@@ -146,15 +162,15 @@ function handleAuthClick() {
 
 async function initializeApp() {
     try {
+        loadFeaturedClients();
         await Promise.all([
             loadTicketData(),
             loadBookingData(),
             loadHistory()
         ]);
         initializeDashboardSelectors();
-        buildClientList(); // This now performs the auto-merge
+        buildClientList();
         renderClientsView();
-        loadSavedSearches();
     } catch (error) {
         console.error("Initialization failed:", error);
         showToast('A critical error occurred during data initialization. Please check the console (F12) for details.', 'error');
@@ -220,7 +236,6 @@ function setupEventListeners() {
 
     document.getElementById('searchBtn').addEventListener('click', performSearch);
     document.getElementById('clearBtn').addEventListener('click', clearSearch);
-    document.getElementById('saveSearchBtn').addEventListener('click', saveSearchQuery);
     document.getElementById('exportPdfBtn').addEventListener('click', () => exportConfirmModal.classList.add('show'));
     document.getElementById('confirmExportBtn').addEventListener('click', exportToPdf);
 
@@ -261,14 +276,17 @@ function setupEventListeners() {
     document.getElementById('newBookingBtn').addEventListener('click', showNewBookingForm);
     document.getElementById('cancelNewBookingBtn').addEventListener('click', hideNewBookingForm);
     document.getElementById('newBookingForm').addEventListener('submit', handleNewBookingSubmit);
+
+    document.getElementById('addBookingPassengerBtn').addEventListener('click', addBookingPassengerForm);
+    document.getElementById('removeBookingPassengerBtn').addEventListener('click', removeBookingPassengerForm);
+
     document.getElementById('bookingSearchBtn').addEventListener('click', performBookingSearch);
     document.getElementById('bookingClearBtn').addEventListener('click', clearBookingSearch);
 
-    ['departure', 'destination', 'searchDeparture', 'searchDestination'].forEach(id => {
+    ['departure', 'destination', 'searchDeparture', 'searchDestination', 'booking_departure', 'booking_destination'].forEach(id => {
         document.getElementById(id).addEventListener('change', handleRouteValidation);
     });
 
-    // Client autosuggest listeners
     document.getElementById('phone').addEventListener('input', (e) => handleAutosuggest(e.target, 'phone'));
     document.getElementById('account_name').addEventListener('input', (e) => handleAutosuggest(e.target, 'account_name'));
 
@@ -279,14 +297,13 @@ function setupEventListeners() {
         if (!settingsPanel.contains(event.target) && event.target !== document.getElementById('settings-btn') && !document.getElementById('settings-btn').contains(event.target) ) {
             settingsPanel.classList.remove('show');
         }
-        // Hide autosuggest boxes if clicking outside
         if (!event.target.closest('.client-autosuggest-group')) {
             document.querySelectorAll('.autosuggest-box').forEach(box => box.style.display = 'none');
         }
     });
 }
 
-// --- NEW/MODIFIED DROPDOWN LOGIC ---
+// --- DROPDOWN LOGIC ---
 function populateCitySelect(selectElement, locations) {
     const firstOption = selectElement.options[0];
     selectElement.innerHTML = '';
@@ -353,7 +370,7 @@ function updateToggleLabels() {
 
 function handleRouteValidation(event) {
     const changedSelect = event.target;
-    const form = changedSelect.closest('form');
+    const form = changedSelect.closest('form, .view');
     if (!form) return;
 
     const isDeparture = changedSelect.id.includes('departure');
@@ -422,7 +439,7 @@ function parseTicketData(values) {
 // --- BOOKING LOGIC ---
 async function loadBookingData() {
     try {
-        const response = await fetchFromSheet(`${CONFIG.BOOKING_SHEET_NAME}!A:K`, 'bookingData');
+        const response = await fetchFromSheet(`${CONFIG.BOOKING_SHEET_NAME}!A:N`, 'bookingData');
 
         if (response.values) {
             state.allBookings = parseBookingData(response.values);
@@ -447,9 +464,12 @@ function parseBookingData(values) {
             booking[h] = typeof value === 'string' ? value.trim() : value;
         });
         booking.rowIndex = i + 2;
+        const groupIdBase = booking.pnr || `${booking.phone}-${booking.account_link}`;
+        booking.groupId = `${groupIdBase}-${booking.departing_on}-${booking.departure}-${booking.destination}`;
         return booking;
     });
 }
+
 
 function displayBookings(bookingsToDisplay) {
     const container = document.getElementById('bookingTableContainer');
@@ -469,13 +489,28 @@ function displayBookings(bookingsToDisplay) {
         });
     }
 
-    bookings.sort((a, b) => {
+    const groupedBookings = bookings.reduce((acc, booking) => {
+        if (!acc[booking.groupId]) {
+            acc[booking.groupId] = {
+                ...booking,
+                passengers: [],
+                rowIndices: []
+            };
+        }
+        acc[booking.groupId].passengers.push({ name: booking.name, id_no: booking.id_no, rowIndex: booking.rowIndex });
+        acc[booking.groupId].rowIndices.push(booking.rowIndex);
+        return acc;
+    }, {});
+
+    const displayableGroups = Object.values(groupedBookings);
+
+    displayableGroups.sort((a, b) => {
         const dateA = parseSheetDate(a.departing_on);
         const dateB = parseSheetDate(b.departing_on);
         return dateA - dateB;
     });
 
-    state.filteredBookings = bookings;
+    state.filteredBookings = displayableGroups;
 
     if (state.filteredBookings.length === 0) {
         renderEmptyState('bookingTableContainer', 'fa-calendar-check', 'No Active Bookings', 'There are no current booking requests. Add one to get started!');
@@ -490,10 +525,12 @@ function displayBookings(bookingsToDisplay) {
                 <th>Travel Date</th>
                 <th>Client Name</th>
                 <th>Route</th>
-                <th>Pax</th>
+                <th>PNR</th>
+                <th>Booking End date and time</th>
                 <th>Get Ticket</th>
                 <th>Cancel</th>
                 <th>Details</th>
+                <th>Sell</th>
             </tr>
         </thead>
         <tbody id="bookingTableBody"></tbody>
@@ -512,47 +549,77 @@ function renderBookingPage(page) {
 
     const paginated = state.filteredBookings.slice((page - 1) * state.rowsPerPage, page * state.rowsPerPage);
 
-    paginated.forEach(booking => {
+    paginated.forEach(group => {
+        const rowIndicesStr = group.rowIndices.join(',');
+        const firstPassengerName = group.passengers[0] ? group.passengers[0].name : 'N/A';
+        const passengerCount = group.passengers.length;
+
+        const deadline = parseDeadline(group.enddate, group.endtime);
+        const isNearDeadline = deadline && (deadline.getTime() - Date.now()) < (6 * 60 * 60 * 1000) && deadline.getTime() > Date.now();
+        
         const row = tbody.insertRow();
+        if(isNearDeadline) {
+            row.classList.add('deadline-warning');
+        }
+
         row.innerHTML = `
-            <td>${booking.departing_on || ''}</td>
-            <td>${booking.name || ''}</td>
-            <td>${(booking.departure || '').split(' ')[0]}→${(booking.destination || '').split(' ')[0]}</td>
-            <td>${booking.pax_no || ''}</td>
-            <td><input type="checkbox" class="action-checkbox" onclick="handleGetTicket(${booking.rowIndex})"></td>
-            <td><input type="checkbox" class="action-checkbox" onclick="handleCancelBooking(${booking.rowIndex})"></td>
-            <td><button class="icon-btn icon-btn-table" onclick="showBookingDetails(${booking.rowIndex})"><i class="fa-solid fa-eye"></i></button></td>
+            <td>${formatDateToDMMMY(group.departing_on) || ''}</td>
+            <td>${firstPassengerName}${passengerCount > 1 ? ` (+${passengerCount - 1})` : ''}</td>
+            <td>${(group.departure || '').split(' ')[0]}→${(group.destination || '').split(' ')[0]}</td>
+            <td>${group.pnr || 'N/A'}</td>
+            <td>${group.enddate && group.endtime ? `${formatDateToDMMMY(group.enddate)} ${group.endtime}` : 'N/A'}</td>
+            <td><input type="checkbox" class="action-checkbox" onclick="handleGetTicket('${rowIndicesStr}')"></td>
+            <td><input type="checkbox" class="action-checkbox" onclick="handleCancelBooking('${rowIndicesStr}')"></td>
+            <td><button class="icon-btn icon-btn-table" title="View Details" onclick="showBookingDetails('${rowIndicesStr}')"><i class="fa-solid fa-eye"></i></button></td>
+            <td><button class="icon-btn icon-btn-table" title="Sell Ticket" onclick="sellTicketFromBooking('${rowIndicesStr}')"><i class="fa-solid fa-ticket"></i></button></td>
         `;
     });
 
     setupBookingPagination(state.filteredBookings);
 }
 
-function handleGetTicket(rowIndex) {
-    const booking = state.allBookings.find(b => b.rowIndex === rowIndex);
-    const message = `Are you sure you want to mark booking for <strong>${booking.name}</strong> as "Get Ticket"? This will remove it from the list.`;
-    showConfirmModal(message, () => updateBookingStatus(rowIndex, 'Get Ticket'));
+function handleGetTicket(rowIndicesStr) {
+    const rowIndices = rowIndicesStr.split(',').map(Number);
+    const bookingGroup = state.filteredBookings.find(g => g.rowIndices.includes(rowIndices[0]));
+    const clientName = bookingGroup ? bookingGroup.passengers[0].name : 'this booking';
+    const passengerCount = bookingGroup ? bookingGroup.passengers.length : 1;
+    const message = `Are you sure you want to mark the booking for <strong>${clientName} ${passengerCount > 1 ? `and ${passengerCount - 1} other(s)` : ''}</strong> as "Get Ticket"? This will remove it from the list.`;
+    showConfirmModal(message, () => {
+        updateBookingStatus(rowIndices, 'Get Ticket');
+        closeModal();
+    });
 }
 
-function handleCancelBooking(rowIndex) {
-    const booking = state.allBookings.find(b => b.rowIndex === rowIndex);
-    const message = `Are you sure you want to <strong>CANCEL</strong> the booking for <strong>${booking.name}</strong>? This will remove it from the list.`;
-    showConfirmModal(message, () => updateBookingStatus(rowIndex, 'Canceled'));
+function handleCancelBooking(rowIndicesStr) {
+    const rowIndices = rowIndicesStr.split(',').map(Number);
+    const bookingGroup = state.filteredBookings.find(g => g.rowIndices.includes(rowIndices[0]));
+    const clientName = bookingGroup ? bookingGroup.passengers[0].name : 'this booking';
+    const passengerCount = bookingGroup ? bookingGroup.passengers.length : 1;
+    const message = `Are you sure you want to <strong>CANCEL</strong> the booking for <strong>${clientName} ${passengerCount > 1 ? `and ${passengerCount - 1} other(s)` : ''}</strong>? This will remove it from the list.`;
+    showConfirmModal(message, () => {
+        updateBookingStatus(rowIndices, 'Canceled');
+        closeModal();
+    });
 }
 
-async function updateBookingStatus(rowIndex, remarks) {
+async function updateBookingStatus(rowIndices, remarks) {
     try {
         state.isSubmitting = true;
         showToast('Updating booking status...', 'info');
-        const range = `${CONFIG.BOOKING_SHEET_NAME}!K${rowIndex}`;
-        await gapi.client.sheets.spreadsheets.values.update({
+
+        const data = rowIndices.map(rowIndex => ({
+            range: `${CONFIG.BOOKING_SHEET_NAME}!N${rowIndex}`,
+            values: [[remarks]]
+        }));
+
+        await gapi.client.sheets.spreadsheets.values.batchUpdate({
             spreadsheetId: CONFIG.SHEET_ID,
-            range: range,
-            valueInputOption: 'USER_ENTERED',
             resource: {
-                values: [[remarks]]
+                valueInputOption: 'USER_ENTERED',
+                data: data
             }
         });
+
         state.cache['bookingData'] = null;
         showToast('Booking updated successfully!', 'success');
         await loadBookingData();
@@ -561,27 +628,34 @@ async function updateBookingStatus(rowIndex, remarks) {
         await loadBookingData();
     } finally {
         state.isSubmitting = false;
-        closeModal();
     }
 }
 
-function showBookingDetails(rowIndex) {
-    const booking = state.allBookings.find(b => b.rowIndex === rowIndex);
-    if (booking) {
+function showBookingDetails(rowIndicesStr) {
+    const rowIndices = rowIndicesStr.split(',').map(Number);
+    const bookingGroup = state.filteredBookings.find(g => g.rowIndices.includes(rowIndices[0]));
+
+    if (bookingGroup) {
+        const passengerListHtml = bookingGroup.passengers.map(p => `<li><strong>${p.name}</strong> (ID: ${p.id_no || 'N/A'})</li>`).join('');
+        const passengerCount = bookingGroup.passengers.length;
+
         const content = `
             <h3>Booking Request Details</h3>
-            <p><strong>Name:</strong> ${booking.name || 'N/A'}</p>
-            <p><strong>ID No:</strong> ${booking.id_no || 'N/A'}</p>
-            <p><strong>Phone:</strong> ${makeClickable(booking.phone)}</p>
-            <p><strong>Pax No:</strong> ${booking.pax_no || 'N/A'}</p>
+            ${bookingGroup.pnr ? `<p><strong>PNR Code:</strong> ${bookingGroup.pnr}</p>` : ''}
+            <div class="details-section">
+                <div class="details-section-title">Passenger(s)</div>
+                <ul style="list-style: none; padding-left: 0;">${passengerListHtml}</ul>
+                <p><strong>Total Passengers:</strong> ${passengerCount || 'N/A'}</p>
+            </div>
+             <hr style="border-color: rgba(255,255,255,0.2); margin: 1rem 0;">
+            <p><strong>Phone:</strong> ${makeClickable(bookingGroup.phone)}</p>
+            <p><strong>Account Name:</strong> ${bookingGroup.account_name || 'N/A'}</p>
+            <p><strong>Account Type:</strong> ${bookingGroup.account_type || 'N/A'}</p>
+            <p><strong>Account Link:</strong> ${makeClickable(bookingGroup.account_link) || 'N/A'}</a></p>
             <hr style="border-color: rgba(255,255,255,0.2); margin: 1rem 0;">
-            <p><strong>Account Name:</strong> ${booking.account_name || 'N/A'}</p>
-            <p><strong>Account Type:</strong> ${booking.account_type || 'N/A'}</p>
-            <p><strong>Account Link:</strong> ${makeClickable(booking.account_link) || 'N/A'}</p>
-            <hr style="border-color: rgba(255,255,255,0.2); margin: 1rem 0;">
-            <p><strong>Route:</strong> ${booking.departure || 'N/A'} → ${booking.destination || 'N/A'}</p>
-            <p><strong>Travel Date:</strong> ${booking.departing_on || 'N/A'}</p>
-            <p><strong>Remarks:</strong> ${booking.remarks || 'N/A'}</p>
+            <p><strong>Route:</strong> ${bookingGroup.departure || 'N/A'} → ${bookingGroup.destination || 'N/A'}</p>
+            <p><strong>Travel Date:</strong> ${formatDateToDMMMY(bookingGroup.departing_on) || 'N/A'}</p>
+            <p><strong>Booking Deadline:</strong> ${bookingGroup.enddate && bookingGroup.endtime ? `${formatDateToDMMMY(bookingGroup.enddate)} ${bookingGroup.endtime}` : 'N/A'}</p>
             <div class="form-actions" style="margin-top: 1.5rem;">
                 <button class="btn btn-secondary" onclick="closeModal()">Close</button>
             </div>
@@ -590,15 +664,18 @@ function showBookingDetails(rowIndex) {
     }
 }
 
+
 function showNewBookingForm() {
     document.getElementById('booking-display-container').style.display = 'none';
     document.getElementById('booking-form-container').style.display = 'block';
+    resetBookingPassengerForms();
 }
 
 function hideNewBookingForm() {
     document.getElementById('booking-form-container').style.display = 'none';
     document.getElementById('booking-display-container').style.display = 'block';
     document.getElementById('newBookingForm').reset();
+    resetBookingPassengerForms();
 }
 
 async function handleNewBookingSubmit(e) {
@@ -609,41 +686,66 @@ async function handleNewBookingSubmit(e) {
     if (submitButton) submitButton.disabled = true;
 
     try {
-        const bookingData = {
-            name: document.getElementById('booking_name').value.toUpperCase(),
-            id_no: document.getElementById('booking_id_no').value.toUpperCase(),
+        const hour = document.getElementById('booking_end_time_hour').value;
+        const minute = document.getElementById('booking_end_time_minute').value;
+        const ampm = document.getElementById('booking_end_time_ampm').value;
+        
+        const sharedData = {
             phone: document.getElementById('booking_phone').value,
+            pnr: document.getElementById('booking_pnr').value.toUpperCase(),
             account_name: document.getElementById('booking_account_name').value.toUpperCase(),
             account_type: document.getElementById('booking_account_type').value.toUpperCase(),
             account_link: document.getElementById('booking_account_link').value,
             departure: document.getElementById('booking_departure').value.toUpperCase(),
             destination: document.getElementById('booking_destination').value.toUpperCase(),
             departing_on: document.getElementById('booking_departing_on').value,
-            pax_no: document.getElementById('booking_pax_no').value,
+            enddate: document.getElementById('booking_end_date').value,
+            endtime: `${hour}:${String(minute).padStart(2, '0')} ${ampm}`
         };
 
-        if (!bookingData.name || !bookingData.departing_on) {
-            throw new Error('Client Name and Travel Date are required.');
+        const passengerForms = document.querySelectorAll('#booking-passenger-forms-container .passenger-form');
+        const passengerData = [];
+        passengerForms.forEach(form => {
+            const name = form.querySelector('.booking-passenger-name').value.toUpperCase();
+            const id_no = form.querySelector('.booking-passenger-id').value.toUpperCase();
+            if (name) {
+                passengerData.push({ name, id_no });
+            }
+        });
+
+        if (passengerData.length === 0) {
+            throw new Error('At least one passenger with a Name is required.');
+        }
+        if (!sharedData.departing_on || !sharedData.departure || !sharedData.destination) {
+            throw new Error('Departure, Destination, and Travel Date are required.');
         }
 
-        const values = [[
-            bookingData.name, bookingData.id_no, bookingData.phone,
-            bookingData.account_name, bookingData.account_type, bookingData.account_link,
-            bookingData.departure, bookingData.destination,
-            formatDateForSheet(bookingData.departing_on),
-            bookingData.pax_no,
-            ''
-        ]];
+        const values = passengerData.map(passenger => [
+            passenger.name, // A
+            passenger.id_no, // B
+            sharedData.phone, // C
+            sharedData.account_name, // D
+            sharedData.account_type, // E
+            sharedData.account_link, // F
+            sharedData.departure, // G
+            sharedData.destination, // H
+            formatDateForSheet(sharedData.departing_on), // I
+            sharedData.pnr, // J
+            '', // K
+            formatDateForSheet(sharedData.enddate), // L - Corrected
+            sharedData.endtime, // M - Corrected
+            '' // N (Remarks)
+        ]);
 
         await gapi.client.sheets.spreadsheets.values.append({
             spreadsheetId: CONFIG.SHEET_ID,
-            range: `${CONFIG.BOOKING_SHEET_NAME}!A:K`,
+            range: `${CONFIG.BOOKING_SHEET_NAME}!A:N`,
             valueInputOption: 'USER_ENTERED',
             resource: { values },
         });
 
         state.cache['bookingData'] = null;
-        showToast('Booking saved successfully!', 'success');
+        showToast(`Booking for ${passengerData.length} passenger(s) saved!`, 'success');
         hideNewBookingForm();
         await loadBookingData();
     } catch (error) {
@@ -653,6 +755,7 @@ async function handleNewBookingSubmit(e) {
         if (submitButton) submitButton.disabled = false;
     }
 }
+
 
 function setupBookingPagination(items) {
     const container = document.getElementById('bookingPagination');
@@ -730,6 +833,45 @@ function clearBookingSearch() {
     displayBookings();
 }
 
+function sellTicketFromBooking(rowIndicesStr) {
+    const rowIndices = rowIndicesStr.split(',').map(Number);
+    const bookingGroup = state.filteredBookings.find(g => g.rowIndices.includes(rowIndices[0]));
+
+    if (!bookingGroup) {
+        showToast('Could not find booking details.', 'error');
+        return;
+    }
+
+    state.bookingToUpdate = rowIndices;
+
+    showView('sell');
+
+    document.getElementById('booking_reference').value = bookingGroup.pnr || '';
+    document.getElementById('phone').value = bookingGroup.phone || '';
+    document.getElementById('account_name').value = bookingGroup.account_name || '';
+    document.getElementById('account_type').value = bookingGroup.account_type || '';
+    document.getElementById('account_link').value = bookingGroup.account_link || '';
+    document.getElementById('departure').value = bookingGroup.departure || '';
+    document.getElementById('destination').value = bookingGroup.destination || '';
+    document.getElementById('departing_on').value = bookingGroup.departing_on || '';
+
+    handleRouteValidation({ target: document.getElementById('departure') });
+    handleRouteValidation({ target: document.getElementById('destination') });
+
+    const container = document.getElementById('passenger-forms-container');
+    container.innerHTML = '';
+
+    const passengerCount = bookingGroup.passengers.length;
+
+    bookingGroup.passengers.forEach(passenger => {
+        addPassengerForm(passenger.name, passenger.id_no);
+    });
+
+    showToast(`Form pre-filled for ${bookingGroup.passengers[0].name}${passengerCount > 1 ? ` and ${passengerCount - 1} other(s)`: ''}. Complete financial details.`, 'info');
+}
+
+
+
 // --- BACKGROUND CHANGER ---
 function initializeBackgroundChanger() {
     const uploader = document.getElementById('background-uploader');
@@ -772,6 +914,8 @@ function showView(viewName) {
         resetPassengerForms();
         populateFlightLocations();
         updateToggleLabels();
+    } else {
+        state.bookingToUpdate = null;
     }
     if (viewName === 'booking') {
         hideNewBookingForm();
@@ -989,9 +1133,7 @@ function createAirlineChart(tickets) {
             maintainAspectRatio: false,
             plugins: {
                 legend: {
-                    display: labels.length > 0 && labels.length < 8,
-                    position: 'right',
-                    labels: { color: '#e6edf3', boxWidth: 12, padding: 8, font: { size: 10 } }
+                    display: false
                 }
             },
             animation: { animateScale: true, duration: 500 },
@@ -1009,15 +1151,16 @@ function formatDateToDMMMY(dateString) {
     if (!dateString) return '';
     const date = parseSheetDate(dateString);
     if (isNaN(date.getTime()) || date.getTime() === 0) {
-        return '';
+        return dateString; // Return original string if parsing fails
     }
-    const day = String(date.getUTCDate()).padStart(2, '0');
-    const year = date.getUTCFullYear();
+    const day = String(date.getDate()).padStart(2, '0');
+    const year = date.getFullYear();
     const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-    const month = monthNames[date.getUTCMonth()];
+    const month = monthNames[date.getMonth()];
     return `${day}-${month}-${year}`;
 }
 
+// CORRECTED to handle dates in the user's local timezone
 function parseSheetDate(dateString) {
     if (!dateString) return new Date(0);
     const safeDateString = String(dateString).trim();
@@ -1035,17 +1178,42 @@ function parseSheetDate(dateString) {
             year = parseInt(parts[2], 10);
         }
         if (!isNaN(day) && month !== undefined && !isNaN(year) && year > 1900 && day > 0 && day <= 31 && month >= 0 && month < 12) {
-            const d = new Date(Date.UTC(year, month, day));
-            if (d.getUTCFullYear() === year && d.getUTCMonth() === month && d.getUTCDate() === day) {
+            const d = new Date(year, month, day); // Use local timezone constructor
+            if (d.getFullYear() === year && d.getMonth() === month && d.getDate() === day) {
                 return d;
             }
         }
     }
     const fallbackDate = new Date(safeDateString);
     if (!isNaN(fallbackDate.getTime())) {
-        return new Date(Date.UTC(fallbackDate.getFullYear(), fallbackDate.getMonth(), fallbackDate.getDate()));
+        return fallbackDate; // Return as a local date
     }
     return new Date(0);
+}
+
+
+// CORRECTED to handle time in the user's local timezone
+function parseDeadline(dateStr, timeStr) {
+    if (!dateStr || !timeStr) return null;
+    const date = parseSheetDate(dateStr);
+    if (isNaN(date.getTime())) return null;
+
+    const timeParts = timeStr.match(/(\d+):(\d+)\s*(AM|PM)/i);
+    if (!timeParts) return null;
+
+    let hours = parseInt(timeParts[1], 10);
+    const minutes = parseInt(timeParts[2], 10);
+    const ampm = timeParts[3].toUpperCase();
+
+    if (ampm === 'PM' && hours < 12) {
+        hours += 12;
+    }
+    if (ampm === 'AM' && hours === 12) {
+        hours = 0;
+    }
+
+    date.setHours(hours, minutes, 0, 0); // Use local setHours, not setUTCHours
+    return date;
 }
 
 function calculateCommission(baseFareInput) {
@@ -1123,8 +1291,8 @@ function performSearch() {
     let searchStartDate = startDateVal ? parseSheetDate(startDateVal) : null;
     let searchEndDate = endDateVal ? parseSheetDate(endDateVal) : null;
 
-    if (searchStartDate) searchStartDate.setUTCHours(0, 0, 0, 0);
-    if (searchEndDate) searchEndDate.setUTCHours(23, 59, 59, 999);
+    if (searchStartDate) searchStartDate.setHours(0, 0, 0, 0);
+    if (searchEndDate) searchEndDate.setHours(23, 59, 59, 999);
 
     let searchTravelDate = travelDateVal ? parseSheetDate(travelDateVal) : null;
 
@@ -1193,7 +1361,6 @@ async function handleSellTicket(e) {
         return;
     }
 
-    // PNR Duplication Check
     const pnrExists = state.allTickets.some(t => t.booking_reference === sharedData.booking_reference);
     if (pnrExists) {
         const message = `PNR <strong>${sharedData.booking_reference}</strong> already exists. Are you sure you want to add more passengers under this PNR?`;
@@ -1211,6 +1378,11 @@ async function confirmAndSaveTicket(form, sharedData, passengerData) {
 
     try {
         await saveTicket(sharedData, passengerData);
+
+        if (state.bookingToUpdate) {
+            await updateBookingStatus(state.bookingToUpdate, 'Get Ticket');
+            state.bookingToUpdate = null;
+        }
 
         showToast('Ticket(s) saved successfully!', 'success');
         form.reset();
@@ -1290,7 +1462,7 @@ async function saveTicket(sharedData, passengerData) {
         p.commission,
         p.remarks,
         p.extra_fare,
-        0 // Date change is 0 on initial sale
+        0
     ]);
 
     await gapi.client.sheets.spreadsheets.values.append({
@@ -1301,7 +1473,7 @@ async function saveTicket(sharedData, passengerData) {
     });
 }
 
-function addPassengerForm() {
+function addPassengerForm(name = '', id_no = '') {
     const container = document.getElementById('passenger-forms-container');
     const passengerCount = container.children.length;
 
@@ -1311,8 +1483,8 @@ function addPassengerForm() {
         <hr style="border-color: rgba(255,255,255,0.1); margin-bottom: 1rem;">
         <h4>Passenger ${passengerCount + 1}</h4>
         <div class="form-grid">
-            <div class="form-group"><label>Client Name</label><input type="text" class="passenger-name" required></div>
-            <div class="form-group"><label>ID Number</label><input type="text" class="passenger-id" required></div>
+            <div class="form-group"><label>Client Name</label><input type="text" class="passenger-name" value="${name}" required></div>
+            <div class="form-group"><label>ID Number</label><input type="text" class="passenger-id" value="${id_no}" required></div>
             <div class="form-group"><label>Base Fare (MMK)</label><input type="number" class="passenger-base-fare" step="1" required></div>
             <div class="form-group"><label>Net Amount (MMK)</label><input type="number" class="passenger-net-amount" step="1" required></div>
             <div class="form-group"><label>Extra Fare (Optional)</label><input type="number" class="passenger-extra-fare" step="1"></div>
@@ -1324,6 +1496,7 @@ function addPassengerForm() {
     updateRemovePassengerButton();
 }
 
+
 function removePassengerForm() {
     const container = document.getElementById('passenger-forms-container');
     if (container.children.length > 1) {
@@ -1334,20 +1507,8 @@ function removePassengerForm() {
 
 function resetPassengerForms() {
     const container = document.getElementById('passenger-forms-container');
-    container.innerHTML = `
-        <div class="passenger-form">
-            <h4>Passenger 1</h4>
-            <div class="form-grid">
-                <div class="form-group"><label>Client Name</label><input type="text" class="passenger-name" required></div>
-                <div class="form-group"><label>ID Number</label><input type="text" class="passenger-id" required></div>
-                <div class="form-group"><label>Base Fare (MMK)</label><input type="number" class="passenger-base-fare" step="1" required></div>
-                <div class="form-group"><label>Net Amount (MMK)</label><input type="number" class="passenger-net-amount" step="1" required></div>
-                <div class="form-group"><label>Extra Fare (Optional)</label><input type="number" class="passenger-extra-fare" step="1"></div>
-                <div class="form-group"><label>Commission</label><input type="number" class="passenger-commission" step="1" readonly></div>
-                <div class="form-group"><label>Remarks (Optional)</label><textarea class="passenger-remarks" rows="1"></textarea></div>
-            </div>
-        </div>
-    `;
+    container.innerHTML = '';
+    addPassengerForm();
     updateRemovePassengerButton();
 }
 
@@ -1355,6 +1516,47 @@ function resetPassengerForms() {
 function updateRemovePassengerButton() {
     const container = document.getElementById('passenger-forms-container');
     const removeBtn = document.getElementById('removePassengerBtn');
+    removeBtn.style.display = container.children.length > 1 ? 'inline-flex' : 'none';
+}
+
+// --- NEW BOOKING PASSENGER FORM LOGIC ---
+
+function addBookingPassengerForm() {
+    const container = document.getElementById('booking-passenger-forms-container');
+    const passengerCount = container.children.length;
+
+    const newForm = document.createElement('div');
+    newForm.className = 'passenger-form';
+    newForm.innerHTML = `
+        ${passengerCount > 0 ? '<hr style="border-color: rgba(255,255,255,0.1); margin: 1rem 0;">' : ''}
+        <h4>Passenger ${passengerCount + 1}</h4>
+        <div class="booking-passenger-grid">
+            <div class="form-group"><label>Client Name</label><input type="text" class="booking-passenger-name" required></div>
+            <div class="form-group"><label>ID Number</label><input type="text" class="booking-passenger-id"></div>
+        </div>
+    `;
+    container.appendChild(newForm);
+    updateRemoveBookingPassengerButton();
+}
+
+function removeBookingPassengerForm() {
+    const container = document.getElementById('booking-passenger-forms-container');
+    if (container.children.length > 1) {
+        container.removeChild(container.lastChild);
+    }
+    updateRemoveBookingPassengerButton();
+}
+
+function resetBookingPassengerForms() {
+    const container = document.getElementById('booking-passenger-forms-container');
+    container.innerHTML = '';
+    addBookingPassengerForm();
+    updateRemoveBookingPassengerButton();
+}
+
+function updateRemoveBookingPassengerButton() {
+    const container = document.getElementById('booking-passenger-forms-container');
+    const removeBtn = document.getElementById('removeBookingPassengerBtn');
     removeBtn.style.display = container.children.length > 1 ? 'inline-flex' : 'none';
 }
 
@@ -1414,7 +1616,7 @@ function openManageModal(rowIndex) {
     if (ticket.departing_on) {
         const d = parseSheetDate(ticket.departing_on);
         if (!isNaN(d.getTime()) && d.getTime() !== 0) {
-            travelDateForInput = `${String(d.getUTCMonth() + 1).padStart(2, '0')}/${String(d.getUTCDate()).padStart(2, '0')}/${d.getUTCFullYear()}`;
+            travelDateForInput = `${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')}/${d.getFullYear()}`;
         }
     }
 
@@ -1773,7 +1975,6 @@ function populateSearchAirlines() {
     const airlinesFromTickets = new Set(state.allTickets.map(t => t.airline ? t.airline.toUpperCase() : null).filter(Boolean));
     const allAvailableAirlines = new Set([...defaultAirlines, ...airlinesFromTickets]);
 
-    // Clear existing options except the disabled one
     const firstOption = searchAirlineSelect.options[0];
     searchAirlineSelect.innerHTML = '';
     searchAirlineSelect.appendChild(firstOption);
@@ -1791,12 +1992,10 @@ function populateSearchAirlines() {
 function initializeUISettings() {
     const settingsBtn = document.getElementById('settings-btn');
     const resetBtn = document.getElementById('reset-settings-btn');
-    // UI Sliders
     const opacitySlider = document.getElementById('opacity-slider');
     const blurSlider = document.getElementById('blur-slider');
     const overlaySlider = document.getElementById('overlay-slider');
     const glassSlider = document.getElementById('glass-slider');
-    // Commission Sliders
     const commissionRateSlider = document.getElementById('commission-rate-slider');
     const agentCutSlider = document.getElementById('agent-cut-slider');
 
@@ -1807,8 +2006,8 @@ function initializeUISettings() {
         blur: 20,
         overlay: 0.5,
         glass: 0.15,
-        commissionRate: 5, // in percent
-        agentCut: 60 // in percent
+        commissionRate: 5,
+        agentCut: 60
     };
 
     let settings = JSON.parse(localStorage.getItem('uiSettings')) || { ...defaults };
@@ -1942,17 +2141,6 @@ function generatePdf(tickets) {
         tableRows.push(ticketData);
     });
 
-    const footerRow = [
-        {
-            content: 'Total',
-            colSpan: 5,
-            styles: { halign: 'right', fontStyle: 'bold' }
-        },
-        { content: totalNetAmount.toLocaleString(), styles: { halign: 'right', fontStyle: 'bold' } },
-        { content: totalDateChange.toLocaleString(), styles: { halign: 'right', fontStyle: 'bold' } },
-        { content: totalCommission.toLocaleString(), styles: { halign: 'right', fontStyle: 'bold' } }
-    ];
-
     const now = new Date();
     const currentMonth = now.toLocaleString('default', { month: 'long' });
     const title = `Ocean Air Ticket (${currentMonth} Report)`;
@@ -1961,17 +2149,11 @@ function generatePdf(tickets) {
     doc.autoTable({
         head: [tableColumns],
         body: tableRows,
-        foot: [footerRow],
         startY: 25,
         theme: 'grid',
         headStyles: {
             fillColor: [33, 38, 45],
             textColor: [230, 237, 243]
-        },
-        footStyles: {
-            fillColor: [220, 220, 220],
-            textColor: [0, 0, 0],
-            fontStyle: 'bold'
         },
         styles: {
             font: 'helvetica',
@@ -1985,19 +2167,57 @@ function generatePdf(tickets) {
             6: { cellWidth: 23, halign: 'right' }, 7: { cellWidth: 23, halign: 'right' }
         },
         didDrawPage: function (data) {
-            doc.setFontSize(18);
-            doc.setTextColor(40);
-            doc.text(title, data.settings.margin.left, 15);
+            if (data.pageNumber === 1) {
+                doc.setFontSize(18);
+                doc.setTextColor(40);
+                doc.text(title, data.settings.margin.left, 15);
 
-            doc.setFontSize(11);
-            doc.setTextColor(100);
-            doc.text(exportedDate, data.settings.margin.left, 20);
-
-            const pageCount = doc.internal.getNumberOfPages();
+                doc.setFontSize(11);
+                doc.setTextColor(100);
+                doc.text(exportedDate, data.settings.margin.left, 20);
+            }
             doc.setFontSize(10);
-            doc.text("Page " + String(data.pageNumber) + " of " + String(pageCount), data.settings.margin.left, doc.internal.pageSize.height - 10);
+            doc.text("Page " + String(data.pageNumber), data.settings.margin.left, doc.internal.pageSize.height - 10);
         }
     });
+
+    const grandTotal = totalNetAmount + totalDateChange;
+    
+    if (doc.lastAutoTable.finalY + 25 > doc.internal.pageSize.height) {
+        doc.addPage();
+    }
+
+    doc.autoTable({
+        startY: doc.lastAutoTable.finalY + 3,
+        body: [
+            [
+                { content: 'Total', colSpan: 5, styles: { halign: 'right', fontStyle: 'bold' } },
+                { content: totalNetAmount.toLocaleString(), styles: { halign: 'right', fontStyle: 'bold' } },
+                { content: totalDateChange.toLocaleString(), styles: { halign: 'right', fontStyle: 'bold' } },
+                { content: totalCommission.toLocaleString(), styles: { halign: 'right', fontStyle: 'bold' } }
+            ],
+            [
+                { content: 'Grand Total (Net Amount + Date Change)', colSpan: 5, styles: { halign: 'right', fontStyle: 'bold' } },
+                { content: grandTotal.toLocaleString(), styles: { halign: 'right', fontStyle: 'bold' } },
+                { content: '', colSpan: 2 }
+            ]
+        ],
+        theme: 'grid',
+        styles: {
+            font: 'helvetica',
+            fontSize: 8,
+            cellPadding: 2,
+            valign: 'middle',
+            fillColor: [220, 220, 220],
+            textColor: [0, 0, 0],
+        },
+        columnStyles: {
+            0: { cellWidth: 22 }, 1: { cellWidth: 40 }, 2: { cellWidth: 25 },
+            3: { cellWidth: 75 }, 4: { cellWidth: 28 }, 5: { halign: 'right', cellWidth: 23 },
+            6: { cellWidth: 23, halign: 'right' }, 7: { cellWidth: 23, halign: 'right' }
+        },
+    });
+
 
     doc.save(`Ocean_Air_Report_${now.getFullYear()}-${String(now.getMonth()+1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}.pdf`);
     showToast('Report exported successfully!', 'success');
@@ -2033,14 +2253,13 @@ function showConfirmModal(message, onConfirm) {
     };
 }
 
-// --- CLIENT MANAGEMENT (AUTO-MERGING) ---
+// --- CLIENT MANAGEMENT ---
 function buildClientList() {
     const clientsMap = new Map();
 
     state.allTickets.forEach(ticket => {
-        // Create a composite key from name and ID number for auto-merging
         const key = `${(ticket.name || '').trim().toUpperCase()}|${(ticket.id_no || '').trim().toUpperCase()}`;
-        if (!ticket.name || !ticket.id_no) return; // Skip if essential merging info is missing
+        if (!ticket.name || !ticket.id_no) return;
 
         if (!clientsMap.has(key)) {
             clientsMap.set(key, {
@@ -2064,7 +2283,6 @@ function buildClientList() {
         const ticketDate = parseSheetDate(ticket.issued_date);
         if (ticketDate > client.lastContact) {
             client.lastContact = ticketDate;
-            // Update contact details with the latest info from the most recent ticket
             client.phone = ticket.phone;
             client.account_name = ticket.account_name;
             client.account_type = ticket.account_type;
@@ -2074,14 +2292,23 @@ function buildClientList() {
     state.allClients = Array.from(clientsMap.values()).sort((a,b) => b.lastContact - a.lastContact);
 }
 
-function renderClientsView(filteredClients = null) {
+function renderClientsView() {
     const view = document.getElementById('clients-view');
     view.innerHTML = `
         <div class="clients-container glass-card">
             <div class="clients-header">
                 <h2><i class="fa-solid fa-users"></i> Client Directory</h2>
-                <div class="client-search-box">
-                    <input type="text" id="clientSearchInput" placeholder="Search by name, ID, or phone...">
+                <div class="client-controls">
+                    <div class="toggle-switch">
+                        <label for="featuredClientsToggle">Show Featured Only</label>
+                        <label class="switch">
+                            <input type="checkbox" id="featuredClientsToggle">
+                            <span class="slider round"></span>
+                        </label>
+                    </div>
+                    <div class="client-search-box">
+                        <input type="text" id="clientSearchInput" placeholder="Search by name, ID, or phone...">
+                    </div>
                 </div>
             </div>
             <div id="clientListContainer" class="table-container"></div>
@@ -2089,26 +2316,42 @@ function renderClientsView(filteredClients = null) {
         </div>
     `;
 
-    document.getElementById('clientSearchInput').addEventListener('input', (e) => {
-        const query = e.target.value.toLowerCase();
-        const filtered = state.allClients.filter(c =>
+    document.getElementById('clientSearchInput').addEventListener('input', () => renderClientListPage(1));
+    document.getElementById('featuredClientsToggle').addEventListener('change', () => renderClientListPage(1));
+
+    renderClientListPage(1);
+}
+
+
+function renderClientListPage(page) {
+    state.clientPage = page;
+    const container = document.getElementById('clientListContainer');
+    const searchInput = document.getElementById('clientSearchInput');
+    const featuredOnlyToggle = document.getElementById('featuredClientsToggle');
+
+    const query = (searchInput?.value || '').toLowerCase();
+    const featuredOnly = featuredOnlyToggle?.checked;
+
+    let clientsToDisplay = state.allClients;
+
+    if (featuredOnly) {
+        clientsToDisplay = clientsToDisplay.filter(c => state.featuredClients.includes(c.compositeKey));
+    }
+
+    if (query) {
+        clientsToDisplay = clientsToDisplay.filter(c =>
             c.name.toLowerCase().includes(query) ||
             (c.id_no && c.id_no.toLowerCase().includes(query)) ||
             (c.phone && c.phone.includes(query))
         );
-        renderClientListPage(1, filtered);
-    });
-
-    renderClientListPage(1, filteredClients || state.allClients);
-}
-
-
-function renderClientListPage(page, clients) {
-    state.clientPage = page;
-    const container = document.getElementById('clientListContainer');
-
-    if (!clients || clients.length === 0) {
-        renderEmptyState('clientListContainer', 'fa-user-slash', 'No Clients Found', 'Your client list is empty. Sell tickets to add clients.');
+    }
+    
+    if (clientsToDisplay.length === 0) {
+        if (featuredOnly) {
+            renderEmptyState('clientListContainer', 'fa-star', 'No Featured Clients', 'You haven\'t starred any clients yet. Click the star icon next to a client\'s name to feature them.');
+        } else {
+             renderEmptyState('clientListContainer', 'fa-user-slash', 'No Clients Found', 'Your search did not match any clients.');
+        }
         setupClientPagination([]);
         return;
     }
@@ -2131,13 +2374,16 @@ function renderClientListPage(page, clients) {
     container.innerHTML = table;
     const tbody = document.getElementById('clientListBody');
 
-    const paginated = clients.slice((page - 1) * state.rowsPerPage, page * state.rowsPerPage);
+    const paginated = clientsToDisplay.slice((page - 1) * state.rowsPerPage, page * state.rowsPerPage);
 
     paginated.forEach(client => {
+        const isFeatured = state.featuredClients.includes(client.compositeKey);
         const row = tbody.insertRow();
-        // Use single quotes for the string to allow double quotes inside for the client key
         row.innerHTML = `
-            <td>${client.name}</td>
+            <td>
+                <i class="fa-regular fa-star star-icon ${isFeatured ? 'featured' : ''}" onclick="toggleFeaturedClient('${client.compositeKey}', event)"></i>
+                ${client.name}
+            </td>
             <td>${client.id_no || 'N/A'}</td>
             <td>${client.account_name || 'N/A'}</td>
             <td>${client.account_type || 'N/A'}</td>
@@ -2148,7 +2394,7 @@ function renderClientListPage(page, clients) {
             </td>
         `;
     });
-    setupClientPagination(clients);
+    setupClientPagination(clientsToDisplay);
 }
 
 function setupClientPagination(items) {
@@ -2163,7 +2409,7 @@ function setupClientPagination(items) {
         btn.innerHTML = txt;
         btn.disabled = !enabled;
         if (enabled) {
-            btn.onclick = () => renderClientListPage(pg, items);
+            btn.onclick = () => renderClientListPage(pg);
         }
         if (pg === state.clientPage) {
             btn.classList.add('active');
@@ -2184,7 +2430,6 @@ function renderClientHistory(clientKey) {
         return;
     }
     
-    // Filter all tickets that match the client's composite key (name and ID)
     const clientTickets = state.allTickets.filter(t => 
         (t.name || '').trim().toUpperCase() === client.name.trim().toUpperCase() &&
         (t.id_no || '').trim().toUpperCase() === client.id_no.trim().toUpperCase()
@@ -2193,7 +2438,6 @@ function renderClientHistory(clientKey) {
     const view = document.getElementById('clients-view');
 
     const totalCommission = clientTickets.reduce((sum, t) => sum + (t.commission || 0), 0);
-    // client.totalSpent and client.ticketCount are already calculated during the buildClientList merge process
     const totalSpent = client.totalSpent;
     const ticketCount = client.ticketCount;
 
@@ -2250,13 +2494,11 @@ function sellToClient(clientKey) {
     if (!client) return;
 
     showView('sell');
-    // Pre-fill form with the latest client data
     document.getElementById('phone').value = client.phone || '';
     document.getElementById('account_name').value = client.account_name || '';
     document.getElementById('account_type').value = client.account_type || '';
     document.getElementById('account_link').value = client.account_link || '';
 
-    // Pre-fill first passenger name and ID
     const firstPassengerNameInput = document.querySelector('#passenger-forms-container .passenger-name');
     const firstPassengerIdInput = document.querySelector('#passenger-forms-container .passenger-id');
     if (firstPassengerNameInput) {
@@ -2267,7 +2509,6 @@ function sellToClient(clientKey) {
     }
 }
 
-// --- CLIENT AUTOSUGGEST WORKFLOW ---
 function handleAutosuggest(inputElement, field) {
     const value = inputElement.value.toLowerCase();
     const autosuggestBox = document.getElementById(`${field}_autosuggest`);
@@ -2293,7 +2534,6 @@ function handleAutosuggest(inputElement, field) {
                 const clientKey = item.dataset.clientKey;
                 const client = state.allClients.find(c => c.compositeKey === clientKey);
                 if (client) {
-                    // Fill form with selected client data
                     document.getElementById('phone').value = client.phone || '';
                     document.getElementById('account_name').value = client.account_name || '';
                     document.getElementById('account_type').value = client.account_type || '';
@@ -2309,70 +2549,29 @@ function handleAutosuggest(inputElement, field) {
     }
 }
 
-// --- SAVED SEARCHES ---
-function saveSearchQuery() {
-    const searchParams = {
-        name: document.getElementById('searchName').value,
-        bookingRef: document.getElementById('searchBooking').value,
-        startDate: document.getElementById('searchStartDate').value,
-        endDate: document.getElementById('searchEndDate').value,
-        travelDate: document.getElementById('searchTravelDate').value,
-        departure: document.getElementById('searchDeparture').value,
-        destination: document.getElementById('searchDestination').value,
-        airline: document.getElementById('searchAirline').value,
-        notPaidOnly: document.getElementById('searchNotPaidToggle').checked
-    };
-
-    // Simple prompt for naming the search
-    const searchName = prompt("Enter a name for this search:", "My Search");
-    if (!searchName) return;
-
-    let savedSearches = JSON.parse(localStorage.getItem('savedSearches')) || [];
-    savedSearches.push({ name: searchName, params: searchParams });
-    localStorage.setItem('savedSearches', JSON.stringify(savedSearches));
-    loadSavedSearches();
-    showToast('Search saved!', 'success');
+// --- FEATURED CLIENTS ---
+function loadFeaturedClients() {
+    const featured = localStorage.getItem('featuredClients');
+    if (featured) {
+        state.featuredClients = JSON.parse(featured);
+    }
 }
 
-function loadSavedSearches() {
-    const container = document.getElementById('saved-searches-container');
-    container.innerHTML = '';
-    let savedSearches = JSON.parse(localStorage.getItem('savedSearches')) || [];
-
-    savedSearches.forEach((search, index) => {
-        const tag = document.createElement('div');
-        tag.className = 'saved-search-tag';
-        tag.textContent = search.name;
-        tag.onclick = () => applySavedSearch(search.params);
-
-        const deleteBtn = document.createElement('button');
-        deleteBtn.className = 'delete-search-btn';
-        deleteBtn.innerHTML = '&times;';
-        deleteBtn.onclick = (e) => {
-            e.stopPropagation();
-            deleteSavedSearch(index);
-        };
-        tag.appendChild(deleteBtn);
-        container.appendChild(tag);
-    });
+function saveFeaturedClients() {
+    localStorage.setItem('featuredClients', JSON.stringify(state.featuredClients));
 }
 
-function applySavedSearch(params) {
-    document.getElementById('searchName').value = params.name;
-    document.getElementById('searchBooking').value = params.bookingRef;
-    document.getElementById('searchStartDate').value = params.startDate;
-    document.getElementById('searchEndDate').value = params.endDate;
-    document.getElementById('searchTravelDate').value = params.travelDate;
-    document.getElementById('searchDeparture').value = params.departure;
-    document.getElementById('searchDestination').value = params.destination;
-    document.getElementById('searchAirline').value = params.airline;
-    document.getElementById('searchNotPaidToggle').checked = params.notPaidOnly;
-    performSearch();
-}
-
-function deleteSavedSearch(index) {
-    let savedSearches = JSON.parse(localStorage.getItem('savedSearches')) || [];
-    savedSearches.splice(index, 1);
-    localStorage.setItem('savedSearches', JSON.stringify(savedSearches));
-    loadSavedSearches();
+function toggleFeaturedClient(clientKey, event) {
+    event.stopPropagation(); // Prevent row click events if any
+    const index = state.featuredClients.indexOf(clientKey);
+    if (index > -1) {
+        state.featuredClients.splice(index, 1);
+    } else {
+        state.featuredClients.push(clientKey);
+    }
+    saveFeaturedClients();
+    
+    // Visually update the star instantly without a full re-render
+    const starIcon = event.target;
+    starIcon.classList.toggle('featured');
 }

@@ -732,8 +732,8 @@ async function handleNewBookingSubmit(e) {
             formatDateForSheet(sharedData.departing_on), // I
             sharedData.pnr, // J
             '', // K
-            formatDateForSheet(sharedData.enddate), // L - Corrected
-            sharedData.endtime, // M - Corrected
+            formatDateForSheet(sharedData.enddate), // L
+            sharedData.endtime, // M
             '' // N (Remarks)
         ]);
 
@@ -1096,50 +1096,74 @@ function updateDashboardData() {
     const totalExtraFare = ticketsThisPeriod.reduce((sum, t) => sum + (t.extra_fare || 0), 0);
     const extraFareBox = document.getElementById('monthly-extra-fare-box');
     extraFareBox.innerHTML = `<div class="info-card-content"><h3>Total Extra Fare</h3><div class="main-value">${totalExtraFare.toLocaleString()}</div><span class="sub-value">MMK</span><i class="icon fa-solid fa-dollar-sign"></i></div>`;
-
-    if (state.charts.airlineChart) state.charts.airlineChart.destroy();
-    createAirlineChart(ticketsThisPeriod);
+    
+    updateNotifications();
 }
 
-function createAirlineChart(tickets) {
-    const ctx = document.getElementById('airline-chart').getContext('2d');
-    const airlineCounts = tickets.reduce((acc, t) => {
-        const airline = t.airline || 'Unknown';
-        acc[airline] = (acc[airline] || 0) + 1;
-        return acc;
-    }, {});
+function updateNotifications() {
+    const notificationList = document.getElementById('notification-list');
+    notificationList.innerHTML = '';
+    let notifications = [];
 
-    const labels = Object.keys(airlineCounts);
-    const data = Object.values(airlineCounts);
+    // Near deadline bookings
+    const now = new Date();
+    const deadlineThreshold = 6 * 60 * 60 * 1000; // 6 hours in milliseconds
 
-    state.charts.airlineChart = new Chart(ctx, {
-        type: 'doughnut',
-        data: {
-            labels: labels,
-            datasets: [{
-                data: data,
-                backgroundColor: [
-                    'rgba(254, 230, 190, 0.9)', 'rgba(63, 185, 80, 0.9)',
-                    'rgba(88, 166, 255, 0.9)', 'rgba(255, 118, 126, 0.9)',
-                    'rgba(168, 133, 255, 0.9)', 'rgba(255, 189, 89, 0.9)'
-                ],
-                borderColor: 'rgba(13, 17, 23, 0.5)',
-                borderWidth: 2,
-                hoverOffset: 8
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: {
-                legend: {
-                    display: false
-                }
-            },
-            animation: { animateScale: true, duration: 500 },
-            cutout: '65%'
-        }
+    const nearDeadlineBookings = state.allBookings.filter(b => {
+        const deadline = parseDeadline(b.enddate, b.endtime);
+        return deadline && (deadline.getTime() - now.getTime()) < deadlineThreshold && deadline.getTime() > now.getTime();
     });
+
+    nearDeadlineBookings.forEach(b => {
+        const deadline = parseDeadline(b.enddate, b.endtime);
+        const timeLeft = Math.round((deadline.getTime() - now.getTime()) / (1000 * 60)); // Time left in minutes
+        notifications.push({
+            type: 'deadline',
+            html: `<div class="notification-item deadline">
+                <i class="fa-solid fa-clock"></i>
+                <div>
+                    <strong>Booking Deadline Approaching</strong>
+                    <span>${b.name || 'N/A'} - PNR: ${b.pnr || 'N/A'}</span>
+                    <span>~${Math.floor(timeLeft / 60)}h ${timeLeft % 60}m remaining</span>
+                </div>
+            </div>`
+        });
+    });
+
+    // Unpaid tickets
+    const unpaidTickets = state.allTickets.filter(t => !t.paid);
+    unpaidTickets.forEach(t => {
+        notifications.push({
+            type: 'unpaid',
+            html: `<div class="notification-item unpaid">
+                <i class="fa-solid fa-file-invoice-dollar"></i>
+                <div>
+                    <strong>Unpaid Ticket</strong>
+                    <span>${t.name || 'N/A'} - PNR: ${t.booking_reference || 'N/A'}</span>
+                    <span>Issued: ${formatDateToDMMMY(t.issued_date)}</span>
+                </div>
+            </div>`
+        });
+    });
+
+    // ... (rest of the function) ...
+
+    if (notifications.length > 0) {
+        notificationList.innerHTML = notifications.map(n => n.html).join('');
+    } else {
+        notificationList.innerHTML = '<div class="notification-item empty"><i class="fa-solid fa-check-circle"></i> No new notifications.</div>';
+    }
+
+    // ADD THIS CODE TO UPDATE THE HEADER
+    const notificationCount = notifications.length;
+    const header = document.querySelector('.notification-panel h3');
+    if (header) {
+        if (notificationCount > 0) {
+            header.innerHTML = `<i class="fa-solid fa-bell"></i> Notifications <span class="notification-count">${notificationCount}</span>`;
+        } else {
+            header.innerHTML = `<i class="fa-solid fa-bell"></i> Notifications`;
+        }
+    }
 }
 
 // --- UTILITY FUNCTIONS ---
@@ -1151,7 +1175,7 @@ function formatDateToDMMMY(dateString) {
     if (!dateString) return '';
     const date = parseSheetDate(dateString);
     if (isNaN(date.getTime()) || date.getTime() === 0) {
-        return dateString; // Return original string if parsing fails
+        return dateString;
     }
     const day = String(date.getDate()).padStart(2, '0');
     const year = date.getFullYear();
@@ -1160,7 +1184,6 @@ function formatDateToDMMMY(dateString) {
     return `${day}-${month}-${year}`;
 }
 
-// CORRECTED to handle dates in the user's local timezone
 function parseSheetDate(dateString) {
     if (!dateString) return new Date(0);
     const safeDateString = String(dateString).trim();
@@ -1178,7 +1201,7 @@ function parseSheetDate(dateString) {
             year = parseInt(parts[2], 10);
         }
         if (!isNaN(day) && month !== undefined && !isNaN(year) && year > 1900 && day > 0 && day <= 31 && month >= 0 && month < 12) {
-            const d = new Date(year, month, day); // Use local timezone constructor
+            const d = new Date(year, month, day);
             if (d.getFullYear() === year && d.getMonth() === month && d.getDate() === day) {
                 return d;
             }
@@ -1186,13 +1209,11 @@ function parseSheetDate(dateString) {
     }
     const fallbackDate = new Date(safeDateString);
     if (!isNaN(fallbackDate.getTime())) {
-        return fallbackDate; // Return as a local date
+        return fallbackDate;
     }
     return new Date(0);
 }
 
-
-// CORRECTED to handle time in the user's local timezone
 function parseDeadline(dateStr, timeStr) {
     if (!dateStr || !timeStr) return null;
     const date = parseSheetDate(dateStr);
@@ -1212,7 +1233,7 @@ function parseDeadline(dateStr, timeStr) {
         hours = 0;
     }
 
-    date.setHours(hours, minutes, 0, 0); // Use local setHours, not setUTCHours
+    date.setHours(hours, minutes, 0, 0);
     return date;
 }
 

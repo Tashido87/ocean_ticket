@@ -32,7 +32,8 @@ const state = {
     commissionRates: { // Default commission rates
         rate: 0.05, // 5%
         cut: 0.60   // 60%
-    }
+    },
+    timeUpdateInterval: null // To hold the timer
 };
 let tokenClient;
 let gapiInited = false;
@@ -171,6 +172,12 @@ async function initializeApp() {
         initializeDashboardSelectors();
         buildClientList();
         renderClientsView();
+        
+        // Start the dynamic timer
+        if (state.timeUpdateInterval) clearInterval(state.timeUpdateInterval);
+        state.timeUpdateInterval = setInterval(updateDynamicTimes, 60000); // Update every minute
+        updateDynamicTimes(); // Run once immediately
+
     } catch (error) {
         console.error("Initialization failed:", error);
         showToast('A critical error occurred during data initialization. Please check the console (F12) for details.', 'error');
@@ -257,6 +264,8 @@ function setupEventListeners() {
     document.getElementById('sellForm').addEventListener('submit', handleSellTicket);
     document.getElementById('airline').addEventListener('change', handleAirlineChange);
 
+    // BUG FIX: This listener was attached incorrectly before. 
+    // This now handles all inputs inside the dynamic passenger container.
     document.getElementById('passenger-forms-container').addEventListener('input', (e) => {
         if (e.target.classList.contains('passenger-base-fare')) {
             calculateCommission(e.target);
@@ -443,6 +452,7 @@ async function loadBookingData() {
 
         if (response.values) {
             state.allBookings = parseBookingData(response.values);
+            await handleExpiredBookings(); // Automatically update expired bookings
         } else {
             state.allBookings = [];
         }
@@ -463,11 +473,71 @@ function parseBookingData(values) {
             const value = row[j] || '';
             booking[h] = typeof value === 'string' ? value.trim() : value;
         });
+        // Ensure the remarks property is correctly assigned from column K (index 10)
+        if (row.length > 10) {
+            booking.remarks = (row[10] || '').trim();
+        }
         booking.rowIndex = i + 2;
         const groupIdBase = booking.pnr || `${booking.phone}-${booking.account_link}`;
         booking.groupId = `${groupIdBase}-${booking.departing_on}-${booking.departure}-${booking.destination}`;
         return booking;
     });
+}
+
+async function handleExpiredBookings() {
+    const now = new Date();
+    const expiredBookingsToUpdate = [];
+
+    state.allBookings.forEach(booking => {
+        const deadline = parseDeadline(booking.enddate, booking.endtime);
+        const hasNoAction = !booking.remarks || String(booking.remarks).trim() === '';
+        
+        if (hasNoAction && deadline && deadline < now) {
+            // This booking is expired and needs to be marked as 'end'
+             const values = [
+                booking.name || '',
+                booking.id_no || '',
+                booking.phone || '',
+                booking.account_name || '',
+                booking.account_type || '',
+                booking.account_link || '',
+                booking.departure || '',
+                booking.destination || '',
+                booking.departing_on || '',
+                booking.pnr || '',
+                'end', // Set remark to 'end'
+                booking.enddate || '',
+                booking.endtime || '',
+                ''
+            ];
+            expiredBookingsToUpdate.push({
+                range: `${CONFIG.BOOKING_SHEET_NAME}!A${booking.rowIndex}:N${booking.rowIndex}`,
+                values: [values]
+            });
+        }
+    });
+
+    if (expiredBookingsToUpdate.length > 0) {
+        console.log(`Found ${expiredBookingsToUpdate.length} expired bookings to update.`);
+        try {
+            await gapi.client.sheets.spreadsheets.values.batchUpdate({
+                spreadsheetId: CONFIG.SHEET_ID,
+                resource: {
+                    valueInputOption: 'USER_ENTERED',
+                    data: expiredBookingsToUpdate
+                }
+            });
+            console.log('Successfully updated expired bookings.');
+            state.cache['bookingData'] = null; // Invalidate cache to force a reload next time
+            // Re-filter the local state to hide the ones we just updated
+            const updatedRowIndices = expiredBookingsToUpdate.map(upd => parseInt(upd.range.match(/\d+$/)[0], 10));
+            state.allBookings = state.allBookings.filter(b => !updatedRowIndices.includes(b.rowIndex));
+
+        } catch (error) {
+            console.error('Failed to update expired bookings:', error);
+            showToast('Could not update expired bookings automatically.', 'error');
+        }
+    }
 }
 
 
@@ -584,9 +654,9 @@ function handleGetTicket(rowIndicesStr) {
     const clientName = bookingGroup ? bookingGroup.passengers[0].name : 'this booking';
     const passengerCount = bookingGroup ? bookingGroup.passengers.length : 1;
     const message = `Are you sure you want to mark the booking for <strong>${clientName} ${passengerCount > 1 ? `and ${passengerCount - 1} other(s)` : ''}</strong> as "Get Ticket"? This will remove it from the list.`;
-    showConfirmModal(message, () => {
-        updateBookingStatus(rowIndices, 'Get Ticket');
+    showConfirmModal(message, async () => {
         closeModal();
+        await updateBookingStatus(rowIndices, 'complete');
     });
 }
 
@@ -596,21 +666,60 @@ function handleCancelBooking(rowIndicesStr) {
     const clientName = bookingGroup ? bookingGroup.passengers[0].name : 'this booking';
     const passengerCount = bookingGroup ? bookingGroup.passengers.length : 1;
     const message = `Are you sure you want to <strong>CANCEL</strong> the booking for <strong>${clientName} ${passengerCount > 1 ? `and ${passengerCount - 1} other(s)` : ''}</strong>? This will remove it from the list.`;
-    showConfirmModal(message, () => {
-        updateBookingStatus(rowIndices, 'Canceled');
+    showConfirmModal(message, async () => {
         closeModal();
+        await updateBookingStatus(rowIndices, 'cancel');
     });
 }
 
 async function updateBookingStatus(rowIndices, remarks) {
-    try {
-        state.isSubmitting = true;
-        showToast('Updating booking status...', 'info');
+    if (state.isSubmitting) return;
+    state.isSubmitting = true;
+    showToast('Updating booking status...', 'info');
 
-        const data = rowIndices.map(rowIndex => ({
-            range: `${CONFIG.BOOKING_SHEET_NAME}!N${rowIndex}`,
-            values: [[remarks]]
-        }));
+    // Find the original bookings to get their full data
+    const bookingsToUpdate = [];
+    rowIndices.forEach(rowIndex => {
+        const booking = state.allBookings.find(b => b.rowIndex === rowIndex);
+        if (booking) {
+            bookingsToUpdate.push(booking);
+        }
+    });
+
+    // Optimistic UI update
+    const originalAllBookings = [...state.allBookings];
+    state.allBookings = state.allBookings.filter(b => !rowIndices.includes(b.rowIndex));
+    displayBookings();
+    updateNotifications();
+
+    try {
+        const data = bookingsToUpdate.map(booking => {
+            // Create the full row data for update. Column K is index 10.
+            const values = [
+                booking.name || '',         // A
+                booking.id_no || '',        // B
+                booking.phone || '',        // C
+                booking.account_name || '', // D
+                booking.account_type || '', // E
+                booking.account_link || '', // F
+                booking.departure || '',    // G
+                booking.destination || '',  // H
+                booking.departing_on || '', // I
+                booking.pnr || '',          // J
+                remarks,                    // K - The new remark: 'complete' or 'cancel'
+                booking.enddate || '',      // L
+                booking.endtime || '',      // M
+                ''                          // N
+            ];
+            return {
+                range: `${CONFIG.BOOKING_SHEET_NAME}!A${booking.rowIndex}:N${booking.rowIndex}`,
+                values: [values]
+            };
+        });
+
+        if (data.length === 0) {
+            throw new Error("Could not find booking records to update.");
+        }
 
         await gapi.client.sheets.spreadsheets.values.batchUpdate({
             spreadsheetId: CONFIG.SHEET_ID,
@@ -620,16 +729,21 @@ async function updateBookingStatus(rowIndices, remarks) {
             }
         });
 
-        state.cache['bookingData'] = null;
+        state.cache['bookingData'] = null; // Invalidate cache
         showToast('Booking updated successfully!', 'success');
-        await loadBookingData();
+        // No need to reload data here, the optimistic update is now permanent.
+
     } catch (error) {
-        showToast(`Update Error: ${error.result?.error?.message || 'Could not update.'}`, 'error');
-        await loadBookingData();
+        showToast(`Update Error: ${error.message || error.result?.error?.message || 'Could not update.'}`, 'error');
+        // On error, revert optimistic change by restoring original data
+        state.allBookings = originalAllBookings;
+        displayBookings();
+        updateNotifications();
     } finally {
         state.isSubmitting = false;
     }
 }
+
 
 function showBookingDetails(rowIndicesStr) {
     const rowIndices = rowIndicesStr.split(',').map(Number);
@@ -915,7 +1029,8 @@ function showView(viewName) {
         populateFlightLocations();
         updateToggleLabels();
     } else {
-        state.bookingToUpdate = null;
+        // BUG FIX: Ensure bookingToUpdate is cleared when navigating away from the sell page
+        state.bookingToUpdate = null; 
     }
     if (viewName === 'booking') {
         hideNewBookingForm();
@@ -1100,6 +1215,39 @@ function updateDashboardData() {
     updateNotifications();
 }
 
+/**
+ * NEW FUNCTION: Dynamically updates countdown timers in notifications.
+ */
+function updateDynamicTimes() {
+    const timeElements = document.querySelectorAll('.dynamic-time');
+    timeElements.forEach(el => {
+        const deadline = parseInt(el.dataset.deadline, 10);
+        if (isNaN(deadline)) return;
+
+        const now = Date.now();
+        const timeLeftMs = deadline - now;
+
+        if (timeLeftMs <= 0) {
+            // Remove the notification item once the deadline has passed
+            el.closest('.notification-item')?.remove();
+            // Check if the list is now empty and show the "empty" message
+            const notificationList = document.getElementById('notification-list');
+            if (notificationList && notificationList.children.length === 0) {
+                notificationList.innerHTML = '<div class="notification-item empty"><i class="fa-solid fa-check-circle"></i> No new notifications.</div>';
+                // Also update the main header count
+                const header = document.querySelector('.notification-panel h3');
+                if(header) header.innerHTML = `<i class="fa-solid fa-bell"></i> Notifications`;
+            }
+        } else {
+            const timeLeftMinutes = Math.round(timeLeftMs / 60000);
+            const hours = Math.floor(timeLeftMinutes / 60);
+            const minutes = timeLeftMinutes % 60;
+            el.textContent = `~${hours}h ${minutes}m remaining`;
+        }
+    });
+}
+
+
 function updateNotifications() {
     const notificationList = document.getElementById('notification-list');
     notificationList.innerHTML = '';
@@ -1111,7 +1259,8 @@ function updateNotifications() {
 
     const nearDeadlineBookings = state.allBookings.filter(b => {
         const deadline = parseDeadline(b.enddate, b.endtime);
-        return deadline && (deadline.getTime() - now.getTime()) < deadlineThreshold && deadline.getTime() > now.getTime();
+        const hasNoAction = !b.remarks || String(b.remarks).trim() === '';
+        return deadline && hasNoAction && (deadline.getTime() - now.getTime()) < deadlineThreshold && deadline.getTime() > now.getTime();
     });
 
     nearDeadlineBookings.forEach(b => {
@@ -1124,7 +1273,7 @@ function updateNotifications() {
                 <div>
                     <strong>Booking Deadline Approaching</strong>
                     <span>${b.name || 'N/A'} - PNR: ${b.pnr || 'N/A'}</span>
-                    <span>~${Math.floor(timeLeft / 60)}h ${timeLeft % 60}m remaining</span>
+                    <span class="dynamic-time" data-deadline="${deadline.getTime()}">~${Math.floor(timeLeft / 60)}h ${timeLeft % 60}m remaining</span>
                 </div>
             </div>`
         });
@@ -1146,15 +1295,12 @@ function updateNotifications() {
         });
     });
 
-    // ... (rest of the function) ...
-
     if (notifications.length > 0) {
         notificationList.innerHTML = notifications.map(n => n.html).join('');
     } else {
         notificationList.innerHTML = '<div class="notification-item empty"><i class="fa-solid fa-check-circle"></i> No new notifications.</div>';
     }
 
-    // ADD THIS CODE TO UPDATE THE HEADER
     const notificationCount = notifications.length;
     const header = document.querySelector('.notification-panel h3');
     if (header) {
@@ -1401,8 +1547,7 @@ async function confirmAndSaveTicket(form, sharedData, passengerData) {
         await saveTicket(sharedData, passengerData);
 
         if (state.bookingToUpdate) {
-            await updateBookingStatus(state.bookingToUpdate, 'Get Ticket');
-            state.bookingToUpdate = null;
+            await updateBookingStatus(state.bookingToUpdate, 'complete');
         }
 
         showToast('Ticket(s) saved successfully!', 'success');
@@ -1410,16 +1555,21 @@ async function confirmAndSaveTicket(form, sharedData, passengerData) {
         resetPassengerForms();
         populateFlightLocations();
         updateToggleLabels();
+        
         state.cache['ticketData'] = null;
-        await loadTicketData();
+        
+        await loadTicketData(); 
         updateDashboardData();
         buildClientList();
+        updateNotifications(); // Explicitly call to refresh notifications
         showView('home');
+
     } catch (error) {
         showToast(`Error: ${error.message || 'Could not save ticket.'}`, 'error');
     } finally {
         state.isSubmitting = false;
         if (submitButton) submitButton.disabled = false;
+        state.bookingToUpdate = null; // Clear this at the end
     }
 }
 
@@ -2268,9 +2418,8 @@ function showConfirmModal(message, onConfirm) {
     openModal(content, 'small-modal');
 
     document.getElementById('confirmActionBtn').onclick = onConfirm;
-    document.getElementById('confirmCancelBtn').onclick = async () => {
+    document.getElementById('confirmCancelBtn').onclick = () => {
         closeModal();
-        await loadBookingData();
     };
 }
 

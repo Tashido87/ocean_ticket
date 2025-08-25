@@ -264,8 +264,6 @@ function setupEventListeners() {
     document.getElementById('sellForm').addEventListener('submit', handleSellTicket);
     document.getElementById('airline').addEventListener('change', handleAirlineChange);
 
-    // BUG FIX: This listener was attached incorrectly before. 
-    // This now handles all inputs inside the dynamic passenger container.
     document.getElementById('passenger-forms-container').addEventListener('input', (e) => {
         if (e.target.classList.contains('passenger-base-fare')) {
             calculateCommission(e.target);
@@ -471,12 +469,12 @@ function parseBookingData(values) {
         const booking = {};
         headers.forEach((h, j) => {
             const value = row[j] || '';
-            booking[h] = typeof value === 'string' ? value.trim() : value;
+            let propertyName = h;
+            if (propertyName === 'remarks') {
+                propertyName = 'remark';
+            }
+            booking[propertyName] = typeof value === 'string' ? value.trim() : value;
         });
-        // Ensure the remarks property is correctly assigned from column K (index 10)
-        if (row.length > 10) {
-            booking.remarks = (row[10] || '').trim();
-        }
         booking.rowIndex = i + 2;
         const groupIdBase = booking.pnr || `${booking.phone}-${booking.account_link}`;
         booking.groupId = `${groupIdBase}-${booking.departing_on}-${booking.departure}-${booking.destination}`;
@@ -490,7 +488,7 @@ async function handleExpiredBookings() {
 
     state.allBookings.forEach(booking => {
         const deadline = parseDeadline(booking.enddate, booking.endtime);
-        const hasNoAction = !booking.remarks || String(booking.remarks).trim() === '';
+        const hasNoAction = !booking.remark || String(booking.remark).trim() === '';
         
         if (hasNoAction && deadline && deadline < now) {
             // This booking is expired and needs to be marked as 'end'
@@ -553,7 +551,7 @@ function displayBookings(bookingsToDisplay) {
         today.setHours(0, 0, 0, 0);
 
         bookings = state.allBookings.filter(b => {
-            const hasNoAction = !b.remarks || String(b.remarks).trim() === '';
+            const hasNoAction = !b.remark || String(b.remark).trim() === '';
             const travelDate = parseSheetDate(b.departing_on);
             return hasNoAction && travelDate >= today;
         });
@@ -906,7 +904,7 @@ function populateBookingSearchOptions() {
     today.setHours(0, 0, 0, 0);
 
     const activeBookings = state.allBookings.filter(b => {
-        const hasNoAction = !b.remarks || String(b.remarks).trim() === '';
+        const hasNoAction = !b.remark || String(b.remark).trim() === '';
         const travelDate = parseSheetDate(b.departing_on);
         return hasNoAction && travelDate >= today;
     });
@@ -933,7 +931,7 @@ function performBookingSearch() {
 
     const searchResults = state.allBookings.filter(b => {
         const route = `${b.departure || ''}→${b.destination || ''}`;
-        const hasNoAction = !b.remarks || String(b.remarks).trim() === '';
+        const hasNoAction = !b.remark || String(b.remark).trim() === '';
         const travelDate = parseSheetDate(b.departing_on);
 
         return hasNoAction && travelDate >= today && route === routeQuery;
@@ -1259,7 +1257,7 @@ function updateNotifications() {
 
     const nearDeadlineBookings = state.allBookings.filter(b => {
         const deadline = parseDeadline(b.enddate, b.endtime);
-        const hasNoAction = !b.remarks || String(b.remarks).trim() === '';
+        const hasNoAction = !b.remark || String(b.remark).trim() === '';
         return deadline && hasNoAction && (deadline.getTime() - now.getTime()) < deadlineThreshold && deadline.getTime() > now.getTime();
     });
 
@@ -1363,19 +1361,26 @@ function parseSheetDate(dateString) {
 function parseDeadline(dateStr, timeStr) {
     if (!dateStr || !timeStr) return null;
     const date = parseSheetDate(dateStr);
-    if (isNaN(date.getTime())) return null;
+    if (isNaN(date.getTime()) || date.getTime() === 0) {
+        console.error("Invalid date string provided to parseDeadline:", dateStr);
+        return null;
+    }
 
-    const timeParts = timeStr.match(/(\d+):(\d+)\s*(AM|PM)/i);
-    if (!timeParts) return null;
+    const timeParts = timeStr.match(/(\d+):(\d+)(:(\d+))?\s*(AM|PM)/i);
+
+    if (!timeParts) {
+        console.error("Invalid time string provided to parseDeadline:", timeStr);
+        return null;
+    }
 
     let hours = parseInt(timeParts[1], 10);
     const minutes = parseInt(timeParts[2], 10);
-    const ampm = timeParts[3].toUpperCase();
+    const ampm = timeParts[5].toUpperCase();
 
     if (ampm === 'PM' && hours < 12) {
         hours += 12;
     }
-    if (ampm === 'AM' && hours === 12) {
+    if (ampm === 'AM' && hours === 12) { // 12 AM is 00 hours
         hours = 0;
     }
 

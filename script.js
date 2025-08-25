@@ -30,7 +30,6 @@ const state = {
     cache: {}, // In-memory cache
     bookingToUpdate: null,
     commissionRates: { // Default commission rates
-        rate: 0.05, // 5%
         cut: 0.60   // 60%
     },
     timeUpdateInterval: null // To hold the timer
@@ -263,12 +262,6 @@ function setupEventListeners() {
 
     document.getElementById('sellForm').addEventListener('submit', handleSellTicket);
     document.getElementById('airline').addEventListener('change', handleAirlineChange);
-
-    document.getElementById('passenger-forms-container').addEventListener('input', (e) => {
-        if (e.target.classList.contains('passenger-base-fare')) {
-            calculateCommission(e.target);
-        }
-    });
 
     document.getElementById('addPassengerBtn').addEventListener('click', addPassengerForm);
     document.getElementById('removePassengerBtn').addEventListener('click', removePassengerForm);
@@ -1250,6 +1243,8 @@ function updateNotifications() {
     const notificationList = document.getElementById('notification-list');
     notificationList.innerHTML = '';
     let notifications = [];
+    const notificationTitleLink = document.getElementById('notification-title-link');
+    const header = notificationTitleLink.querySelector('h3');
 
     // Near deadline bookings
     const now = new Date();
@@ -1295,18 +1290,130 @@ function updateNotifications() {
 
     if (notifications.length > 0) {
         notificationList.innerHTML = notifications.map(n => n.html).join('');
+        header.innerHTML = `<i class="fa-solid fa-bell"></i> Notifications <span class="notification-count">${notifications.length}</span>`;
+        notificationTitleLink.classList.add('active');
+        notificationTitleLink.onclick = (e) => {
+            e.preventDefault();
+            showNotificationModal();
+        };
     } else {
         notificationList.innerHTML = '<div class="notification-item empty"><i class="fa-solid fa-check-circle"></i> No new notifications.</div>';
+        header.innerHTML = `<i class="fa-solid fa-bell"></i> Notifications`;
+        notificationTitleLink.classList.remove('active');
+        notificationTitleLink.onclick = (e) => e.preventDefault();
+    }
+}
+
+function showNotificationModal() {
+    let modalContent = `
+        <div class="notification-modal-header">
+            <h2><i class="fa-solid fa-bell"></i> Notification Center</h2>
+        </div>
+        <div class="notification-modal-list">
+    `;
+    let notificationCount = 0;
+
+    // --- Near deadline bookings ---
+    const now = new Date();
+    const deadlineThreshold = 6 * 60 * 60 * 1000; // 6 hours
+
+    const nearDeadlineBookings = state.allBookings.filter(b => {
+        const deadline = parseDeadline(b.enddate, b.endtime);
+        const hasNoAction = !b.remark || String(b.remark).trim() === '';
+        return deadline && hasNoAction && (deadline.getTime() - now.getTime()) < deadlineThreshold && deadline.getTime() > now.getTime();
+    });
+
+    const groupedDeadlineBookings = Object.values(nearDeadlineBookings.reduce((acc, booking) => {
+        const groupId = booking.groupId; // Use the same groupId as the main booking view
+        if (!acc[groupId]) {
+            acc[groupId] = { ...booking, passengers: [] };
+        }
+        acc[groupId].passengers.push(booking.name);
+        return acc;
+    }, {})).sort((a, b) => parseDeadline(a.enddate, a.endtime) - parseDeadline(b.enddate, b.endtime));
+
+
+    if (groupedDeadlineBookings.length > 0) {
+        notificationCount += groupedDeadlineBookings.length;
+        modalContent += '<h3 class="notification-group-title">Approaching Deadlines</h3>';
+        groupedDeadlineBookings.forEach(group => {
+            const deadline = parseDeadline(group.enddate, group.endtime);
+            const timeLeft = Math.round((deadline.getTime() - now.getTime()) / (1000 * 60));
+            const passengerCount = group.passengers.length;
+            const title = `${group.passengers[0]}${passengerCount > 1 ? ` (+${passengerCount - 1})` : ''}`;
+
+            modalContent += `
+                <div class="notification-modal-item deadline">
+                    <div class="notification-icon"><i class="fa-solid fa-clock-fast-forward"></i></div>
+                    <div class="notification-content">
+                        <div class="notification-title">${title}</div>
+                        <div class="notification-details">
+                            PNR: <strong>${group.pnr || 'N/A'}</strong> | Route: ${group.departure.split(' ')[0]} → ${group.destination.split(' ')[0]}
+                        </div>
+                    </div>
+                    <div class="notification-time" data-deadline="${deadline.getTime()}">~${Math.floor(timeLeft/60)}h ${timeLeft%60}m remaining</div>
+                </div>
+            `;
+        });
     }
 
-    const notificationCount = notifications.length;
-    const header = document.querySelector('.notification-panel h3');
-    if (header) {
-        if (notificationCount > 0) {
-            header.innerHTML = `<i class="fa-solid fa-bell"></i> Notifications <span class="notification-count">${notificationCount}</span>`;
-        } else {
-            header.innerHTML = `<i class="fa-solid fa-bell"></i> Notifications`;
+    // --- Unpaid tickets ---
+    const unpaidTickets = state.allTickets.filter(t => !t.paid);
+
+    const groupedUnpaidTickets = Object.values(unpaidTickets.reduce((acc, ticket) => {
+        const groupId = ticket.booking_reference;
+        if (!groupId) return acc;
+        if (!acc[groupId]) {
+            acc[groupId] = { ...ticket, passengers: [], total_net: 0 };
         }
+        acc[groupId].passengers.push(ticket.name);
+        // UPDATED CALCULATION: Sum of net_amount and extra_fare
+        acc[groupId].total_net += (ticket.net_amount || 0) + (ticket.extra_fare || 0);
+        return acc;
+    }, {})).sort((a, b) => parseSheetDate(a.issued_date) - parseSheetDate(b.issued_date));
+
+    if (groupedUnpaidTickets.length > 0) {
+        notificationCount += groupedUnpaidTickets.length;
+        modalContent += '<h3 class="notification-group-title">Unpaid Tickets</h3>';
+        groupedUnpaidTickets.forEach(group => {
+            const passengerCount = group.passengers.length;
+            const title = `${group.passengers[0]}${passengerCount > 1 ? ` (+${passengerCount - 1})` : ''}`;
+            
+            modalContent += `
+                <div class="notification-modal-item unpaid">
+                    <div class="notification-icon"><i class="fa-solid fa-file-invoice-dollar"></i></div>
+                    <div class="notification-content">
+                        <div class="notification-title">${title}</div>
+                        <div class="notification-details">
+                           PNR: <strong>${group.booking_reference || 'N/A'}</strong> | Total Net: <strong>${(group.total_net || 0).toLocaleString()} MMK</strong>
+                        </div>
+                    </div>
+                    <div class="notification-time">Issued: ${formatDateToDMMMY(group.issued_date)}</div>
+                </div>
+            `;
+        });
+    }
+
+    if (notificationCount === 0) {
+        modalContent += `
+            <div class="notification-modal-item empty-modal">
+                <i class="fa-solid fa-check-circle"></i>
+                <span>All caught up! No new notifications.</span>
+            </div>
+        `;
+    }
+
+    modalContent += `
+        </div>
+        <div class="form-actions" style="margin-top: 1.5rem; padding: 0 1.5rem 1.5rem 1.5rem; background: transparent;">
+            <button class="btn btn-secondary" onclick="closeModal()">Close</button>
+        </div>
+    `;
+
+    openModal(modalContent, 'large-modal');
+    const modalContentEl = modal.querySelector('.modal-content');
+    if (modalContentEl) {
+        modalContentEl.classList.add('notification-modal-content');
     }
 }
 
@@ -1388,11 +1495,8 @@ function parseDeadline(dateStr, timeStr) {
     return date;
 }
 
-function calculateCommission(baseFareInput) {
-    const passengerForm = baseFareInput.closest('.passenger-form');
-    const commissionInput = passengerForm.querySelector('.passenger-commission');
-    const baseFare = parseFloat(baseFareInput.value) || 0;
-    commissionInput.value = Math.round((baseFare * state.commissionRates.rate) * state.commissionRates.cut);
+function calculateAgentCut(totalCommission) {
+    return Math.round(totalCommission * state.commissionRates.cut);
 }
 
 function renderEmptyState(containerId, iconClass, title, message, buttonText = '', buttonAction = null) {
@@ -1617,29 +1721,32 @@ function collectFormData(form) {
 }
 
 async function saveTicket(sharedData, passengerData) {
-    const values = passengerData.map(p => [
-        formatDateForSheet(sharedData.issued_date),
-        p.name,
-        p.id_no,
-        sharedData.phone,
-        sharedData.account_name,
-        sharedData.account_type,
-        sharedData.account_link,
-        sharedData.departure,
-        sharedData.destination,
-        formatDateForSheet(sharedData.departing_on),
-        sharedData.airline,
-        p.base_fare,
-        sharedData.booking_reference,
-        p.net_amount,
-        sharedData.paid,
-        sharedData.payment_method,
-        formatDateForSheet(sharedData.paid_date),
-        p.commission,
-        p.remarks,
-        p.extra_fare,
-        0
-    ]);
+    const values = passengerData.map(p => {
+        const agentCommission = calculateAgentCut(p.commission); // Calculate the agent's cut
+        return [
+            formatDateForSheet(sharedData.issued_date),
+            p.name,
+            p.id_no,
+            sharedData.phone,
+            sharedData.account_name,
+            sharedData.account_type,
+            sharedData.account_link,
+            sharedData.departure,
+            sharedData.destination,
+            formatDateForSheet(sharedData.departing_on),
+            sharedData.airline,
+            p.base_fare,
+            sharedData.booking_reference,
+            p.net_amount,
+            sharedData.paid,
+            sharedData.payment_method,
+            formatDateForSheet(sharedData.paid_date),
+            agentCommission, // Save the calculated agent's commission
+            p.remarks,
+            p.extra_fare,
+            0
+        ];
+    });
 
     await gapi.client.sheets.spreadsheets.values.append({
         spreadsheetId: CONFIG.SHEET_ID,
@@ -1663,9 +1770,9 @@ function addPassengerForm(name = '', id_no = '') {
             <div class="form-group"><label>ID Number</label><input type="text" class="passenger-id" value="${id_no}" required></div>
             <div class="form-group"><label>Base Fare (MMK)</label><input type="number" class="passenger-base-fare" step="1" required></div>
             <div class="form-group"><label>Net Amount (MMK)</label><input type="number" class="passenger-net-amount" step="1" required></div>
+            <div class="form-group"><label>Total Commission</label><input type="number" class="passenger-commission" step="1" required></div>
             <div class="form-group"><label>Extra Fare (Optional)</label><input type="number" class="passenger-extra-fare" step="1"></div>
-            <div class="form-group"><label>Commission</label><input type="number" class="passenger-commission" step="1" readonly></div>
-            <div class="form-group"><label>Remarks (Optional)</label><textarea class="passenger-remarks" rows="1"></textarea></div>
+            <div class="form-group"><label>Remarks (Optional)</label><input type="text" class="passenger-remarks"></div>
         </div>
     `;
     container.appendChild(newForm);
@@ -1837,6 +1944,7 @@ function openManageModal(rowIndex) {
                 <div class="form-group"><label>New Travel Date (for all in PNR)</label><input type="text" id="update_departing_on" placeholder="MM/DD/YYYY" value="${travelDateForInput}" ${isPast ? 'disabled' : ''}></div>
                 <div class="form-group"><label>New Base Fare (Optional)</label><input type="number" id="update_base_fare" placeholder="${(ticket.base_fare||0).toLocaleString()}"></div>
                 <div class="form-group"><label>New Net Amount (Optional)</label><input type="number" id="update_net_amount" placeholder="${(ticket.net_amount||0).toLocaleString()}"></div>
+                <div class="form-group"><label>New Commission (Optional)</label><input type="number" id="update_commission" placeholder="${(ticket.commission||0).toLocaleString()}"></div>
                 <div class="form-group"><label>Date Change Fees (Optional)</label><input type="number" id="date_change_fees"></div>
                 <div class="form-group"><label>Extra Fare (Optional)</label><input type="number" id="update_extra_fare" placeholder="Adds to existing extra fare"></div>
             </div>
@@ -1872,6 +1980,7 @@ async function handleUpdateTicket(e) {
     let newTravelDateVal = document.getElementById('update_departing_on').value;
     const newBaseFare = parseFloat(document.getElementById('update_base_fare').value);
     const newNetAmount = parseFloat(document.getElementById('update_net_amount').value);
+    const newCommission = parseFloat(document.getElementById('update_commission').value);
     const dateChangeFees = parseFloat(document.getElementById('date_change_fees').value) || 0;
     const extraFare = parseFloat(document.getElementById('update_extra_fare').value) || 0;
 
@@ -1892,6 +2001,7 @@ async function handleUpdateTicket(e) {
     }
     if (!isNaN(newBaseFare) && newBaseFare !== originalTicket.base_fare) historyDetails.push(`Base Fare: ${originalTicket.base_fare} to ${newBaseFare}`);
     if (!isNaN(newNetAmount) && newNetAmount !== originalTicket.net_amount) historyDetails.push(`Net Amount: ${originalTicket.net_amount} to ${newNetAmount}`);
+    if (!isNaN(newCommission) && newCommission !== originalTicket.commission) historyDetails.push(`Commission: ${originalTicket.commission} to ${newCommission}`);
     if (extraFare > 0) historyDetails.push(`Added Extra Fare: ${extraFare}`);
     if (dateChangeFees > 0) historyDetails.push(`Added Date Change Fees: ${dateChangeFees}`);
     if (newPaidStatus && !originalTicket.paid) historyDetails.push(`Payment: Not Paid to Paid`);
@@ -1908,7 +2018,7 @@ async function handleUpdateTicket(e) {
     const dataForBatchUpdate = ticketsToUpdate.map(ticket => {
         let finalBaseFare = isNaN(newBaseFare) ? ticket.base_fare : newBaseFare;
         let finalNetAmount = isNaN(newNetAmount) ? ticket.net_amount : newNetAmount;
-        let finalCommission = isNaN(newBaseFare) ? ticket.commission : calculateCommissionValue(newBaseFare);
+        let finalCommission = isNaN(newCommission) ? ticket.commission : newCommission;
         let finalExtraFare = (ticket.extra_fare || 0) + extraFare;
         let finalDateChangeFees = (ticket.date_change || 0) + dateChangeFees;
         let finalPaid = newPaidStatus !== null ? newPaidStatus : ticket.paid;
@@ -2172,7 +2282,6 @@ function initializeUISettings() {
     const blurSlider = document.getElementById('blur-slider');
     const overlaySlider = document.getElementById('overlay-slider');
     const glassSlider = document.getElementById('glass-slider');
-    const commissionRateSlider = document.getElementById('commission-rate-slider');
     const agentCutSlider = document.getElementById('agent-cut-slider');
 
     const root = document.documentElement;
@@ -2182,12 +2291,10 @@ function initializeUISettings() {
         blur: 20,
         overlay: 0.5,
         glass: 0.15,
-        commissionRate: 5,
         agentCut: 60
     };
 
     let settings = JSON.parse(localStorage.getItem('uiSettings')) || { ...defaults };
-    state.commissionRates.rate = settings.commissionRate / 100;
     state.commissionRates.cut = settings.agentCut / 100;
 
     function applySettings() {
@@ -2196,7 +2303,6 @@ function initializeUISettings() {
         root.style.setProperty('--overlay-opacity', settings.overlay);
         root.style.setProperty('--liquid-border', `1px solid rgba(255, 255, 255, ${settings.glass})`);
 
-        state.commissionRates.rate = settings.commissionRate / 100;
         state.commissionRates.cut = settings.agentCut / 100;
     }
 
@@ -2205,14 +2311,12 @@ function initializeUISettings() {
         blurSlider.value = settings.blur;
         overlaySlider.value = settings.overlay;
         glassSlider.value = settings.glass;
-        commissionRateSlider.value = settings.commissionRate;
         agentCutSlider.value = settings.agentCut;
 
         document.getElementById('opacity-value').textContent = Number(settings.opacity).toFixed(2);
         document.getElementById('blur-value').textContent = settings.blur;
         document.getElementById('overlay-value').textContent = Number(settings.overlay).toFixed(2);
         document.getElementById('glass-value').textContent = Number(settings.glass).toFixed(2);
-        document.getElementById('commission-rate-value').textContent = `${settings.commissionRate}%`;
         document.getElementById('agent-cut-value').textContent = `${settings.agentCut}%`;
     }
 
@@ -2229,7 +2333,6 @@ function initializeUISettings() {
     blurSlider.addEventListener('input', (e) => { settings.blur = e.target.value; updateSlidersAndValues(); applySettings(); saveSettings(); });
     overlaySlider.addEventListener('input', (e) => { settings.overlay = e.target.value; updateSlidersAndValues(); applySettings(); saveSettings(); });
     glassSlider.addEventListener('input', (e) => { settings.glass = e.target.value; updateSlidersAndValues(); applySettings(); saveSettings(); });
-    commissionRateSlider.addEventListener('input', (e) => { settings.commissionRate = e.target.value; updateSlidersAndValues(); applySettings(); saveSettings(); });
     agentCutSlider.addEventListener('input', (e) => { settings.agentCut = e.target.value; updateSlidersAndValues(); applySettings(); saveSettings(); });
 
     resetBtn.addEventListener('click', () => {
@@ -2243,11 +2346,6 @@ function initializeUISettings() {
     applySettings();
     updateSlidersAndValues();
 }
-
-function calculateCommissionValue(baseFare) {
-    return Math.round((baseFare * state.commissionRates.rate) * state.commissionRates.cut);
-}
-
 
 // --- PDF EXPORT FUNCTION ---
 function exportToPdf() {

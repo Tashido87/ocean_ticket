@@ -73,9 +73,11 @@
                         <div id="monthly-commission-box" class="info-card glass-card"></div>
                         <div id="monthly-extra-fare-box" class="info-card glass-card"></div>
                         <div id="notification-panel-box" class="info-card chart-card glass-card notification-panel">
-                            <h3><i class="fa-solid fa-bell"></i> Notifications</h3>
+                            <a href="#" id="notification-title-link" class="notification-title-link">
+                                <h3><i class="fa-solid fa-bell"></i> Notifications</h3>
+                            </a>
                             <div id="notification-list" class="notification-list">
-                                </div>
+                            </div>
                         </div>
                     </div>
 
@@ -335,10 +337,6 @@
         </div>
         <div class="commission-settings">
              <h4 class="settings-title" style="font-size: 1.1rem; margin-top: 1.5rem; margin-bottom: 1rem;">Commission Rates</h4>
-             <div class="setting-item">
-                <div class="setting-label-group"><label for="commission-rate-slider">Commission Rate</label><span id="commission-rate-value">5%</span></div>
-                <input type="range" id="commission-rate-slider" min="0" max="10" step="0.1" value="5">
-             </div>
              <div class="setting-item">
                 <div class="setting-label-group"><label for="agent-cut-slider">Agent Cut</label><span id="agent-cut-value">60%</span></div>
                 <input type="range" id="agent-cut-slider" min="0" max="100" step="1" value="60">

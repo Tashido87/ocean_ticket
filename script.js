@@ -2789,7 +2789,8 @@ function handleAirlineChange() {
 // Populate Airline Dropdown in Search
 function populateSearchAirlines() {
     const airlineSelect = document.getElementById('searchAirline');
-    const uniqueAirlines = [...new Set(state.allTickets.map(t => t.airline).filter(Boolean))];
+    // Convert to uppercase BEFORE creating the Set to ensure uniqueness
+    const uniqueAirlines = [...new Set(state.allTickets.map(t => t.airline.toUpperCase()).filter(Boolean))];
     uniqueAirlines.sort();
     
     // Clear existing options except the first one
@@ -2798,7 +2799,8 @@ function populateSearchAirlines() {
     }
     
     uniqueAirlines.forEach(airline => {
-        airlineSelect.add(new Option(airline.toUpperCase(), airline));
+        // The airline is already uppercase, so we can use it for both value and text
+        airlineSelect.add(new Option(airline, airline));
     });
 }
 

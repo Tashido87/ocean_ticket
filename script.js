@@ -2940,8 +2940,7 @@ async function handleNewSettlementSubmit(e) {
 
         const values = [[
             formatDateToDDMMMYYYY(settlementData.settlement_date),
-            amountPaid, // Net Amount
-            amountPaid, // Amount Paid
+            amountPaid,
             settlementData.payment_method,
             settlementData.transaction_id,
             "Paid", // Status
@@ -2950,7 +2949,7 @@ async function handleNewSettlementSubmit(e) {
 
         await gapi.client.sheets.spreadsheets.values.append({
             spreadsheetId: CONFIG.SHEET_ID,
-            range: `${CONFIG.SETTLE_SHEET_NAME}!A:G`,
+            range: `${CONFIG.SETTLE_SHEET_NAME}!A:F`,
             valueInputOption: 'USER_ENTERED',
             resource: { values },
         });
@@ -2980,13 +2979,17 @@ function updateSettlementDashboard() {
     const currentMonth = now.getMonth();
     const currentYear = now.getFullYear();
 
-    const commissionThisMonth = state.allTickets
+    const ticketsThisMonth = state.allTickets
         .filter(t => {
             const ticketDate = parseSheetDate(t.issued_date);
-            return ticketDate.getMonth() === currentMonth && ticketDate.getFullYear() === currentYear;
-        })
-        .reduce((sum, t) => sum + (t.commission || 0), 0);
+            const isCanceled = t.remarks?.toLowerCase().includes('cancel') || t.remarks?.toLowerCase().includes('refund');
+            return !isCanceled && ticketDate.getMonth() === currentMonth && ticketDate.getFullYear() === currentYear;
+        });
+
+    const commissionThisMonth = ticketsThisMonth.reduce((sum, t) => sum + (t.commission || 0), 0);
+    const extraFareThisMonth = ticketsThisMonth.reduce((sum, t) => sum + (t.extra_fare || 0), 0);
+    const totalProfitThisMonth = commissionThisMonth + extraFareThisMonth;
 
     const commissionBox = document.getElementById('settlement-commission-box');
-    commissionBox.innerHTML = `<div class="info-card-content"><h3>Current Month's Commission</h3><div class="main-value">${commissionThisMonth.toLocaleString()}</div><span class="sub-value">MMK</span><i class="icon fa-solid fa-hand-holding-dollar"></i></div>`;
+    commissionBox.innerHTML = `<div class="info-card-content"><h3>Total Profit</h3><div class="main-value">${totalProfitThisMonth.toLocaleString()}</div><span class="sub-value">MMK</span><i class="icon fa-solid fa-hand-holding-dollar"></i></div>`;
 }

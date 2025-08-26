@@ -1615,15 +1615,18 @@ td .icon-btn-table {
     gap: 0.5rem;
 }
 
-.notification-panel h3 .notification-count {
-    background-color: var(--primary-accent);
-    color: var(--bg-color);
+/* MODIFIED: This is the general notification count style */
+.notification-count {
+    background-color: var(--danger-accent);
+    color: #FFFFFF !important;
     font-size: 0.75rem;
     font-weight: 700;
     padding: 2px 8px;
     border-radius: 10px;
     margin-left: 0.5rem;
     line-height: 1;
+    display: inline-block;
+    vertical-align: middle;
 }
 
 .notification-list {

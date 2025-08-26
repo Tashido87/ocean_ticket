@@ -30,6 +30,7 @@
                 <button class="nav-btn" data-view="sell"><i class="fa-solid fa-ticket"></i><span>Sell Ticket</span></button>
                 <button class="nav-btn" data-view="manage"><i class="fa-solid fa-pen-to-square"></i><span>Manage Ticket</span></button>
                 <button class="nav-btn" data-view="booking"><i class="fa-solid fa-calendar-check"></i><span>Booking</span></button>
+                <button class="nav-btn" data-view="settle"><i class="fa-solid fa-handshake"></i><span>Settle</span></button>
             </nav>
             <div class="header-right">
                 <div class="settings-buttons">
@@ -140,7 +141,52 @@
             </section>
 
             <section id="clients-view" class="view">
-                </section>
+            </section>
+
+            <section id="settle-view" class="view">
+                <div class="dashboard-content-wrapper">
+                    <div class="info-grid">
+                        <div id="settlement-net-amount-box" class="info-card glass-card"></div>
+                        <div id="settlement-commission-box" class="info-card glass-card"></div>
+                    </div>
+                    <div id="settle-form-container" class="form-container glass-card" style="display: none; margin-top: 1.5rem;">
+                        <h2><i class="fa-solid fa-handshake"></i> New Settlement</h2>
+                        <form id="newSettlementForm">
+                            <div class="form-grid">
+                               <div class="form-group"><label for="settlement_date">Settlement Date</label><input type="text" id="settlement_date" placeholder="DD-MMM-YYYY" required></div>
+                               <div class="form-group"><label for="settlement_amount_paid">Amount Paid</label><input type="number" id="settlement_amount_paid" required></div>
+                               <div class="form-group"><label for="settlement_payment_method">Payment Method</label>
+                                   <select id="settlement_payment_method" required>
+                                       <option value="" disabled selected>Select Payment Method</option>
+                                       <option value="KBZ Pay">KBZ Pay</option>
+                                       <option value="Mobile Banking">Mobile Banking</option>
+                                       <option value="Aya Pay">Aya Pay</option>
+                                       <option value="Cash">Cash</option>
+                                   </select>
+                               </div>
+                               <div class="form-group"><label for="settlement_transaction_id">Transaction ID</label><input type="text" id="settlement_transaction_id"></div>
+                               <div class="form-group full-width"><label for="settlement_notes">Notes</label><textarea id="settlement_notes" rows="3"></textarea></div>
+                            </div>
+                            <div class="form-actions" style="margin-top: 2rem;">
+                               <button type="button" class="btn btn-secondary" id="cancelNewSettlementBtn"><i class="fa-solid fa-xmark"></i> Cancel</button>
+                               <button type="submit" class="btn btn-primary"><i class="fa-solid fa-check"></i> Save Settlement</button>
+                            </div>
+                        </form>
+                    </div>
+    
+                    <div id="settle-display-container" class="results-section glass-card" style="margin-top: 1.5rem;">
+                         <div class="table-header">
+                            <h3><i class="fa-solid fa-list-check"></i> Settlement Records</h3>
+                            <div class="table-controls">
+                               <button id="newSettlementBtn" class="btn btn-primary"><i class="fa-solid fa-plus"></i> New Settlement</button>
+                            </div>
+                        </div>
+                        <div id="settlementTableContainer" class="table-container">
+                        </div>
+                        <div id="settlementPagination" class="pagination-container"></div>
+                    </div>
+                </div>
+            </section>
             
             <section id="booking-view" class="view">
                 <div id="booking-form-container" class="form-container glass-card" style="display: none;">

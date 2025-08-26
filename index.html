@@ -308,31 +308,51 @@
         <div class="settings-grid">
             <div class="setting-item">
                 <div class="setting-label-group">
-                    <label for="opacity-slider">Opacity</label>
-                    <span id="opacity-value">0.05</span>
+                    <label for="theme-toggle">Material Design</label>
                 </div>
-                <input type="range" id="opacity-slider" min="0" max="0.3" step="0.01">
+                <label class="switch">
+                    <input type="checkbox" id="theme-toggle">
+                    <span class="slider round"></span>
+                </label>
             </div>
-            <div class="setting-item">
+            <div class="setting-item" id="dark-mode-container">
                 <div class="setting-label-group">
-                    <label for="blur-slider">Blur</label>
-                    <span id="blur-value">20</span>
+                    <label for="dark-mode-toggle">Dark Mode</label>
                 </div>
-                <input type="range" id="blur-slider" min="0" max="50" step="1">
+                <label class="switch">
+                    <input type="checkbox" id="dark-mode-toggle">
+                    <span class="slider round"></span>
+                </label>
             </div>
-            <div class="setting-item">
-                <div class="setting-label-group">
-                    <label for="overlay-slider">Dark Overlay</label>
-                    <span id="overlay-value">0.5</span>
+            <div id="glass-settings-container">
+                <div class="setting-item">
+                    <div class="setting-label-group">
+                        <label for="opacity-slider">Opacity</label>
+                        <span id="opacity-value">0.05</span>
+                    </div>
+                    <input type="range" id="opacity-slider" min="0" max="0.3" step="0.01">
                 </div>
-                <input type="range" id="overlay-slider" min="0" max="0.9" step="0.01">
-            </div>
-            <div class="setting-item">
-                <div class="setting-label-group">
-                    <label for="glass-slider">Glass Border</label>
-                    <span id="glass-value">0.15</span>
+                <div class="setting-item">
+                    <div class="setting-label-group">
+                        <label for="blur-slider">Blur</label>
+                        <span id="blur-value">20</span>
+                    </div>
+                    <input type="range" id="blur-slider" min="0" max="50" step="1">
                 </div>
-                <input type="range" id="glass-slider" min="0" max="1" step="0.01">
+                <div class="setting-item">
+                    <div class="setting-label-group">
+                        <label for="overlay-slider">Dark Overlay</label>
+                        <span id="overlay-value">0.5</span>
+                    </div>
+                    <input type="range" id="overlay-slider" min="0" max="0.9" step="0.01">
+                </div>
+                <div class="setting-item">
+                    <div class="setting-label-group">
+                        <label for="glass-slider">Glass Border</label>
+                        <span id="glass-value">0.15</span>
+                    </div>
+                    <input type="range" id="glass-slider" min="0" max="1" step="0.01">
+                </div>
             </div>
         </div>
         <div class="commission-settings">

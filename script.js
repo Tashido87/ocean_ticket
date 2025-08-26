@@ -1310,6 +1310,13 @@ function updateNotifications() {
         });
     });
 
+    // Sort notifications to show deadlines first
+    notifications.sort((a, b) => {
+        if (a.type === 'deadline' && b.type !== 'deadline') return -1;
+        if (a.type !== 'deadline' && b.type === 'deadline') return 1;
+        return 0;
+    });
+
     if (notifications.length > 0) {
         notificationList.innerHTML = notifications.map(n => n.html).join('');
         header.innerHTML = `<i class="fa-solid fa-bell"></i> Notifications <span class="notification-count">${notifications.length}</span>`;
@@ -2817,7 +2824,7 @@ function parseSettlementData(values) {
             settlement[h] = typeof value === 'string' ? value.trim() : value;
         });
         const safeParse = (val) => parseFloat(String(val).replace(/,/g, '')) || 0;
-        ['net_amount', 'amount_paid'].forEach(key => settlement[key] = safeParse(settlement[key]));
+        ['amount_paid'].forEach(key => settlement[key] = safeParse(settlement[key]));
         settlement.rowIndex = i + 2;
         return settlement;
     });
@@ -2935,12 +2942,10 @@ async function handleNewSettlementSubmit(e) {
         if (!settlementData.settlement_date || !settlementData.amount_paid) {
             throw new Error('Settlement Date and Amount Paid are required.');
         }
-        
-        const amountPaid = parseFloat(settlementData.amount_paid) || 0;
 
         const values = [[
             formatDateToDDMMMYYYY(settlementData.settlement_date),
-            amountPaid,
+            settlementData.amount_paid,
             settlementData.payment_method,
             settlementData.transaction_id,
             "Paid", // Status

@@ -65,8 +65,8 @@ window.onload = async () => {
     initializeDatepickers();
     initializeTimePicker();
     setupEventListeners();
-    initializeBackgroundChanger();
-    initializeUISettings();
+    initializeBackgroundChanger(); // Sets up listeners only
+    initializeUISettings(); // Handles initial theme and background application
     initializeCityDropdowns();
     updateToggleLabels();
     resetPassengerForms();
@@ -982,7 +982,9 @@ function initializeBackgroundChanger() {
     const uploader = document.getElementById('background-uploader');
     const uploadBtn = document.getElementById('background-upload-btn');
     const resetBtn = document.getElementById('background-reset-btn');
+    
     uploadBtn.addEventListener('click', () => uploader.click());
+
     uploader.addEventListener('change', (event) => {
         const file = event.target.files[0];
         if (file && file.type.startsWith('image/')) {
@@ -996,17 +998,15 @@ function initializeBackgroundChanger() {
             reader.readAsDataURL(file);
         }
     });
+    
     resetBtn.addEventListener('click', () => {
         localStorage.removeItem('customBackground');
+        // Re-apply the default glass background
         document.body.style.backgroundImage = `url('https://images.unsplash.com/photo-1550684376-efcbd6e3f031?q=80&w=2970&auto=format&fit=crop')`;
         showToast('Background reset.', 'info');
     });
-    const savedBg = localStorage.getItem('customBackground');
-    if (savedBg) {
-        document.body.style.backgroundImage = `url(${savedBg})`;
-    } else {
-        document.body.style.backgroundImage = `url('https://images.unsplash.com/photo-1550684376-efcbd6e3f031?q=80&w=2970&auto=format&fit=crop')`;
-    }
+
+    // Initial background application is now handled by initializeUISettings to respect the theme
 }
 
 // --- UI & DISPLAY ---
@@ -1525,12 +1525,30 @@ function updateUnpaidCount() {
     const unpaidTickets = state.allTickets.filter(t => !t.paid);
     const count = unpaidTickets.length;
     const label = document.getElementById('unpaid-only-label');
+    
+    // Find if a count span already exists
+    let countSpan = label.querySelector('.notification-count');
 
     if (count > 0) {
-        const countString = `(${count})`;
-        label.innerHTML = `Unpaid Only <span style="color: var(--danger-accent); font-weight: 700; margin-left: 4px;">${countString}</span>`;
+        if (!countSpan) {
+            // If it doesn't exist, create it and append it to the label
+            countSpan = document.createElement('span');
+            countSpan.className = 'notification-count';
+            // Use a non-breaking space to ensure space between text and badge
+            label.appendChild(document.createTextNode('\u00A0')); 
+            label.appendChild(countSpan);
+        }
+        // Update its content
+        countSpan.textContent = count;
     } else {
-        label.textContent = 'Unpaid Only';
+        // If count is 0 and the span exists, remove it
+        if (countSpan) {
+            // Also remove the preceding space
+            if (countSpan.previousSibling && countSpan.previousSibling.nodeType === Node.TEXT_NODE) {
+                countSpan.previousSibling.remove();
+            }
+            countSpan.remove();
+        }
     }
 }
 
@@ -1616,7 +1634,7 @@ function setupPagination(items) {
         return b;
     };
     container.append(btn('&laquo;', state.currentPage - 1, state.currentPage > 1));
-    for (let i = 1; i <= pageCount; i++) container.append(btn(i,i));
+    for (let i = 1; i <= pageCount; i++) container.append(btn(i, i));
     container.append(btn('&raquo;', state.currentPage + 1, state.currentPage < pageCount));
 }
 
@@ -2138,47 +2156,48 @@ async function handleCancelTicket(rowIndex, type, refundAmount = 0) {
         await saveHistory(ticket, historyDetails);
         state.cache['ticketData'] = null;
         state.cache['historyData'] = null;
-        showToast('Ticket updated successfully!', 'success');
+        showToast('Ticket canceled/refunded successfully!', 'success');
         closeModal();
         clearManageResults();
         await Promise.all([loadTicketData(), loadHistory()]);
         updateDashboardData();
     } catch (error) {
-        showToast(`Cancellation Error: ${error.result?.error?.message || 'Could not update.'}`, 'error');
+        showToast(`Cancellation Error: ${error.result?.error?.message || 'Could not process.'}`, 'error');
     }
 }
 
 
-// --- HISTORY FUNCTIONS ---
+// --- HISTORY LOGGING ---
 async function loadHistory() {
     try {
         const response = await fetchFromSheet(`${CONFIG.HISTORY_SHEET}!A:D`, 'historyData');
-        state.history = parseHistoryData(response.values);
-        displayHistory(1);
+        if (response.values) {
+            state.history = response.values.slice(1).map(row => ({
+                date: row[0],
+                name: row[1],
+                pnr: row[2],
+                details: row[3]
+            })).reverse();
+        }
     } catch (error) {
-        showToast('Could not load history. Ensure the sheet exists.', 'error');
-        console.error("History Error:", error);
+        console.error("Error loading history:", error);
     }
 }
 
-function parseHistoryData(values) {
-    if (!values || values.length < 2) return [];
-    const headers = values[0].map(h => h.toLowerCase().replace(/\s+/g, '_'));
-    const data = values.slice(1).map((row) => {
-        const entry = {};
-        headers.forEach((h, j) => {
-            entry[h] = row[j] || '';
-        });
-        return entry;
-    });
-    return data.reverse();
-}
-
 async function saveHistory(ticket, details) {
-    if (!details) return;
     const now = new Date();
-    const date = `${String(now.getMonth() + 1).padStart(2, '0')}/${String(now.getDate()).padStart(2, '0')}/${now.getFullYear()}`;
-    const values = [[date, ticket.name, ticket.booking_reference, details]];
+    const timestamp = now.toLocaleString('en-US', {
+        month: '2-digit',
+        day: '2-digit',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: true
+    });
+
+    const values = [[timestamp, ticket.name, ticket.booking_reference, details]];
+
     try {
         await gapi.client.sheets.spreadsheets.values.append({
             spreadsheetId: CONFIG.SHEET_ID,
@@ -2187,321 +2206,274 @@ async function saveHistory(ticket, details) {
             resource: { values }
         });
     } catch (error) {
-        showToast(`Failed to save history: ${error.result?.error?.message}`, 'error');
+        console.error("Could not save history:", error);
+        showToast('Failed to log action to history.', 'error');
     }
 }
 
 function displayHistory(page) {
-    state.historyPage = page;
-    const container = document.getElementById('modificationHistoryContainer');
-    const tbody = document.getElementById('modificationHistoryBody');
-    const sortedHistory = state.history;
-
-    if (sortedHistory.length > 0) {
-        container.style.display = 'block';
-    } else {
-        container.style.display = 'none';
-    }
-
-    const paginated = sortedHistory.slice((page - 1) * state.rowsPerPage, page * state.rowsPerPage);
-    tbody.innerHTML = '';
-    paginated.forEach(entry => {
-        const row = tbody.insertRow();
-        row.innerHTML = `<td>${formatDateToDMMMY(entry.date)}</td><td>${entry.name}</td><td>${entry.booking_ref}</td><td>${entry.details}</td>`;
-    });
-    setupHistoryPagination(sortedHistory, page);
-}
-
-function setupHistoryPagination(items, currentPage) {
-    const container = document.getElementById('modificationHistoryPagination');
+    const container = document.getElementById('modificationHistoryBody');
+    const paginationContainer = document.getElementById('modificationHistoryPagination');
+    const historySection = document.getElementById('modificationHistoryContainer');
     container.innerHTML = '';
-    const pageCount = Math.ceil(items.length / state.rowsPerPage);
+    paginationContainer.innerHTML = '';
+    state.historyPage = page;
+
+    if (state.history.length === 0) {
+        historySection.style.display = 'none';
+        return;
+    }
+    historySection.style.display = 'block';
+
+    const paginated = state.history.slice((page - 1) * state.rowsPerPage, page * state.rowsPerPage);
+    paginated.forEach(entry => {
+        const row = container.insertRow();
+        row.innerHTML = `<td>${entry.date}</td><td>${entry.name}</td><td>${entry.pnr}</td><td>${entry.details}</td>`;
+    });
+
+    // Pagination for history
+    const pageCount = Math.ceil(state.history.length / state.rowsPerPage);
     if (pageCount <= 1) return;
-
-    const createBtn = (txt, pg, enabled = true) => {
-        const btn = document.createElement('button');
-        btn.className = 'pagination-btn';
-        btn.innerHTML = txt;
-        btn.disabled = !enabled;
-        if (enabled) {
-            btn.onclick = () => displayHistory(pg);
-        }
-        if (pg === currentPage) {
-            btn.classList.add('active');
-        }
-        return btn;
+    const btn = (txt, pg, en = true) => {
+        const b = document.createElement('button');
+        b.className = 'pagination-btn';
+        b.innerHTML = txt;
+        b.disabled = !en;
+        if (en) b.onclick = () => displayHistory(pg);
+        if (pg === state.historyPage) b.classList.add('active');
+        return b;
     };
-    container.append(createBtn('&laquo;', currentPage - 1, currentPage > 1));
-    for (let i = 1; i <= pageCount; i++) {
-        container.append(createBtn(i, i));
-    }
-    container.append(createBtn('&raquo;', currentPage + 1, currentPage < pageCount));
+    paginationContainer.append(btn('&laquo;', state.historyPage - 1, state.historyPage > 1));
+    for (let i = 1; i <= pageCount; i++) paginationContainer.append(btn(i, i));
+    paginationContainer.append(btn('&raquo;', state.historyPage + 1, state.historyPage < pageCount));
 }
 
-
-// --- CUSTOM AIRLINE FUNCTIONS ---
-function handleAirlineChange(e) {
-    const customAirlineGroup = document.getElementById('custom_airline_group');
-    const customAirlineInput = document.getElementById('custom_airline');
-    if (e.target.value === 'CUSTOM') {
-        customAirlineGroup.style.display = 'flex';
-        customAirlineInput.required = true;
-        customAirlineInput.disabled = false;
-    } else {
-        customAirlineGroup.style.display = 'none';
-        customAirlineInput.required = false;
-        customAirlineInput.disabled = true;
-        customAirlineInput.value = '';
-    }
-}
-
-function populateSearchAirlines() {
-    const searchAirlineSelect = document.getElementById('searchAirline');
-    const defaultAirlines = new Set(["MNA", "MAI", "MANYADANARPON", "AIRTHANWLIN"]);
-    const airlinesFromTickets = new Set(state.allTickets.map(t => t.airline ? t.airline.toUpperCase() : null).filter(Boolean));
-    const allAvailableAirlines = new Set([...defaultAirlines, ...airlinesFromTickets]);
-
-    const firstOption = searchAirlineSelect.options[0];
-    searchAirlineSelect.innerHTML = '';
-    searchAirlineSelect.appendChild(firstOption);
-
-    Array.from(allAvailableAirlines).sort().forEach(airline => {
-        const option = document.createElement('option');
-        option.value = airline;
-        option.textContent = airline;
-        searchAirlineSelect.appendChild(option);
-    });
-}
-
-
-// --- UI SETTINGS & DYNAMIC COMMISSION ---
-function initializeUISettings() {
-    const settingsBtn = document.getElementById('settings-btn');
-    const resetBtn = document.getElementById('reset-settings-btn');
-    const opacitySlider = document.getElementById('opacity-slider');
-    const blurSlider = document.getElementById('blur-slider');
-    const overlaySlider = document.getElementById('overlay-slider');
-    const glassSlider = document.getElementById('glass-slider');
-    const agentCutSlider = document.getElementById('agent-cut-slider');
-
-    const root = document.documentElement;
-
-    const defaults = {
-        opacity: 0.05,
-        blur: 20,
-        overlay: 0.5,
-        glass: 0.15,
-        agentCut: 60
-    };
-
-    let settings = JSON.parse(localStorage.getItem('uiSettings')) || { ...defaults };
-    state.commissionRates.cut = settings.agentCut / 100;
-
-    function applySettings() {
-        root.style.setProperty('--glass-bg', `rgba(255, 255, 255, ${settings.opacity})`);
-        root.style.setProperty('--blur-amount', `${settings.blur}px`);
-        root.style.setProperty('--overlay-opacity', settings.overlay);
-        root.style.setProperty('--liquid-border', `1px solid rgba(255, 255, 255, ${settings.glass})`);
-
-        state.commissionRates.cut = settings.agentCut / 100;
-    }
-
-    function updateSlidersAndValues() {
-        opacitySlider.value = settings.opacity;
-        blurSlider.value = settings.blur;
-        overlaySlider.value = settings.overlay;
-        glassSlider.value = settings.glass;
-        agentCutSlider.value = settings.agentCut;
-
-        document.getElementById('opacity-value').textContent = Number(settings.opacity).toFixed(2);
-        document.getElementById('blur-value').textContent = settings.blur;
-        document.getElementById('overlay-value').textContent = Number(settings.overlay).toFixed(2);
-        document.getElementById('glass-value').textContent = Number(settings.glass).toFixed(2);
-        document.getElementById('agent-cut-value').textContent = `${settings.agentCut}%`;
-    }
-
-    function saveSettings() {
-        localStorage.setItem('uiSettings', JSON.stringify(settings));
-    }
-
-    settingsBtn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        settingsPanel.classList.toggle('show');
-    });
-
-    opacitySlider.addEventListener('input', (e) => { settings.opacity = e.target.value; updateSlidersAndValues(); applySettings(); saveSettings(); });
-    blurSlider.addEventListener('input', (e) => { settings.blur = e.target.value; updateSlidersAndValues(); applySettings(); saveSettings(); });
-    overlaySlider.addEventListener('input', (e) => { settings.overlay = e.target.value; updateSlidersAndValues(); applySettings(); saveSettings(); });
-    glassSlider.addEventListener('input', (e) => { settings.glass = e.target.value; updateSlidersAndValues(); applySettings(); saveSettings(); });
-    agentCutSlider.addEventListener('input', (e) => { settings.agentCut = e.target.value; updateSlidersAndValues(); applySettings(); saveSettings(); });
-
-    resetBtn.addEventListener('click', () => {
-        settings = { ...defaults };
-        applySettings();
-        updateSlidersAndValues();
-        saveSettings();
-        showToast('UI settings have been reset.', 'info');
-    });
-
-    applySettings();
-    updateSlidersAndValues();
-}
-
-// --- PDF EXPORT FUNCTION ---
-function exportToPdf() {
-    const exportType = document.querySelector('input[name="exportType"]:checked').value;
-    let ticketsToExport;
-
-    if (exportType === 'range') {
-        const startDate = parseSheetDate(document.getElementById('exportStartDate').value);
-        const endDate = parseSheetDate(document.getElementById('exportEndDate').value);
-        if (!startDate || !endDate) {
-            showToast('Please select a valid date range.', 'error');
-            return;
+// --- CLIENTS VIEW ---
+function buildClientList() {
+    const clients = {};
+    state.allTickets.forEach(ticket => {
+        const clientKey = `${ticket.name}|${ticket.phone}|${ticket.account_name}`;
+        if (!clients[clientKey]) {
+            clients[clientKey] = {
+                name: ticket.name,
+                phone: ticket.phone,
+                account_name: ticket.account_name,
+                ticket_count: 0,
+                total_spent: 0,
+                last_travel: new Date(0)
+            };
         }
-        ticketsToExport = state.allTickets.filter(t => {
-            const issuedDate = parseSheetDate(t.issued_date);
-            return issuedDate >= startDate && issuedDate <= endDate;
-        });
-    } else {
-        ticketsToExport = state.filteredTickets;
-    }
+        clients[clientKey].ticket_count++;
+        clients[clientKey].total_spent += (ticket.net_amount || 0) + (ticket.extra_fare || 0) + (ticket.date_change || 0);
+        const travelDate = parseSheetDate(ticket.departing_on);
+        if (travelDate > clients[clientKey].last_travel) {
+            clients[clientKey].last_travel = travelDate;
+        }
+    });
 
-    if (ticketsToExport.length === 0) {
-        showToast('No data to export for the selected criteria.', 'info');
-        return;
-    }
-
-    exportConfirmModal.classList.remove('show');
-    generatePdf(ticketsToExport);
+    state.allClients = Object.values(clients).sort((a, b) => a.name.localeCompare(b.name));
 }
 
-function generatePdf(tickets) {
-    const { jsPDF } = window.jspdf;
-    const doc = new jsPDF({ orientation: 'landscape' });
-
-    if (typeof doc.autoTable !== 'function') {
-        showToast('PDF library not loaded yet. Please try again.', 'error');
-        console.error('jsPDF autoTable plugin is not loaded.');
-        return;
+function renderClientsView(page = 1, searchQuery = '') {
+    const tbody = document.getElementById('clientListTableBody');
+    const paginationContainer = document.getElementById('clientListPagination');
+    if (!tbody || !paginationContainer) {
+        // If the view hasn't been built yet, build it
+        const container = document.getElementById('clients-view');
+        container.innerHTML = `
+            <div class="clients-container">
+                <div class="clients-header">
+                    <h2><i class="fa-solid fa-users"></i> Client Directory</h2>
+                    <div class="client-controls">
+                        <div class="client-search-box">
+                            <input type="text" id="clientSearchInput" placeholder="Search by name or phone...">
+                        </div>
+                    </div>
+                </div>
+                <div class="results-section glass-card">
+                    <div class="table-container">
+                        <table id="clientListTable">
+                            <thead>
+                                <tr>
+                                    <th></th>
+                                    <th>Client Name</th>
+                                    <th>Phone</th>
+                                    <th>Social Media</th>
+                                    <th>Total Tickets</th>
+                                    <th>Total Spent (MMK)</th>
+                                    <th>Last Travel</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="clientListTableBody"></tbody>
+                        </table>
+                    </div>
+                    <div id="clientListPagination" class="pagination-container"></div>
+                </div>
+            </div>`;
+        document.getElementById('clientSearchInput').addEventListener('input', (e) => debounce(() => renderClientsView(1, e.target.value), 300));
+        return renderClientsView(page, searchQuery); // Re-run now that it's built
     }
 
-    const sortedTickets = [...tickets].sort((a, b) =>
-        parseSheetDate(a.issued_date) - parseSheetDate(b.issued_date)
+    tbody.innerHTML = '';
+    paginationContainer.innerHTML = '';
+    state.clientPage = page;
+
+    const query = searchQuery.toLowerCase();
+    const filteredClients = state.allClients.filter(c =>
+        c.name.toLowerCase().includes(query) ||
+        c.phone.includes(query)
     );
 
-    const tableColumns = ["Issued Date", "Name", "Booking Ref", "Route", "Airline", "Net Amount", "Date Change", "Commission"];
-    const tableRows = [];
-
-    let totalNetAmount = 0;
-    let totalDateChange = 0;
-    let totalCommission = 0;
-
-    sortedTickets.forEach(ticket => {
-        totalNetAmount += ticket.net_amount || 0;
-        totalDateChange += ticket.date_change || 0;
-        totalCommission += ticket.commission || 0;
-
-        const ticketData = [
-            formatDateToDMMMY(ticket.issued_date) || '',
-            ticket.name || '',
-            ticket.booking_reference || '',
-            ticket.departure && ticket.destination ? `${ticket.departure} - ${ticket.destination}` : 'N/A',
-            ticket.airline || '',
-            (ticket.net_amount || 0).toLocaleString(),
-            (ticket.date_change || 0).toLocaleString(),
-            (ticket.commission || 0).toLocaleString()
-        ];
-        tableRows.push(ticketData);
+    // Sort featured clients to the top
+    filteredClients.sort((a, b) => {
+        const aIsFeatured = state.featuredClients.includes(a.name);
+        const bIsFeatured = state.featuredClients.includes(b.name);
+        if (aIsFeatured && !bIsFeatured) return -1;
+        if (!aIsFeatured && bIsFeatured) return 1;
+        return a.name.localeCompare(b.name); // Then sort by name
     });
 
-    const now = new Date();
-    const currentMonth = now.toLocaleString('default', { month: 'long' });
-    const title = `Ocean Air Ticket (${currentMonth} Report)`;
-    const exportedDate = `Exported on: ${now.toLocaleDateString('en-US')}`;
 
-    doc.autoTable({
-        head: [tableColumns],
-        body: tableRows,
-        startY: 25,
-        theme: 'grid',
-        headStyles: {
-            fillColor: [33, 38, 45],
-            textColor: [230, 237, 243]
-        },
-        styles: {
-            font: 'helvetica',
-            fontSize: 7.5,
-            cellPadding: 2,
-            valign: 'middle'
-        },
-        columnStyles: {
-            0: { cellWidth: 22 }, 1: { cellWidth: 40 }, 2: { cellWidth: 25 },
-            3: { cellWidth: 75 }, 4: { cellWidth: 28 }, 5: { halign: 'right', cellWidth: 23 },
-            6: { cellWidth: 23, halign: 'right' }, 7: { cellWidth: 23, halign: 'right' }
-        },
-        didDrawPage: function (data) {
-            if (data.pageNumber === 1) {
-                doc.setFontSize(18);
-                doc.setTextColor(40);
-                doc.text(title, data.settings.margin.left, 15);
-
-                doc.setFontSize(11);
-                doc.setTextColor(100);
-                doc.text(exportedDate, data.settings.margin.left, 20);
-            }
-            doc.setFontSize(10);
-            doc.text("Page " + String(data.pageNumber), data.settings.margin.left, doc.internal.pageSize.height - 10);
-        }
-    });
-
-    const grandTotal = totalNetAmount + totalDateChange;
-    
-    if (doc.lastAutoTable.finalY + 25 > doc.internal.pageSize.height) {
-        doc.addPage();
+    if (filteredClients.length === 0) {
+        const colSpan = 8;
+        tbody.innerHTML = `<tr><td colspan="${colSpan}"><div class="empty-state" style="padding: 2rem 1rem;"><i class="fa-solid fa-user-slash"></i><h4>No Clients Found</h4><p>Your search for "${searchQuery}" did not match any clients.</p></div></td></tr>`;
+        return;
     }
 
-    doc.autoTable({
-        startY: doc.lastAutoTable.finalY + 3,
-        body: [
-            [
-                { content: 'Total', colSpan: 5, styles: { halign: 'right', fontStyle: 'bold' } },
-                { content: totalNetAmount.toLocaleString(), styles: { halign: 'right', fontStyle: 'bold' } },
-                { content: totalDateChange.toLocaleString(), styles: { halign: 'right', fontStyle: 'bold' } },
-                { content: totalCommission.toLocaleString(), styles: { halign: 'right', fontStyle: 'bold' } }
-            ],
-            [
-                { content: 'Grand Total (Net Amount + Date Change)', colSpan: 5, styles: { halign: 'right', fontStyle: 'bold' } },
-                { content: grandTotal.toLocaleString(), styles: { halign: 'right', fontStyle: 'bold' } },
-                { content: '', colSpan: 2 }
-            ]
-        ],
-        theme: 'grid',
-        styles: {
-            font: 'helvetica',
-            fontSize: 8,
-            cellPadding: 2,
-            valign: 'middle',
-            fillColor: [220, 220, 220],
-            textColor: [0, 0, 0],
-        },
-        columnStyles: {
-            0: { cellWidth: 22 }, 1: { cellWidth: 40 }, 2: { cellWidth: 25 },
-            3: { cellWidth: 75 }, 4: { cellWidth: 28 }, 5: { halign: 'right', cellWidth: 23 },
-            6: { cellWidth: 23, halign: 'right' }, 7: { cellWidth: 23, halign: 'right' }
-        },
+    const paginated = filteredClients.slice((page - 1) * state.rowsPerPage, page * state.rowsPerPage);
+
+    paginated.forEach(client => {
+        const isFeatured = state.featuredClients.includes(client.name);
+        const row = tbody.insertRow();
+        row.innerHTML = `
+            <td><i class="fa-regular fa-star star-icon ${isFeatured ? 'featured' : ''}" onclick="toggleFeaturedClient(event, '${client.name}')"></i></td>
+            <td class="client-name-cell">${client.name}</td>
+            <td>${client.phone}</td>
+            <td>${client.account_name}</td>
+            <td>${client.ticket_count}</td>
+            <td>${client.total_spent.toLocaleString()}</td>
+            <td>${client.last_travel.getTime() > 0 ? formatDateToDMMMY(client.last_travel) : 'N/A'}</td>
+            <td>
+                <button class="icon-btn icon-btn-table" onclick="viewClientHistory('${client.name}')"><i class="fa-solid fa-clock-rotate-left"></i></button>
+            </td>
+        `;
     });
 
+    // Pagination
+    const pageCount = Math.ceil(filteredClients.length / state.rowsPerPage);
+    if (pageCount <= 1) return;
+    const btn = (txt, pg, en = true) => {
+        const b = document.createElement('button');
+        b.className = 'pagination-btn';
+        b.innerHTML = txt;
+        b.disabled = !en;
+        if (en) b.onclick = () => renderClientsView(pg, searchQuery);
+        if (pg === state.clientPage) b.classList.add('active');
+        return b;
+    };
+    paginationContainer.append(btn('&laquo;', state.clientPage - 1, state.clientPage > 1));
+    for (let i = 1; i <= pageCount; i++) paginationContainer.append(btn(i, i));
+    paginationContainer.append(btn('&raquo;', state.clientPage + 1, state.clientPage < pageCount));
+}
 
-    doc.save(`Ocean_Air_Report_${now.getFullYear()}-${String(now.getMonth()+1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}.pdf`);
-    showToast('Report exported successfully!', 'success');
+function viewClientHistory(clientName) {
+    const clientTickets = state.allTickets.filter(t => t.name === clientName)
+        .sort((a, b) => parseSheetDate(b.issued_date) - parseSheetDate(a.issued_date));
+
+    if (clientTickets.length === 0) {
+        showToast("No ticket history found for this client.", "info");
+        return;
+    }
+
+    const firstTicket = clientTickets[0];
+    const totalSpent = clientTickets.reduce((sum, t) => sum + (t.net_amount || 0) + (t.extra_fare || 0) + (t.date_change || 0), 0);
+    const flightsByAirline = clientTickets.reduce((acc, t) => {
+        acc[t.airline] = (acc[t.airline] || 0) + 1;
+        return acc;
+    }, {});
+    const favoriteAirline = Object.keys(flightsByAirline).sort((a, b) => flightsByAirline[b] - flightsByAirline[a])[0] || 'N/A';
+
+    let historyHtml = '<div class="table-container"><table id="clientHistoryTable"><thead><tr><th>Issued</th><th>PNR</th><th>Route</th><th>Airline</th><th>Net Amount</th><th>Status</th></tr></thead><tbody>';
+    clientTickets.forEach(t => {
+        const isCanceled = t.remarks?.toLowerCase().includes('cancel') || t.remarks?.toLowerCase().includes('refund');
+        historyHtml += `
+            <tr class="${isCanceled ? 'canceled-row' : ''}">
+                <td>${formatDateToDMMMY(t.issued_date)}</td>
+                <td>${t.booking_reference}</td>
+                <td>${t.departure.split(' ')[0]}→${t.destination.split(' ')[0]}</td>
+                <td>${t.airline}</td>
+                <td>${(t.net_amount || 0).toLocaleString()}</td>
+                <td>${isCanceled ? 'Canceled' : 'Confirmed'}</td>
+            </tr>
+        `;
+    });
+    historyHtml += '</tbody></table></div>';
+
+    const content = `
+        <div class="client-history-header">
+            <div class="client-history-info">
+                <h2>${clientName}</h2>
+                <p>Contact: ${firstTicket.phone} | Social: ${firstTicket.account_name}</p>
+            </div>
+            <div class="client-history-actions">
+                <button class="btn btn-secondary" onclick="closeModal()">Close</button>
+            </div>
+        </div>
+        <div class="client-history-stats">
+            <div class="stat-card"><div class="label">Total Tickets</div><div class="value">${clientTickets.length}</div></div>
+            <div class="stat-card"><div class="label">Total Spent</div><div class="value">${totalSpent.toLocaleString()} MMK</div></div>
+            <div class="stat-card"><div class="label">Favorite Airline</div><div class="value">${favoriteAirline}</div></div>
+        </div>
+        <h3>Ticket History</h3>
+        ${historyHtml}
+    `;
+
+    openModal(content, 'large-modal');
 }
 
 
-// --- MODAL & CONFIRMATION ---
-function openModal(content, size = 'default') {
+// --- FEATURED CLIENTS ---
+function loadFeaturedClients() {
+    const featured = localStorage.getItem('featuredClients');
+    state.featuredClients = featured ? JSON.parse(featured) : [];
+}
+
+function saveFeaturedClients() {
+    localStorage.setItem('featuredClients', JSON.stringify(state.featuredClients));
+}
+
+function toggleFeaturedClient(event, clientName) {
+    event.stopPropagation(); // Prevent row click events if any
+    const icon = event.target;
+    const index = state.featuredClients.indexOf(clientName);
+
+    if (index > -1) {
+        state.featuredClients.splice(index, 1);
+        icon.classList.remove('featured');
+        showToast(`${clientName} removed from featured.`, 'info');
+    } else {
+        state.featuredClients.push(clientName);
+        icon.classList.add('featured');
+        showToast(`${clientName} added to featured!`, 'success');
+    }
+
+    saveFeaturedClients();
+    // Re-render the current page to reflect the change immediately
+    const currentPage = state.clientPage;
+    const currentSearch = document.getElementById('clientSearchInput')?.value || '';
+    renderClientsView(currentPage, currentSearch);
+}
+
+
+// --- MODAL & UI SETTINGS ---
+function openModal(content, sizeClass = '') {
     modalBody.innerHTML = content;
-    modal.querySelector('.modal-content').className = `modal-content glass-card ${size === 'large' ? 'large-modal' : size === 'small' ? 'small-modal' : ''}`;
+    const modalContent = modal.querySelector('.modal-content');
+    modalContent.className = 'modal-content glass-card'; // Reset classes
+    if (sizeClass) {
+        modalContent.classList.add(sizeClass);
+    }
     modal.classList.add('show');
 }
 
@@ -2512,339 +2484,283 @@ function closeModal() {
 
 function showConfirmModal(message, onConfirm) {
     const content = `
-        <p style="margin-bottom: 1.5rem; line-height: 1.5;">${message}</p>
-        <div class="form-actions">
-            <button id="confirmCancelBtn" type="button" class="btn btn-secondary">Back</button>
-            <button id="confirmActionBtn" type="button" class="btn btn-primary">Confirm</button>
+        <div style="text-align: center;">
+            <p style="font-size: 1.1rem; margin-bottom: 2rem;">${message}</p>
+            <div class="form-actions">
+                <button id="confirmCancelBtn" class="btn btn-secondary">Cancel</button>
+                <button id="confirmActionBtn" class="btn btn-primary">Confirm</button>
+            </div>
         </div>
     `;
     openModal(content, 'small-modal');
-
     document.getElementById('confirmActionBtn').onclick = onConfirm;
-    document.getElementById('confirmCancelBtn').onclick = () => {
-        closeModal();
+    document.getElementById('confirmCancelBtn').onclick = closeModal;
+}
+
+function initializeUISettings() {
+    // --- Sliders ---
+    const sliders = {
+        'opacity-slider': { property: '--glass-bg', valueId: 'opacity-value', unit: '' },
+        'blur-slider': { property: '--blur-amount', valueId: 'blur-value', unit: 'px' },
+        'overlay-slider': { property: '--overlay-opacity', valueId: 'overlay-value', unit: '' },
+        'glass-slider': { property: '--liquid-border', valueId: 'glass-value', unit: 'px solid rgba(255, 255, 255, 0.15)', transform: (v) => `${v}` },
+        'agent-cut-slider': { property: 'commissionCut', valueId: 'agent-cut-value', unit: '%', isState: true }
     };
-}
 
-// --- CLIENT MANAGEMENT ---
-function buildClientList() {
-    const clientsMap = new Map();
+    for (const id in sliders) {
+        const slider = document.getElementById(id);
+        const { property, valueId, unit, transform, isState } = sliders[id];
+        const valueEl = document.getElementById(valueId);
 
-    state.allTickets.forEach(ticket => {
-        const key = `${(ticket.name || '').trim().toUpperCase()}|${(ticket.id_no || '').trim().toUpperCase()}`;
-        if (!ticket.name || !ticket.id_no) return;
-
-        if (!clientsMap.has(key)) {
-            clientsMap.set(key, {
-                compositeKey: key,
-                name: ticket.name,
-                id_no: ticket.id_no,
-                phone: ticket.phone,
-                account_name: ticket.account_name,
-                account_type: ticket.account_type,
-                account_link: ticket.account_link,
-                ticketCount: 0,
-                totalSpent: 0,
-                lastContact: new Date(0)
-            });
+        const savedValue = localStorage.getItem(id);
+        if (savedValue) {
+            slider.value = savedValue;
         }
 
-        const client = clientsMap.get(key);
-        client.ticketCount++;
-        client.totalSpent += (ticket.net_amount || 0) + (ticket.date_change || 0) + (ticket.extra_fare || 0);
-        
-        const ticketDate = parseSheetDate(ticket.issued_date);
-        if (ticketDate > client.lastContact) {
-            client.lastContact = ticketDate;
-            client.phone = ticket.phone;
-            client.account_name = ticket.account_name;
-            client.account_type = ticket.account_type;
-            client.account_link = ticket.account_link;
-        }
-    });
-    state.allClients = Array.from(clientsMap.values()).sort((a,b) => b.lastContact - a.lastContact);
-}
-
-function renderClientsView() {
-    const view = document.getElementById('clients-view');
-    view.innerHTML = `
-        <div class="clients-container glass-card">
-            <div class="clients-header">
-                <h2><i class="fa-solid fa-users"></i> Client Directory</h2>
-                <div class="client-controls">
-                    <div class="toggle-switch">
-                        <label for="featuredClientsToggle">Show Featured Only</label>
-                        <label class="switch">
-                            <input type="checkbox" id="featuredClientsToggle">
-                            <span class="slider round"></span>
-                        </label>
-                    </div>
-                    <div class="client-search-box">
-                        <input type="text" id="clientSearchInput" placeholder="Search by name, ID, or phone...">
-                    </div>
-                </div>
-            </div>
-            <div id="clientListContainer" class="table-container"></div>
-            <div id="clientPagination" class="pagination-container"></div>
-        </div>
-    `;
-
-    document.getElementById('clientSearchInput').addEventListener('input', () => renderClientListPage(1));
-    document.getElementById('featuredClientsToggle').addEventListener('change', () => renderClientListPage(1));
-
-    renderClientListPage(1);
-}
-
-
-function renderClientListPage(page) {
-    state.clientPage = page;
-    const container = document.getElementById('clientListContainer');
-    const searchInput = document.getElementById('clientSearchInput');
-    const featuredOnlyToggle = document.getElementById('featuredClientsToggle');
-
-    const query = (searchInput?.value || '').toLowerCase();
-    const featuredOnly = featuredOnlyToggle?.checked;
-
-    let clientsToDisplay = state.allClients;
-
-    if (featuredOnly) {
-        clientsToDisplay = clientsToDisplay.filter(c => state.featuredClients.includes(c.compositeKey));
-    }
-
-    if (query) {
-        clientsToDisplay = clientsToDisplay.filter(c =>
-            c.name.toLowerCase().includes(query) ||
-            (c.id_no && c.id_no.toLowerCase().includes(query)) ||
-            (c.phone && c.phone.includes(query))
-        );
+        const update = () => {
+            const val = slider.value;
+            valueEl.textContent = val + (unit === '%' ? '%' : '');
+            if (isState) {
+                state.commissionRates.cut = val / 100;
+            } else {
+                const finalValue = transform ? transform(val) : `rgba(255, 255, 255, ${val})`;
+                if (unit && !transform) {
+                     document.documentElement.style.setProperty(property, val + unit);
+                } else if (transform) {
+                     document.documentElement.style.setProperty(property, `1px solid rgba(255, 255, 255, ${val})`);
+                }
+                 else {
+                     if(property === '--glass-bg') document.documentElement.style.setProperty(property, `rgba(255, 255, 255, ${val})`);
+                     else document.documentElement.style.setProperty(property, val);
+                }
+            }
+            localStorage.setItem(id, val);
+        };
+        slider.addEventListener('input', update);
+        update();
     }
     
-    if (clientsToDisplay.length === 0) {
-        if (featuredOnly) {
-            renderEmptyState('clientListContainer', 'fa-star', 'No Featured Clients', 'You haven\'t starred any clients yet. Click the star icon next to a client\'s name to feature them.');
+    // --- Theme Toggles ---
+    const themeToggle = document.getElementById('theme-toggle');
+    const darkModeToggle = document.getElementById('dark-mode-toggle');
+    const darkModeContainer = document.getElementById('dark-mode-container');
+    const glassSettingsContainer = document.getElementById('glass-settings-container');
+
+    const applyTheme = (isMaterial, isDark) => {
+        if (isMaterial) {
+            document.body.classList.add('material-theme');
+            darkModeContainer.style.display = 'flex';
+            glassSettingsContainer.style.display = 'none';
+             if (isDark) {
+                document.body.classList.add('dark-theme');
+            } else {
+                document.body.classList.remove('dark-theme');
+            }
         } else {
-             renderEmptyState('clientListContainer', 'fa-user-slash', 'No Clients Found', 'Your search did not match any clients.');
+            document.body.classList.remove('material-theme', 'dark-theme');
+            darkModeContainer.style.display = 'none';
+            glassSettingsContainer.style.display = 'block';
         }
-        setupClientPagination([]);
-        return;
-    }
-
-    const table = `
-        <table id="clientListTable">
-            <thead>
-                <tr>
-                    <th>Client Name</th>
-                    <th>ID Number</th>
-                    <th>Account Name</th>
-                    <th>Account Type</th>
-                    <th>Phone Number</th>
-                    <th>Actions</th>
-                </tr>
-            </thead>
-            <tbody id="clientListBody"></tbody>
-        </table>
-    `;
-    container.innerHTML = table;
-    const tbody = document.getElementById('clientListBody');
-
-    const paginated = clientsToDisplay.slice((page - 1) * state.rowsPerPage, page * state.rowsPerPage);
-
-    paginated.forEach(client => {
-        const isFeatured = state.featuredClients.includes(client.compositeKey);
-        const row = tbody.insertRow();
-        row.innerHTML = `
-            <td>
-                <i class="fa-regular fa-star star-icon ${isFeatured ? 'featured' : ''}" onclick="toggleFeaturedClient('${client.compositeKey}', event)"></i>
-                ${client.name}
-            </td>
-            <td>${client.id_no || 'N/A'}</td>
-            <td>${client.account_name || 'N/A'}</td>
-            <td>${client.account_type || 'N/A'}</td>
-            <td>${client.phone || 'N/A'}</td>
-            <td class="client-actions">
-                <button class="icon-btn icon-btn-table" title="View History" onclick='renderClientHistory("${client.compositeKey}")'><i class="fa-solid fa-clock-rotate-left"></i></button>
-                <button class="icon-btn icon-btn-table" title="Sell New Ticket" onclick='sellToClient("${client.compositeKey}")'><i class="fa-solid fa-ticket"></i></button>
-            </td>
-        `;
-    });
-    setupClientPagination(clientsToDisplay);
-}
-
-function setupClientPagination(items) {
-    const container = document.getElementById('clientPagination');
-    container.innerHTML = '';
-    const pageCount = Math.ceil(items.length / state.rowsPerPage);
-    if (pageCount <= 1) return;
-
-    const createBtn = (txt, pg, enabled = true) => {
-        const btn = document.createElement('button');
-        btn.className = 'pagination-btn';
-        btn.innerHTML = txt;
-        btn.disabled = !enabled;
-        if (enabled) {
-            btn.onclick = () => renderClientListPage(pg);
+        // Background logic
+        const customBg = localStorage.getItem('customBackground');
+        if (customBg && !isMaterial) {
+            document.body.style.backgroundImage = `url(${customBg})`;
+        } else if (!isMaterial) {
+            document.body.style.backgroundImage = `url('https://images.unsplash.com/photo-1550684376-efcbd6e3f031?q=80&w=2970&auto=format&fit=crop')`;
+        } else {
+            document.body.style.backgroundImage = 'none';
         }
-        if (pg === state.clientPage) {
-            btn.classList.add('active');
-        }
-        return btn;
     };
-    container.append(createBtn('&laquo;', state.clientPage - 1, state.clientPage > 1));
-    for (let i = 1; i <= pageCount; i++) {
-        container.append(createBtn(i, i));
-    }
-    container.append(createBtn('&raquo;', state.clientPage + 1, state.clientPage < pageCount));
-}
 
-function renderClientHistory(clientKey) {
-    const client = state.allClients.find(c => c.compositeKey === clientKey);
-    if (!client) {
-        showToast('Could not find client details.', 'error');
+    const isMaterialSaved = localStorage.getItem('isMaterial') === 'true';
+    const isDarkSaved = localStorage.getItem('isDark') === 'true';
+
+    themeToggle.checked = isMaterialSaved;
+    darkModeToggle.checked = isDarkSaved;
+
+    applyTheme(isMaterialSaved, isDarkSaved);
+
+    themeToggle.addEventListener('change', () => {
+        const isMaterial = themeToggle.checked;
+        localStorage.setItem('isMaterial', isMaterial);
+        applyTheme(isMaterial, darkModeToggle.checked);
+    });
+
+    darkModeToggle.addEventListener('change', () => {
+        const isDark = darkModeToggle.checked;
+        localStorage.setItem('isDark', isDark);
+        applyTheme(themeToggle.checked, isDark);
+    });
+
+    // --- Settings Panel Toggle ---
+    document.getElementById('settings-btn').addEventListener('click', () => {
+        settingsPanel.classList.toggle('show');
+    });
+
+    document.getElementById('reset-settings-btn').addEventListener('click', () => {
+        Object.keys(sliders).forEach(id => localStorage.removeItem(id));
+        localStorage.removeItem('isMaterial');
+        localStorage.removeItem('isDark');
+        window.location.reload();
+    });
+
+    // --- Inject custom styles for dynamic elements ---
+    const styleSheet = document.createElement("style");
+    styleSheet.innerText = `
+        .notification-count {
+            background-color: var(--primary-accent);
+            color: var(--bg-color) !important; /* Use important to override potential conflicts */
+            font-size: 0.75rem;
+            font-weight: 700;
+            padding: 2px 8px;
+            border-radius: 10px;
+            margin-left: 0.5rem;
+            line-height: 1;
+            display: inline-block;
+            vertical-align: middle;
+        }
+        #unpaid-only-label {
+            display: flex;
+            align-items: center;
+        }
+    `;
+    document.head.appendChild(styleSheet);
+}
+// --- PDF EXPORT ---
+async function exportToPdf() {
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF();
+    const exportType = document.querySelector('input[name="exportType"]:checked').value;
+
+    let ticketsToExport;
+
+    if (exportType === 'filtered') {
+        ticketsToExport = state.filteredTickets;
+    } else {
+        const startDate = parseSheetDate(document.getElementById('exportStartDate').value);
+        const endDate = parseSheetDate(document.getElementById('exportEndDate').value);
+        if (!startDate || !endDate) {
+            showToast('Please select a valid date range.', 'error');
+            return;
+        }
+        startDate.setHours(0, 0, 0, 0);
+        endDate.setHours(23, 59, 59, 999);
+        ticketsToExport = state.allTickets.filter(t => {
+            const issuedDate = parseSheetDate(t.issued_date);
+            return issuedDate >= startDate && issuedDate <= endDate;
+        });
+    }
+
+    if (ticketsToExport.length === 0) {
+        showToast('No tickets to export in the selected range.', 'info');
         return;
     }
-    
-    const clientTickets = state.allTickets.filter(t => 
-        (t.name || '').trim().toUpperCase() === client.name.trim().toUpperCase() &&
-        (t.id_no || '').trim().toUpperCase() === client.id_no.trim().toUpperCase()
-    ).sort((a,b) => parseSheetDate(b.issued_date) - parseSheetDate(a.issued_date));
 
-    const view = document.getElementById('clients-view');
+    // Sort by issue date for the report
+    ticketsToExport.sort((a, b) => parseSheetDate(a.issued_date) - parseSheetDate(b.issued_date));
 
-    const totalCommission = clientTickets.reduce((sum, t) => sum + (t.commission || 0), 0);
-    const totalSpent = client.totalSpent;
-    const ticketCount = client.ticketCount;
+    const title = `Ticket Report (${exportType === 'filtered' ? 'Filtered' : 'Date Range'})`;
+    doc.setFontSize(18);
+    doc.text(title, 14, 22);
 
-    let ticketsHtml = '';
-    if (clientTickets.length > 0) {
-        ticketsHtml = `
-            <div class="table-container">
-                <table>
-                    <thead><tr><th>Issued</th><th>PNR</th><th>Route</th><th>Net Amount</th><th>Status</th><th></th></tr></thead>
-                    <tbody>
-                        ${clientTickets.map(t => `
-                            <tr class="${(t.remarks || '').toLowerCase().includes('cancel') ? 'canceled-row' : ''}">
-                                <td>${t.issued_date}</td>
-                                <td>${t.booking_reference}</td>
-                                <td>${t.departure.split(' ')[0]}→${t.destination.split(' ')[0]}</td>
-                                <td>${(t.net_amount || 0).toLocaleString()}</td>
-                                <td>${(t.remarks || '').toLowerCase().includes('cancel') ? 'Canceled' : 'Confirmed'}</td>
-                                <td><button class="icon-btn icon-btn-table" onclick="showDetails(${t.rowIndex})"><i class="fa-solid fa-eye"></i></button></td>
-                            </tr>
-                        `).join('')}
-                    </tbody>
-                </table>
-            </div>
-        `;
-    } else {
-        ticketsHtml = `<p>No tickets found for this client.</p>`;
-    }
+    const head = [['Issued Date', 'Name', 'PNR', 'Route', 'Net Amount', 'Commission', 'Status']];
+    const body = ticketsToExport.map(t => {
+         const isCanceled = t.remarks?.toLowerCase().includes('cancel') || t.remarks?.toLowerCase().includes('refund');
+        return [
+            t.issued_date,
+            t.name,
+            t.booking_reference,
+            `${t.departure.split(' ')[0]}→${t.destination.split(' ')[0]}`,
+            t.net_amount.toLocaleString(),
+            t.commission.toLocaleString(),
+            isCanceled ? 'Canceled' : 'Confirmed'
+        ];
+    });
 
-    view.innerHTML = `
-        <div class="glass-card">
-            <div class="client-history-header">
-                <div class="client-history-info">
-                    <h2>${client.name}</h2>
-                    <p>ID: ${client.id_no}</p>
-                </div>
-                <div class="client-history-actions">
-                    <button class="btn btn-secondary" onclick="renderClientsView()"><i class="fa-solid fa-arrow-left"></i> Back to List</button>
-                    <button class="btn btn-primary" onclick='sellToClient("${client.compositeKey}")'><i class="fa-solid fa-plus"></i> Sell New Ticket</button>
-                </div>
-            </div>
-            <div class="client-history-stats">
-                <div class="stat-card"><div class="label">Total Tickets</div><div class="value">${ticketCount}</div></div>
-                <div class="stat-card"><div class="label">Total Spent</div><div class="value">${totalSpent.toLocaleString()} MMK</div></div>
-                <div class="stat-card"><div class="label">Total Commission</div><div class="value">${totalCommission.toLocaleString()} MMK</div></div>
-            </div>
-            <h3>Ticket History</h3>
-            ${ticketsHtml}
-        </div>
-    `;
+    doc.autoTable({
+        head: head,
+        body: body,
+        startY: 30
+    });
+
+    const totalNetAmount = ticketsToExport.reduce((sum, t) => sum + (t.net_amount || 0), 0);
+    const totalCommission = ticketsToExport.reduce((sum, t) => sum + (t.commission || 0), 0);
+    const finalY = doc.lastAutoTable.finalY || 40;
+
+    doc.setFontSize(12);
+    doc.text(`Total Net Amount: ${totalNetAmount.toLocaleString()} MMK`, 14, finalY + 10);
+    doc.text(`Total Commission: ${totalCommission.toLocaleString()} MMK`, 14, finalY + 16);
+
+    doc.save(`ticket_report_${new Date().toISOString().slice(0,10)}.pdf`);
+    exportConfirmModal.classList.remove('show');
 }
-
-function sellToClient(clientKey) {
-    const client = state.allClients.find(c => c.compositeKey === clientKey);
-    if (!client) return;
-
-    showView('sell');
-    document.getElementById('phone').value = client.phone || '';
-    document.getElementById('account_name').value = client.account_name || '';
-    document.getElementById('account_type').value = client.account_type || '';
-    document.getElementById('account_link').value = client.account_link || '';
-
-    const firstPassengerNameInput = document.querySelector('#passenger-forms-container .passenger-name');
-    const firstPassengerIdInput = document.querySelector('#passenger-forms-container .passenger-id');
-    if (firstPassengerNameInput) {
-        firstPassengerNameInput.value = client.name;
-    }
-    if(firstPassengerIdInput){
-        firstPassengerIdInput.value = client.id_no;
-    }
-}
-
-function handleAutosuggest(inputElement, field) {
+// --- AUTOSUGGEST ---
+function handleAutosuggest(inputElement, fieldType) {
     const value = inputElement.value.toLowerCase();
-    const autosuggestBox = document.getElementById(`${field}_autosuggest`);
+    const autosuggestBox = inputElement.nextElementSibling;
+    autosuggestBox.innerHTML = '';
+
     if (value.length < 2) {
         autosuggestBox.style.display = 'none';
         return;
     }
 
-    const suggestions = state.allClients.filter(client =>
-        client[field] && client[field].toLowerCase().includes(value)
-    );
+    const seen = new Set();
+    const suggestions = state.allClients
+        .filter(client => {
+            const clientFieldValue = client[fieldType]?.toLowerCase() || '';
+            if (clientFieldValue.includes(value) && !seen.has(clientFieldValue)) {
+                seen.add(clientFieldValue);
+                return true;
+            }
+            return false;
+        })
+        .slice(0, 5);
 
     if (suggestions.length > 0) {
-        autosuggestBox.innerHTML = suggestions.slice(0, 5).map(client =>
-            `<div class="autosuggest-item" data-client-key="${client.compositeKey}">
-                <strong>${client.name}</strong> (${client[field]})
-            </div>`
-        ).join('');
-        autosuggestBox.style.display = 'block';
-
-        document.querySelectorAll('.autosuggest-item').forEach(item => {
-            item.addEventListener('click', () => {
-                const clientKey = item.dataset.clientKey;
-                const client = state.allClients.find(c => c.compositeKey === clientKey);
-                if (client) {
-                    document.getElementById('phone').value = client.phone || '';
-                    document.getElementById('account_name').value = client.account_name || '';
-                    document.getElementById('account_type').value = client.account_type || '';
-                    document.getElementById('account_link').value = client.account_link || '';
-                    document.querySelector('.passenger-name').value = client.name;
-                    document.querySelector('.passenger-id').value = client.id_no;
+        suggestions.forEach(client => {
+            const item = document.createElement('div');
+            item.className = 'autosuggest-item';
+            item.innerHTML = client[fieldType].replace(new RegExp(value, 'gi'), `<strong>$&</strong>`);
+            item.onclick = () => {
+                const fullClient = state.allClients.find(c => c.name === client.name);
+                if (fullClient) {
+                    document.getElementById('phone').value = fullClient.phone;
+                    document.getElementById('account_name').value = fullClient.account_name;
+                    // You might need to retrieve and set account_type and account_link if they exist on the client object
                 }
                 autosuggestBox.style.display = 'none';
-            });
+            };
+            autosuggestBox.appendChild(item);
         });
+        autosuggestBox.style.display = 'block';
     } else {
         autosuggestBox.style.display = 'none';
     }
 }
 
-// --- FEATURED CLIENTS ---
-function loadFeaturedClients() {
-    const featured = localStorage.getItem('featuredClients');
-    if (featured) {
-        state.featuredClients = JSON.parse(featured);
-    }
-}
-
-function saveFeaturedClients() {
-    localStorage.setItem('featuredClients', JSON.stringify(state.featuredClients));
-}
-
-function toggleFeaturedClient(clientKey, event) {
-    event.stopPropagation(); // Prevent row click events if any
-    const index = state.featuredClients.indexOf(clientKey);
-    if (index > -1) {
-        state.featuredClients.splice(index, 1);
+// Helper function for airline dropdown change
+function handleAirlineChange() {
+    const airlineSelect = document.getElementById('airline');
+    const customAirlineGroup = document.getElementById('custom_airline_group');
+    if (airlineSelect.value === 'CUSTOM') {
+        customAirlineGroup.style.display = 'block';
     } else {
-        state.featuredClients.push(clientKey);
+        customAirlineGroup.style.display = 'none';
     }
-    saveFeaturedClients();
+}
+// Populate Airline Dropdown in Search
+function populateSearchAirlines() {
+    const airlineSelect = document.getElementById('searchAirline');
+    const uniqueAirlines = [...new Set(state.allTickets.map(t => t.airline).filter(Boolean))];
+    uniqueAirlines.sort();
     
-    // Visually update the star instantly without a full re-render
-    const starIcon = event.target;
-    starIcon.classList.toggle('featured');
+    // Clear existing options except the first one
+    while (airlineSelect.options.length > 1) {
+        airlineSelect.remove(1);
+    }
+    
+    uniqueAirlines.forEach(airline => {
+        airlineSelect.add(new Option(airline.toUpperCase(), airline));
+    });
 }

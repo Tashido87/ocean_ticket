@@ -7,7 +7,8 @@ const CONFIG = {
     DISCOVERY_DOC: 'https://sheets.googleapis.com/$discovery/rest?version=v4',
     SHEET_NAME: '2025',
     BOOKING_SHEET_NAME: 'booking',
-    HISTORY_SHEET: 'history' // Consolidated history sheet
+    HISTORY_SHEET: 'history', // Consolidated history sheet
+    SETTLE_SHEET_NAME: 'settle'
 };
 
 // --- GLOBAL STATE & CACHE ---
@@ -17,6 +18,7 @@ const state = {
     allBookings: [],
     filteredBookings: [],
     allClients: [],
+    allSettlements: [],
     featuredClients: [], // For starred clients
     history: [],
     charts: {},
@@ -26,6 +28,7 @@ const state = {
     bookingCurrentPage: 1,
     historyPage: 1,
     clientPage: 1,
+    settlementPage: 1,
     searchTimeout: null,
     cache: {}, // In-memory cache
     bookingToUpdate: null,
@@ -87,11 +90,19 @@ function initializeDatepickers() {
         autohide: true,
         todayHighlight: true
     };
+     const settlementOptions = {
+        format: 'dd-M-yyyy',
+        autohide: true,
+        todayHighlight: true
+    };
     const allDatePickers = ['searchStartDate', 'searchEndDate', 'searchTravelDate', 'booking_departing_on', 'exportStartDate', 'exportEndDate', 'issued_date', 'departing_on', 'paid_date', 'booking_end_date'];
     allDatePickers.forEach(id => {
         const el = document.getElementById(id);
         if (el) new Datepicker(el, defaultOptions);
     });
+
+    const settlementDatePicker = document.getElementById('settlement_date');
+    if(settlementDatePicker) new Datepicker(settlementDatePicker, settlementOptions);
 }
 
 function initializeTimePicker() {
@@ -166,7 +177,8 @@ async function initializeApp() {
         await Promise.all([
             loadTicketData(),
             loadBookingData(),
-            loadHistory()
+            loadHistory(),
+            loadSettlementData()
         ]);
         initializeDashboardSelectors();
         buildClientList();
@@ -276,6 +288,10 @@ function setupEventListeners() {
     document.getElementById('newBookingBtn').addEventListener('click', showNewBookingForm);
     document.getElementById('cancelNewBookingBtn').addEventListener('click', hideNewBookingForm);
     document.getElementById('newBookingForm').addEventListener('submit', handleNewBookingSubmit);
+    
+    document.getElementById('newSettlementBtn').addEventListener('click', showNewSettlementForm);
+    document.getElementById('cancelNewSettlementBtn').addEventListener('click', hideNewSettlementForm);
+    document.getElementById('newSettlementForm').addEventListener('submit', handleNewSettlementSubmit);
 
     document.getElementById('addBookingPassengerBtn').addEventListener('click', addBookingPassengerForm);
     document.getElementById('removeBookingPassengerBtn').addEventListener('click', removeBookingPassengerForm);
@@ -1026,6 +1042,11 @@ function showView(viewName) {
     if (viewName === 'booking') {
         hideNewBookingForm();
     }
+     if (viewName === 'settle') {
+        hideNewSettlementForm();
+        displaySettlements();
+        updateSettlementDashboard();
+    }
     if (viewName === 'clients') {
         renderClientsView();
     }
@@ -1204,6 +1225,7 @@ function updateDashboardData() {
     extraFareBox.innerHTML = `<div class="info-card-content"><h3>Total Extra Fare</h3><div class="main-value">${totalExtraFare.toLocaleString()}</div><span class="sub-value">MMK</span><i class="icon fa-solid fa-dollar-sign"></i></div>`;
     
     updateNotifications();
+    updateSettlementDashboard();
 }
 
 /**
@@ -1421,6 +1443,7 @@ function showNotificationModal() {
 function makeClickable(text) { if (!text) return 'N/A'; if (text.toLowerCase().startsWith('http')) return `<a href="${text}" target="_blank" rel="noopener noreferrer">${text}</a>`; if (/^[\d\s\-+()]+$/.test(text)) return `<a href="tel:${text.replace(/[^\d+]/g, '')}">${text}</a>`; if (text.startsWith('@')) return `<a href="https://t.me/${text.substring(1)}" target="_blank" rel="noopener noreferrer">${text}</a>`; return text; }
 function showToast(message, type = 'info') { document.getElementById('toastMessage').textContent = message; const toastEl = document.getElementById('toast'); toastEl.className = `show ${type}`; setTimeout(() => toastEl.className = toastEl.className.replace('show', ''), 4000); }
 function formatDateForSheet(dateString) { if (!dateString) return ''; const date = new Date(dateString); return isNaN(date.getTime()) ? dateString : `${String(date.getMonth() + 1).padStart(2, '0')}/${String(date.getDate()).padStart(2, '0')}/${date.getFullYear()}`; }
+function formatDateToDDMMMYYYY(dateString) { if (!dateString) return ''; const date = new Date(dateString); const day = String(date.getDate()).padStart(2, '0'); const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]; const month = monthNames[date.getMonth()]; const year = date.getFullYear(); return `${day}-${month}-${year}`; }
 
 function formatDateToDMMMY(dateString) {
     if (!dateString) return '';
@@ -2547,10 +2570,12 @@ function initializeUISettings() {
     const glassSettingsContainer = document.getElementById('glass-settings-container');
 
     const applyTheme = (isMaterial, isDark) => {
+        const datepickerEl = document.querySelector('.datepicker');
         if (isMaterial) {
             document.body.classList.add('material-theme');
             darkModeContainer.style.display = 'flex';
             glassSettingsContainer.style.display = 'none';
+            if (datepickerEl) datepickerEl.classList.add('light-theme');
              if (isDark) {
                 document.body.classList.add('dark-theme');
             } else {
@@ -2560,6 +2585,7 @@ function initializeUISettings() {
             document.body.classList.remove('material-theme', 'dark-theme');
             darkModeContainer.style.display = 'none';
             glassSettingsContainer.style.display = 'block';
+            if (datepickerEl) datepickerEl.classList.remove('light-theme');
         }
         // Background logic
         const customBg = localStorage.getItem('customBackground');
@@ -2763,4 +2789,204 @@ function populateSearchAirlines() {
     uniqueAirlines.forEach(airline => {
         airlineSelect.add(new Option(airline.toUpperCase(), airline));
     });
+}
+
+// --- SETTLEMENT LOGIC ---
+async function loadSettlementData() {
+    try {
+        const response = await fetchFromSheet(`${CONFIG.SETTLE_SHEET_NAME}!A:G`, 'settlementData');
+        if (response.values) {
+            state.allSettlements = parseSettlementData(response.values);
+        } else {
+            state.allSettlements = [];
+        }
+        displaySettlements();
+    } catch (error) {
+        showToast(`Error loading settlement data: ${error.result?.error?.message || error}`, 'error');
+        renderEmptyState('settlementTableContainer', 'fa-handshake-slash', 'Failed to load settlements', 'Could not retrieve settlement data from the sheet.');
+    }
+}
+
+function parseSettlementData(values) {
+    if (values.length < 1) return [];
+    const headers = values[0].map(h => h.toLowerCase().replace(/\s+/g, '_'));
+    return values.slice(1).map((row, i) => {
+        const settlement = {};
+        headers.forEach((h, j) => {
+            const value = row[j] || '';
+            settlement[h] = typeof value === 'string' ? value.trim() : value;
+        });
+        const safeParse = (val) => parseFloat(String(val).replace(/,/g, '')) || 0;
+        ['net_amount', 'amount_paid'].forEach(key => settlement[key] = safeParse(settlement[key]));
+        settlement.rowIndex = i + 2;
+        return settlement;
+    });
+}
+
+function displaySettlements() {
+    const container = document.getElementById('settlementTableContainer');
+    container.innerHTML = '';
+
+    const sortedSettlements = [...state.allSettlements].sort((a, b) => parseSheetDate(b.settlement_date) - parseSheetDate(a.settlement_date));
+
+    if (sortedSettlements.length === 0) {
+        renderEmptyState('settlementTableContainer', 'fa-handshake', 'No Settlements Yet', 'Start by adding a new settlement record.');
+        setupSettlementPagination([]);
+        return;
+    }
+
+    const table = document.createElement('table');
+    table.innerHTML = `
+        <thead>
+            <tr>
+                <th>Settlement Date</th>
+                <th>Amount Paid</th>
+                <th>Payment Method</th>
+                <th>Transaction ID</th>
+                <th>Status</th>
+                <th>Notes</th>
+            </tr>
+        </thead>
+        <tbody id="settlementTableBody"></tbody>
+    `;
+    container.appendChild(table);
+
+    state.settlementPage = 1;
+    renderSettlementPage(1, sortedSettlements);
+}
+
+function renderSettlementPage(page, settlements) {
+    state.settlementPage = page;
+    const tbody = document.getElementById('settlementTableBody');
+    if (!tbody) return;
+    tbody.innerHTML = '';
+
+    const paginated = settlements.slice((page - 1) * state.rowsPerPage, page * state.rowsPerPage);
+
+    paginated.forEach(settlement => {
+        const row = tbody.insertRow();
+        row.innerHTML = `
+            <td>${settlement.settlement_date || ''}</td>
+            <td>${(settlement.amount_paid || 0).toLocaleString()}</td>
+            <td>${settlement.payment_method || ''}</td>
+            <td>${settlement.transaction_id || 'N/A'}</td>
+            <td>${settlement.status || ''}</td>
+            <td>${settlement.notes || ''}</td>
+        `;
+    });
+
+    setupSettlementPagination(settlements);
+}
+
+function setupSettlementPagination(items) {
+    const container = document.getElementById('settlementPagination');
+    container.innerHTML = '';
+    const pageCount = Math.ceil(items.length / state.rowsPerPage);
+    if (pageCount <= 1) return;
+
+    const createBtn = (txt, pg, enabled = true) => {
+        const btn = document.createElement('button');
+        btn.className = 'pagination-btn';
+        btn.innerHTML = txt;
+        btn.disabled = !enabled;
+        if (enabled) {
+            btn.onclick = () => renderSettlementPage(pg, items);
+        }
+        if (pg === state.settlementPage) {
+            btn.classList.add('active');
+        }
+        return btn;
+    };
+
+    container.append(createBtn('&laquo;', state.settlementPage - 1, state.settlementPage > 1));
+    for (let i = 1; i <= pageCount; i++) {
+        container.append(createBtn(i, i));
+    }
+    container.append(createBtn('&raquo;', state.settlementPage + 1, state.settlementPage < pageCount));
+}
+
+function showNewSettlementForm() {
+    document.getElementById('settle-display-container').style.display = 'none';
+    document.getElementById('settle-form-container').style.display = 'block';
+}
+
+function hideNewSettlementForm() {
+    document.getElementById('settle-form-container').style.display = 'none';
+    document.getElementById('settle-display-container').style.display = 'block';
+    document.getElementById('newSettlementForm').reset();
+}
+
+async function handleNewSettlementSubmit(e) {
+    e.preventDefault();
+    if (state.isSubmitting) return;
+    state.isSubmitting = true;
+    const submitButton = e.target.querySelector('button[type="submit"]');
+    if (submitButton) submitButton.disabled = true;
+
+    try {
+        const settlementData = {
+            settlement_date: document.getElementById('settlement_date').value,
+            amount_paid: document.getElementById('settlement_amount_paid').value,
+            payment_method: document.getElementById('settlement_payment_method').value,
+            transaction_id: document.getElementById('settlement_transaction_id').value.toUpperCase(),
+            notes: document.getElementById('settlement_notes').value
+        };
+
+        if (!settlementData.settlement_date || !settlementData.amount_paid) {
+            throw new Error('Settlement Date and Amount Paid are required.');
+        }
+        
+        const amountPaid = parseFloat(settlementData.amount_paid) || 0;
+
+        const values = [[
+            formatDateToDDMMMYYYY(settlementData.settlement_date),
+            amountPaid, // Net Amount
+            amountPaid, // Amount Paid
+            settlementData.payment_method,
+            settlementData.transaction_id,
+            "Paid", // Status
+            settlementData.notes
+        ]];
+
+        await gapi.client.sheets.spreadsheets.values.append({
+            spreadsheetId: CONFIG.SHEET_ID,
+            range: `${CONFIG.SETTLE_SHEET_NAME}!A:G`,
+            valueInputOption: 'USER_ENTERED',
+            resource: { values },
+        });
+
+        state.cache['settlementData'] = null;
+        showToast('Settlement saved successfully!', 'success');
+        hideNewSettlementForm();
+        await loadSettlementData();
+        updateSettlementDashboard();
+    } catch (error) {
+        showToast(`Error: ${error.message || 'Could not save settlement.'}`, 'error');
+    } finally {
+        state.isSubmitting = false;
+        if (submitButton) submitButton.disabled = false;
+    }
+}
+
+function updateSettlementDashboard() {
+    const totalNetAmount = state.allTickets.reduce((sum, t) => sum + (t.net_amount || 0) + (t.date_change || 0), 0);
+    const totalAmountPaid = state.allSettlements.reduce((sum, s) => sum + (s.amount_paid || 0), 0);
+    const netAmountLeft = totalNetAmount - totalAmountPaid;
+
+    const netAmountBox = document.getElementById('settlement-net-amount-box');
+    netAmountBox.innerHTML = `<div class="info-card-content"><h3>Net Amount Left</h3><div class="main-value">${netAmountLeft.toLocaleString()}</div><span class="sub-value">MMK</span><i class="icon fa-solid fa-file-invoice-dollar"></i></div>`;
+    
+    const now = new Date();
+    const currentMonth = now.getMonth();
+    const currentYear = now.getFullYear();
+
+    const commissionThisMonth = state.allTickets
+        .filter(t => {
+            const ticketDate = parseSheetDate(t.issued_date);
+            return ticketDate.getMonth() === currentMonth && ticketDate.getFullYear() === currentYear;
+        })
+        .reduce((sum, t) => sum + (t.commission || 0), 0);
+
+    const commissionBox = document.getElementById('settlement-commission-box');
+    commissionBox.innerHTML = `<div class="info-card-content"><h3>Current Month's Commission</h3><div class="main-value">${commissionThisMonth.toLocaleString()}</div><span class="sub-value">MMK</span><i class="icon fa-solid fa-hand-holding-dollar"></i></div>`;
 }

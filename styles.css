@@ -266,7 +266,7 @@ body::before {
 .date-selectors {
     display: flex;
     gap: 0.5rem;
-    background: rgba(0,0,0,0.2);
+    background: rgba(0,0,0,0.1);
     padding: 0.25rem;
     border-radius: 10px;
 }
@@ -484,7 +484,7 @@ tbody tr:hover { background-color: var(--glass-bg-hover); }
     gap: 0.75rem;
     font-size: 0.9rem;
     font-weight: 500;
-    background-color: rgba(0,0,0,0.2);
+    background-color: rgba(0,0,0,0.1);
     padding: 0.25rem 0.75rem;
     border-radius: var(--liquid-radius);
 }
@@ -1640,7 +1640,7 @@ td .icon-btn-table {
     width: 5px;
 }
 .notification-list::-webkit-scrollbar-track {
-    background: rgba(0,0,0,0.2);
+    background: rgba(0,0,0,0.1);
     border-radius: 10px;
 }
 .notification-list::-webkit-scrollbar-thumb {
@@ -1657,7 +1657,7 @@ td .icon-btn-table {
     gap: 0.75rem;
     padding: 0.5rem;
     border-radius: 12px;
-    background: rgba(0,0,0,0.15);
+    background: rgba(0,0,0,0.1);
     font-size: 0.8rem;
 }
 
@@ -1741,7 +1741,7 @@ td .icon-btn-table {
     width: 6px;
 }
 .notification-modal-list::-webkit-scrollbar-track {
-    background: rgba(0,0,0,0.2);
+    background: rgba(0,0,0,0.1);
     border-radius: 10px;
 }
 .notification-modal-list::-webkit-scrollbar-thumb {
@@ -1767,7 +1767,7 @@ td .icon-btn-table {
     align-items: center;
     gap: 1rem;
     padding: 1rem;
-    background: rgba(0,0,0,0.2);
+    background: rgba(0,0,0,0.1);
     border: 1px solid transparent;
     border-left: 4px solid transparent;
     border-radius: 15px;
@@ -2063,6 +2063,17 @@ body.material-theme input:checked + .slider {
 body.material-theme .flight-type-toggle span.active {
     color: var(--primary-accent);
 }
+
+body.material-theme .date-selectors,
+body.material-theme .flight-type-toggle {
+    background-color: rgba(0,0,0,0.05);
+}
+body.material-theme .notification-item,
+body.material-theme .notification-modal-item,
+body.material-theme .notification-icon {
+    background-color: rgba(0,0,0,0.03);
+}
+
 
 /* Client Name Highlighting */
 #clientListTable .client-name-cell {

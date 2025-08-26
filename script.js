@@ -1007,22 +1007,27 @@ function initializeBackgroundChanger() {
             const reader = new FileReader();
             reader.onload = (e) => {
                 const imageUrl = e.target.result;
-                document.body.style.backgroundImage = `url(${imageUrl})`;
                 localStorage.setItem('customBackground', imageUrl);
+                // Apply background only if not in material theme
+                if (!document.body.classList.contains('material-theme')) {
+                    document.body.style.backgroundImage = `url(${imageUrl})`;
+                }
                 showToast('Background updated!', 'success');
             };
             reader.readAsDataURL(file);
         }
+        // Reset the input value to allow re-uploading the same file
+        event.target.value = '';
     });
     
     resetBtn.addEventListener('click', () => {
         localStorage.removeItem('customBackground');
-        // Re-apply the default glass background
-        document.body.style.backgroundImage = `url('https://images.unsplash.com/photo-1550684376-efcbd6e3f031?q=80&w=2970&auto=format&fit=crop')`;
+        // Re-apply the default glass background if not in material theme
+        if (!document.body.classList.contains('material-theme')) {
+            document.body.style.backgroundImage = `url('https://images.unsplash.com/photo-1550684376-efcbd6e3f031?q=80&w=2970&auto=format&fit=crop')`;
+        }
         showToast('Background reset.', 'info');
     });
-
-    // Initial background application is now handled by initializeUISettings to respect the theme
 }
 
 // --- UI & DISPLAY ---
@@ -2577,12 +2582,10 @@ function initializeUISettings() {
     const glassSettingsContainer = document.getElementById('glass-settings-container');
 
     const applyTheme = (isMaterial, isDark) => {
-        const datepickerEl = document.querySelector('.datepicker');
         if (isMaterial) {
             document.body.classList.add('material-theme');
             darkModeContainer.style.display = 'flex';
             glassSettingsContainer.style.display = 'none';
-            if (datepickerEl) datepickerEl.classList.add('light-theme');
              if (isDark) {
                 document.body.classList.add('dark-theme');
             } else {
@@ -2592,16 +2595,17 @@ function initializeUISettings() {
             document.body.classList.remove('material-theme', 'dark-theme');
             darkModeContainer.style.display = 'none';
             glassSettingsContainer.style.display = 'block';
-            if (datepickerEl) datepickerEl.classList.remove('light-theme');
         }
-        // Background logic
+        
+        // BUG FIX: Background logic
         const customBg = localStorage.getItem('customBackground');
-        if (customBg && !isMaterial) {
-            document.body.style.backgroundImage = `url(${customBg})`;
-        } else if (!isMaterial) {
-            document.body.style.backgroundImage = `url('https://images.unsplash.com/photo-1550684376-efcbd6e3f031?q=80&w=2970&auto=format&fit=crop')`;
+        if (isMaterial) {
+            document.body.style.backgroundImage = 'none'; // Material theme never has a background image
+        } else if (customBg) {
+            document.body.style.backgroundImage = `url(${customBg})`; // Glass theme prioritizes custom
         } else {
-            document.body.style.backgroundImage = 'none';
+            // Glass theme with no custom background gets the default
+            document.body.style.backgroundImage = `url('https://images.unsplash.com/photo-1550684376-efcbd6e3f031?q=80&w=2970&auto=format&fit=crop')`;
         }
     };
 
@@ -2641,8 +2645,8 @@ function initializeUISettings() {
     const styleSheet = document.createElement("style");
     styleSheet.innerText = `
         .notification-count {
-            background-color: var(--primary-accent);
-            color: var(--bg-color) !important; /* Use important to override potential conflicts */
+            background-color: var(--danger-accent);
+            color: #FFFFFF !important;
             font-size: 0.75rem;
             font-weight: 700;
             padding: 2px 8px;

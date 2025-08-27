@@ -1288,6 +1288,7 @@ function updateNotifications() {
         const timeLeft = Math.round((deadline.getTime() - now.getTime()) / (1000 * 60)); // Time left in minutes
         notifications.push({
             type: 'deadline',
+            deadlineTime: deadline.getTime(),
             html: `<div class="notification-item deadline">
                 <i class="fa-solid fa-clock"></i>
                 <div>
@@ -1315,11 +1316,14 @@ function updateNotifications() {
         });
     });
 
-    // Sort notifications to show deadlines first
+    // Sort notifications to show deadlines first, and among deadlines, the nearest one first
     notifications.sort((a, b) => {
         if (a.type === 'deadline' && b.type !== 'deadline') return -1;
         if (a.type !== 'deadline' && b.type === 'deadline') return 1;
-        return 0;
+        if (a.type === 'deadline' && b.type === 'deadline') {
+            return a.deadlineTime - b.deadlineTime; // Sort by nearest deadline
+        }
+        return 0; // Keep original order for other types
     });
 
     if (notifications.length > 0) {

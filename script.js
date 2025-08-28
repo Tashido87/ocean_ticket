@@ -1373,7 +1373,8 @@ function showNotificationModal() {
 
     if (groupedDeadlineBookings.length > 0) {
         notificationCount += groupedDeadlineBookings.length;
-        modalContent += '<h3 class="notification-group-title">Approaching Deadlines</h3>';
+        // MODIFIED LINE: Icon added without inline style
+        modalContent += '<h3 class="notification-group-title"><i class="fa-solid fa-clock-fast-forward"></i>Approaching Deadlines</h3>';
         groupedDeadlineBookings.forEach(group => {
             const deadline = parseDeadline(group.enddate, group.endtime);
             const timeLeft = Math.round((deadline.getTime() - now.getTime()) / (1000 * 60));
@@ -1412,7 +1413,8 @@ function showNotificationModal() {
 
     if (groupedUnpaidTickets.length > 0) {
         notificationCount += groupedUnpaidTickets.length;
-        modalContent += '<h3 class="notification-group-title">Unpaid Tickets</h3>';
+        // MODIFIED LINE: Icon added without inline style
+        modalContent += '<h3 class="notification-group-title"><i class="fa-solid fa-file-invoice-dollar"></i>Unpaid Tickets</h3>';
         groupedUnpaidTickets.forEach(group => {
             const passengerCount = group.passengers.length;
             const title = `${group.passengers[0]}${passengerCount > 1 ? ` (+${passengerCount - 1})` : ''}`;
@@ -2427,13 +2429,9 @@ function viewClientHistory(clientName) {
 
     const firstTicket = clientTickets[0];
     const totalSpent = clientTickets.reduce((sum, t) => sum + (t.net_amount || 0) + (t.extra_fare || 0) + (t.date_change || 0), 0);
-    const flightsByAirline = clientTickets.reduce((acc, t) => {
-        acc[t.airline] = (acc[t.airline] || 0) + 1;
-        return acc;
-    }, {});
-    const favoriteAirline = Object.keys(flightsByAirline).sort((a, b) => flightsByAirline[b] - flightsByAirline[a])[0] || 'N/A';
+    const totalProfit = clientTickets.reduce((sum, t) => sum + (t.commission || 0) + (t.extra_fare || 0), 0);
 
-    let historyHtml = '<div class="table-container"><table id="clientHistoryTable"><thead><tr><th>Issued</th><th>PNR</th><th>Route</th><th>Airline</th><th>Net Amount</th><th>Status</th></tr></thead><tbody>';
+    let historyHtml = '<div class="table-container"><table id="clientHistoryTable"><thead><tr><th>Issued</th><th>PNR</th><th>Route</th><th>Travel Date</th><th>Airline</th><th>Net Amount</th></tr></thead><tbody>';
     clientTickets.forEach(t => {
         const isCanceled = t.remarks?.toLowerCase().includes('cancel') || t.remarks?.toLowerCase().includes('refund');
         historyHtml += `
@@ -2441,9 +2439,9 @@ function viewClientHistory(clientName) {
                 <td>${formatDateToDMMMY(t.issued_date)}</td>
                 <td>${t.booking_reference}</td>
                 <td>${t.departure.split(' ')[0]}→${t.destination.split(' ')[0]}</td>
+                <td>${formatDateToDMMMY(t.departing_on)}</td>
                 <td>${t.airline}</td>
                 <td>${(t.net_amount || 0).toLocaleString()}</td>
-                <td>${isCanceled ? 'Canceled' : 'Confirmed'}</td>
             </tr>
         `;
     });
@@ -2462,7 +2460,7 @@ function viewClientHistory(clientName) {
         <div class="client-history-stats">
             <div class="stat-card"><div class="label">Total Tickets</div><div class="value">${clientTickets.length}</div></div>
             <div class="stat-card"><div class="label">Total Spent</div><div class="value">${totalSpent.toLocaleString()} MMK</div></div>
-            <div class="stat-card"><div class="label">Favorite Airline</div><div class="value">${favoriteAirline}</div></div>
+            <div class="stat-card"><div class="label">Total Profit</div><div class="value">${totalProfit.toLocaleString()} MMK</div></div>
         </div>
         <h3>Ticket History</h3>
         ${historyHtml}

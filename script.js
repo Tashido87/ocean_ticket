@@ -697,7 +697,7 @@ async function updateBookingStatus(rowIndices, remarks) {
     const originalAllBookings = [...state.allBookings];
     state.allBookings = state.allBookings.filter(b => !rowIndices.includes(b.rowIndex));
     displayBookings();
-    updateNotifications();
+    updateNotifications(); // BUG FIX: Refresh notifications after updating status
 
     try {
         const data = bookingsToUpdate.map(booking => {
@@ -869,6 +869,7 @@ async function handleNewBookingSubmit(e) {
         showToast(`Booking for ${passengerData.length} passenger(s) saved!`, 'success');
         hideNewBookingForm();
         await loadBookingData();
+        updateNotifications(); // BUG FIX: Refresh notifications after adding a booking
     } catch (error) {
         showToast(`Error: ${error.message || 'Could not save booking.'}`, 'error');
     } finally {

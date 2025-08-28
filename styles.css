@@ -1427,7 +1427,7 @@ td .icon-btn-table {
     margin-bottom: 2rem;
 }
 .stat-card {
-    background: rgba(0,0,0,0.2);
+    background: rgba(255,255,255,0.05);
     padding: 1.25rem;
     border-radius: 15px;
     text-align: center;
@@ -1762,6 +1762,21 @@ td .icon-btn-table {
     margin: 1rem 0 0.5rem 0.5rem;
     text-transform: uppercase;
     letter-spacing: 0.5px;
+    display: flex;
+    align-items: center;
+}
+
+.notification-group-title .fa-solid {
+    margin-right: 0.75rem;
+    font-size: 0.9em;
+}
+
+.notification-group-title .fa-clock-fast-forward {
+    color: var(--danger-accent);
+}
+
+.notification-group-title .fa-file-invoice-dollar {
+    color: var(--primary-accent);
 }
 
 .notification-modal-item {
@@ -1822,14 +1837,14 @@ td .icon-btn-table {
 .notification-modal-item.deadline {
     border-left-color: var(--danger-accent);
 }
-.notification-modal-item.deadline .notification-icon {
+.notification-modal-item.deadline .notification-icon i { /* MODIFIED RULE */
     color: var(--danger-accent);
 }
 
 .notification-modal-item.unpaid {
     border-left-color: var(--primary-accent);
 }
-.notification-modal-item.unpaid .notification-icon {
+.notification-modal-item.unpaid .notification-icon i { /* MODIFIED RULE */
     color: var(--primary-accent);
 }
 

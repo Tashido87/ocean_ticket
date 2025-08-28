@@ -2451,7 +2451,7 @@ function viewClientHistory(clientName) {
         <div class="client-history-header">
             <div class="client-history-info">
                 <h2>${clientName}</h2>
-                <p>Contact: ${firstTicket.phone} | Social: ${firstTicket.account_name}</p>
+                <p>ID: ${firstTicket.id_no} | Phone: ${firstTicket.phone} | Social: ${firstTicket.account_name} (${firstTicket.account_type})</p>
             </div>
             <div class="client-history-actions">
                 <button class="btn btn-secondary" onclick="closeModal()">Close</button>

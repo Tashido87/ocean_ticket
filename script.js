@@ -2451,7 +2451,7 @@ function viewClientHistory(clientName) {
         <div class="client-history-header">
             <div class="client-history-info">
                 <h2>${clientName}</h2>
-                <p>ID: ${firstTicket.id_no} | Phone: ${firstTicket.phone} | Social: ${firstTicket.account_name} (${firstTicket.account_type})</p>
+                <p>ID: ${firstTicket.id_no || 'N/A'} | Phone: ${firstTicket.phone || 'N/A'} | Social: ${firstTicket.account_name || 'N/A'} (${firstTicket.account_type || 'N/A'})</p>
             </div>
             <div class="client-history-actions">
                 <button class="btn btn-secondary" onclick="closeModal()">Close</button>
@@ -2668,22 +2668,30 @@ function initializeUISettings() {
 // --- PDF EXPORT ---
 async function exportToPdf() {
     const { jsPDF } = window.jspdf;
-    const doc = new jsPDF();
+    const doc = new jsPDF({ orientation: 'p', unit: 'mm', format: 'a4' });
     const exportType = document.querySelector('input[name="exportType"]:checked').value;
 
     let ticketsToExport;
+    let startDate, endDate;
+    let dateRangeString = '';
 
     if (exportType === 'filtered') {
         ticketsToExport = state.filteredTickets;
     } else {
-        const startDate = parseSheetDate(document.getElementById('exportStartDate').value);
-        const endDate = parseSheetDate(document.getElementById('exportEndDate').value);
-        if (!startDate || !endDate) {
+        const startDateStr = document.getElementById('exportStartDate').value;
+        const endDateStr = document.getElementById('exportEndDate').value;
+        startDate = parseSheetDate(startDateStr);
+        endDate = parseSheetDate(endDateStr);
+
+        if (!startDate || !endDate || isNaN(startDate) || isNaN(endDate)) {
             showToast('Please select a valid date range.', 'error');
             return;
         }
         startDate.setHours(0, 0, 0, 0);
         endDate.setHours(23, 59, 59, 999);
+        
+        dateRangeString = `${formatDateToDMMMY(startDate)} to ${formatDateToDMMMY(endDate)}`;
+
         ticketsToExport = state.allTickets.filter(t => {
             const issuedDate = parseSheetDate(t.issued_date);
             return issuedDate >= startDate && issuedDate <= endDate;
@@ -2692,44 +2700,142 @@ async function exportToPdf() {
 
     if (ticketsToExport.length === 0) {
         showToast('No tickets to export in the selected range.', 'info');
+        exportConfirmModal.classList.remove('show');
         return;
     }
 
-    // Sort by issue date for the report
     ticketsToExport.sort((a, b) => parseSheetDate(a.issued_date) - parseSheetDate(b.issued_date));
 
-    const title = `Ticket Report (${exportType === 'filtered' ? 'Filtered' : 'Date Range'})`;
+    // --- Header ---
     doc.setFontSize(18);
-    doc.text(title, 14, 22);
+    doc.setFont('helvetica', 'bold');
+    doc.text('Ticket Sales Report', 105, 15, { align: 'center' });
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'normal');
+    const reportTypeStr = exportType === 'filtered' ? 'Filtered Results' : `Date Range: ${dateRangeString}`;
+    doc.text(reportTypeStr, 105, 20, { align: 'center' });
 
-    const head = [['Issued Date', 'Name', 'PNR', 'Route', 'Net Amount', 'Commission', 'Status']];
-    const body = ticketsToExport.map(t => {
-         const isCanceled = t.remarks?.toLowerCase().includes('cancel') || t.remarks?.toLowerCase().includes('refund');
+    // --- Table ---
+    const head = [['No.', 'Issued Date', 'Name', 'PNR', 'Route', 'Net Amount', 'Date Change', 'Commission']];
+    const body = ticketsToExport.map((t, index) => {
+        const route = `${(t.departure||'').split('(')[0].trim()} - ${(t.destination||'').split('(')[0].trim()}`;
         return [
-            t.issued_date,
+            index + 1,
+            formatDateToDMMMY(t.issued_date),
             t.name,
             t.booking_reference,
-            `${t.departure.split(' ')[0]}→${t.destination.split(' ')[0]}`,
-            t.net_amount.toLocaleString(),
-            t.commission.toLocaleString(),
-            isCanceled ? 'Canceled' : 'Confirmed'
+            route,
+            (t.net_amount || 0).toLocaleString(),
+            (t.date_change || 0).toLocaleString(),
+            (t.commission || 0).toLocaleString()
         ];
     });
+
+    const totalNetAmount = ticketsToExport.reduce((sum, t) => sum + (t.net_amount || 0), 0);
+    const totalDateChange = ticketsToExport.reduce((sum, t) => sum + (t.date_change || 0), 0);
+    const totalCommission = ticketsToExport.reduce((sum, t) => sum + (t.commission || 0), 0);
+    
+    body.push([
+        { content: 'Total', colSpan: 5, styles: { halign: 'right', fontStyle: 'bold' } },
+        { content: totalNetAmount.toLocaleString(), styles: { fontStyle: 'bold', halign: 'right' } },
+        { content: totalDateChange.toLocaleString(), styles: { fontStyle: 'bold', halign: 'right' } },
+        { content: totalCommission.toLocaleString(), styles: { fontStyle: 'bold', halign: 'right' } }
+    ]);
 
     doc.autoTable({
         head: head,
         body: body,
-        startY: 30
+        startY: 25,
+        theme: 'grid',
+        headStyles: { fillColor: [44, 62, 80], fontSize: 8 },
+        styles: { fontSize: 7, cellPadding: 1.5 },
+        columnStyles: {
+            0: { halign: 'center', cellWidth: 8 }, // No.
+            1: { cellWidth: 18 }, // Issued Date
+            2: { cellWidth: 30 }, // Name
+            3: { cellWidth: 18 }, // PNR
+            4: { cellWidth: 40 }, // Route
+            5: { halign: 'right', cellWidth: 20 }, // Net
+            6: { halign: 'right', cellWidth: 20 }, // Date Change
+            7: { halign: 'right', cellWidth: 20 }  // Commission
+        },
+        didParseCell: function (data) {
+            if (data.row.raw[0].content === 'Total') {
+                data.cell.styles.fontStyle = 'bold';
+            }
+        }
     });
 
-    const totalNetAmount = ticketsToExport.reduce((sum, t) => sum + (t.net_amount || 0), 0);
-    const totalCommission = ticketsToExport.reduce((sum, t) => sum + (t.commission || 0), 0);
-    const finalY = doc.lastAutoTable.finalY || 40;
+    let finalY = doc.lastAutoTable.finalY;
+    const pageHeight = doc.internal.pageSize.getHeight();
+    const pageMargin = 15;
+    
+    // Check if space is left for the summary. If not, add a new page.
+    // Estimate required height: 10mm for title + 4 * 7mm for rows = ~40-50mm
+    if (finalY + 50 > pageHeight - pageMargin) {
+        doc.addPage();
+        finalY = pageMargin;
+    } else {
+        finalY += 10;
+    }
+    
+    const grandTotal = totalNetAmount + totalDateChange;
+    
+    // --- Summary & Settlement Section (only for date range) ---
+    if (exportType === 'range') {
+        const settlementsInRange = state.allSettlements.filter(s => {
+            const settlementDate = parseSheetDate(s.settlement_date);
+            return settlementDate >= startDate && settlementDate <= endDate;
+        });
+        const totalSettlements = settlementsInRange.reduce((sum, s) => sum + s.amount_paid, 0);
+        const amountToPay = grandTotal - (totalCommission + totalSettlements);
 
-    doc.setFontSize(12);
-    doc.text(`Total Net Amount: ${totalNetAmount.toLocaleString()} MMK`, 14, finalY + 10);
-    doc.text(`Total Commission: ${totalCommission.toLocaleString()} MMK`, 14, finalY + 16);
+        // --- Create Settlement Breakdown Body ---
+        let settlementBody = [];
+        settlementBody.push(
+            [{ content: `Grand Total for ${dateRangeString}:`, styles: { fontStyle: 'bold' } }, { content: `${grandTotal.toLocaleString()} MMK`, styles: { halign: 'right', fontStyle: 'bold' } }],
+            [{ content: `Commissions for ${dateRangeString}:`, styles: {} }, { content: `(${totalCommission.toLocaleString()}) MMK`, styles: { halign: 'right' } }],
+        );
 
+        // Add line-by-line settlements
+        if(settlementsInRange.length > 0) {
+            settlementsInRange.forEach(s => {
+                const notes = s.notes ? `, ${s.notes}` : '';
+                const settlementText = `Settlement (${s.settlement_date}, ${s.payment_method}${notes})`;
+                settlementBody.push(
+                     [{ content: settlementText, styles: {textColor: [100, 100, 100]} }, { content: `(${s.amount_paid.toLocaleString()}) MMK`, styles: { halign: 'right', textColor: [100, 100, 100] } }]
+                );
+            });
+        } else {
+             settlementBody.push(
+                 [{ content: `No settlements made during ${dateRangeString}`, styles: {textColor: [150, 150, 150]} }, { content: `(0) MMK`, styles: { halign: 'right', textColor: [150, 150, 150] } }]
+            );
+        }
+        
+        // Final Balance Row
+        settlementBody.push(
+             [{ content: 'Remaining Balance to Settle:', styles: { fontStyle: 'bold' } }, { content: `${amountToPay.toLocaleString()} MMK`, styles: { halign: 'right', fontStyle: 'bold' } }]
+        );
+
+        // Draw the settlement summary table
+        doc.autoTable({
+            body: settlementBody,
+            startY: finalY,
+            theme: 'plain',
+            styles: { fontSize: 10, cellPadding: 2 },
+            columnStyles: { 0: { cellWidth: 120 }, 1: { halign: 'right' } },
+            tableWidth: 'auto',
+            margin: { left: 14 },
+            didDrawCell: (data) => {
+                 // Draw a line before the final balance row
+                 if (data.row.index === settlementBody.length - 2) {
+                    doc.setLineWidth(0.2);
+                    doc.line(data.cell.x, data.cell.y + data.cell.height + 1, data.cell.x + 182, data.cell.y + data.cell.height + 1);
+                }
+            }
+        });
+    }
+    
     doc.save(`ticket_report_${new Date().toISOString().slice(0,10)}.pdf`);
     exportConfirmModal.classList.remove('show');
 }

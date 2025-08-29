@@ -3058,18 +3058,22 @@ async function handleNewSettlementSubmit(e) {
             throw new Error('Settlement Date and Amount Paid are required.');
         }
 
+        // The 'values' array now includes an empty string for the 'net_amount' column (B)
+        // and correctly maps the rest of the data to columns C through G.
         const values = [[
-            formatDateToDDMMMYYYY(settlementData.settlement_date),
-            settlementData.amount_paid,
-            settlementData.payment_method,
-            settlementData.transaction_id,
-            "Paid", // Status
-            settlementData.notes
+            formatDateToDDMMMYYYY(settlementData.settlement_date), // Column A: Date
+            '',                                                   // Column B: net_amount (now empty)
+            settlementData.amount_paid,                           // Column C: Amount Paid
+            settlementData.payment_method,                        // Column D: Payment Method
+            settlementData.transaction_id,                        // Column E: Transaction ID
+            "Paid",                                               // Column F: Status
+            settlementData.notes                                  // Column G: Notes
         ]];
 
         await gapi.client.sheets.spreadsheets.values.append({
             spreadsheetId: CONFIG.SHEET_ID,
-            range: `${CONFIG.SETTLE_SHEET_NAME}!A:F`,
+            // The range has been updated to include the new 'notes' column (G).
+            range: `${CONFIG.SETTLE_SHEET_NAME}!A:G`,
             valueInputOption: 'USER_ENTERED',
             resource: { values },
         });

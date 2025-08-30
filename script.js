@@ -1058,7 +1058,6 @@ function showView(viewName) {
     }
     if (viewName === 'manage') {
         clearManageResults();
-        // displayHistory(1) is now called by clearManageResults to reset the view
     }
 }
 
@@ -1376,7 +1375,6 @@ function showNotificationModal() {
 
     if (groupedDeadlineBookings.length > 0) {
         notificationCount += groupedDeadlineBookings.length;
-        // MODIFIED LINE: Icon added without inline style
         modalContent += '<h3 class="notification-group-title"><i class="fa-solid fa-clock-fast-forward"></i>Approaching Deadlines</h3>';
         groupedDeadlineBookings.forEach(group => {
             const deadline = parseDeadline(group.enddate, group.endtime);
@@ -1416,7 +1414,6 @@ function showNotificationModal() {
 
     if (groupedUnpaidTickets.length > 0) {
         notificationCount += groupedUnpaidTickets.length;
-        // MODIFIED LINE: Icon added without inline style
         modalContent += '<h3 class="notification-group-title"><i class="fa-solid fa-file-invoice-dollar"></i>Unpaid Tickets</h3>';
         groupedUnpaidTickets.forEach(group => {
             const passengerCount = group.passengers.length;
@@ -1453,7 +1450,7 @@ function showNotificationModal() {
         </div>
     `;
 
-    openModal(content, 'large-modal');
+    openModal(modalContent, 'large-modal');
     const modalContentEl = modal.querySelector('.modal-content');
     if (modalContentEl) {
         modalContentEl.classList.add('notification-modal-content');

@@ -1058,7 +1058,7 @@ function showView(viewName) {
     }
     if (viewName === 'manage') {
         clearManageResults();
-        displayHistory(1);
+        // displayHistory(1) is now called by clearManageResults to reset the view
     }
 }
 
@@ -1210,26 +1210,19 @@ function updateDashboardData() {
 
     if (isNaN(selectedMonth) || isNaN(selectedYear)) return;
 
-    // Filter for tickets in the selected period
     const ticketsInPeriod = state.allTickets.filter(t => {
         const ticketDate = parseSheetDate(t.issued_date);
         return ticketDate.getMonth() === selectedMonth && ticketDate.getFullYear() === selectedYear;
     });
 
-    // Total tickets count (includes all tickets issued in the period, even if later canceled)
     document.getElementById('total-tickets-value').textContent = ticketsInPeriod.length;
 
-    // Revenue: Includes net amount from non-refunded tickets (partially canceled tickets have net_amount = fee)
     const revenueTickets = ticketsInPeriod.filter(t => !t.remarks?.toLowerCase().includes('full refund'));
     const totalRevenue = revenueTickets.reduce((sum, t) => sum + (t.net_amount || 0) + (t.date_change || 0), 0);
     const revenueBox = document.getElementById('monthly-revenue-box');
     revenueBox.innerHTML = `<div class="info-card-content"><h3>Total Revenue</h3><div class="main-value">${totalRevenue.toLocaleString()}</div><span class="sub-value">MMK</span><i class="icon fa-solid fa-sack-dollar"></i></div>`;
 
-    // Profit: Commission and Extra Fare from tickets that are NOT fully refunded.
-    const profitTickets = ticketsInPeriod.filter(t => {
-        const lowerRemarks = t.remarks?.toLowerCase() || '';
-        return !lowerRemarks.includes('full refund');
-    });
+    const profitTickets = ticketsInPeriod.filter(t => !t.remarks?.toLowerCase().includes('full refund'));
 
     const totalCommission = profitTickets.reduce((sum, t) => sum + (t.commission || 0), 0);
     const commissionBox = document.getElementById('monthly-commission-box');
@@ -1242,7 +1235,6 @@ function updateDashboardData() {
     updateNotifications();
     updateSettlementDashboard();
 }
-
 
 /**
  * NEW FUNCTION: Dynamically updates countdown timers in notifications.
@@ -1939,11 +1931,18 @@ function findTicketForManage(pnrFromClick = null) {
 
     const found = state.allTickets.filter(t => t.booking_reference === pnr);
     displayManageResults(found);
+
+    // Filter and display history for this PNR
+    const pnrHistory = state.history.filter(entry => entry.pnr === pnr);
+    displayHistory(1, pnrHistory);
 }
+
 
 function clearManageResults() {
     document.getElementById('managePnr').value = '';
     document.getElementById('manageResultsContainer').innerHTML = '';
+    // Reset history view to show all records
+    displayHistory(1, state.history);
 }
 
 function displayManageResults(tickets) {
@@ -1964,8 +1963,8 @@ function displayManageResults(tickets) {
         let actionButton = '';
 
         if (remarkCheck(t.remarks)) {
-            const statusText = t.remarks.toLowerCase().includes('refund') ? 'Fully Refunded' : 'Canceled';
-            actionButton = `<button class="btn btn-secondary" disabled>${statusText}</button>`;
+            // Unified "Refunded" status text
+            actionButton = `<button class="btn btn-secondary" disabled>Refunded</button>`;
         } else {
             actionButton = `<button class="btn btn-primary" onclick="openManageModal(${t.rowIndex})">Manage</button>`;
         }
@@ -2338,7 +2337,7 @@ async function saveHistory(ticket, details) {
     }
 }
 
-function displayHistory(page) {
+function displayHistory(page, historyToShow = state.history) {
     const container = document.getElementById('modificationHistoryBody');
     const paginationContainer = document.getElementById('modificationHistoryPagination');
     const historySection = document.getElementById('modificationHistoryContainer');
@@ -2346,27 +2345,26 @@ function displayHistory(page) {
     paginationContainer.innerHTML = '';
     state.historyPage = page;
 
-    if (state.history.length === 0) {
+    if (historyToShow.length === 0) {
         historySection.style.display = 'none';
         return;
     }
     historySection.style.display = 'block';
 
-    const paginated = state.history.slice((page - 1) * state.rowsPerPage, page * state.rowsPerPage);
+    const paginated = historyToShow.slice((page - 1) * state.rowsPerPage, page * state.rowsPerPage);
     paginated.forEach(entry => {
         const row = container.insertRow();
         row.innerHTML = `<td>${entry.date}</td><td>${entry.name}</td><td>${entry.pnr}</td><td>${entry.details}</td>`;
     });
 
-    // Pagination for history
-    const pageCount = Math.ceil(state.history.length / state.rowsPerPage);
+    const pageCount = Math.ceil(historyToShow.length / state.rowsPerPage);
     if (pageCount <= 1) return;
     const btn = (txt, pg, en = true) => {
         const b = document.createElement('button');
         b.className = 'pagination-btn';
         b.innerHTML = txt;
         b.disabled = !en;
-        if (en) b.onclick = () => displayHistory(pg);
+        if (en) b.onclick = () => displayHistory(pg, historyToShow);
         if (pg === state.historyPage) b.classList.add('active');
         return b;
     };
@@ -2715,10 +2713,15 @@ function initializeUISettings() {
     const glassSettingsContainer = document.getElementById('glass-settings-container');
 
     const applyTheme = (isMaterial, isDark) => {
+        const uploadBtn = document.getElementById('background-upload-btn');
+        const resetBtn = document.getElementById('background-reset-btn');
+
         if (isMaterial) {
             document.body.classList.add('material-theme');
             darkModeContainer.style.display = 'flex';
             glassSettingsContainer.style.display = 'none';
+            uploadBtn.disabled = true;
+            resetBtn.disabled = true;
              if (isDark) {
                 document.body.classList.add('dark-theme');
             } else {
@@ -2728,16 +2731,16 @@ function initializeUISettings() {
             document.body.classList.remove('material-theme', 'dark-theme');
             darkModeContainer.style.display = 'none';
             glassSettingsContainer.style.display = 'block';
+            uploadBtn.disabled = false;
+            resetBtn.disabled = false;
         }
         
-        // BUG FIX: Background logic
         const customBg = localStorage.getItem('customBackground');
         if (isMaterial) {
-            document.body.style.backgroundImage = 'none'; // Material theme never has a background image
+            document.body.style.backgroundImage = 'none';
         } else if (customBg) {
-            document.body.style.backgroundImage = `url(${customBg})`; // Glass theme prioritizes custom
+            document.body.style.backgroundImage = `url(${customBg})`;
         } else {
-            // Glass theme with no custom background gets the default
             document.body.style.backgroundImage = `url('https://images.unsplash.com/photo-1550684376-efcbd6e3f031?q=80&w=2970&auto=format&fit=crop')`;
         }
     };

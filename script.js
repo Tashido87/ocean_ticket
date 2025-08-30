@@ -3092,7 +3092,6 @@ async function handleNewSettlementSubmit(e) {
 }
 
 function updateSettlementDashboard() {
-    // Filter out canceled or refunded tickets before calculating revenue
     const validTickets = state.allTickets.filter(t => {
         const isCanceled = t.remarks?.toLowerCase().includes('cancel') || t.remarks?.toLowerCase().includes('refund');
         return !isCanceled;
@@ -3103,23 +3102,24 @@ function updateSettlementDashboard() {
     const netAmountLeft = totalRevenue - totalAmountPaid;
 
     const netAmountBox = document.getElementById('settlement-net-amount-box');
-    netAmountBox.innerHTML = `<div class="info-card-content"><h3>Net Amount Left</h3><div class="main-value">${netAmountLeft.toLocaleString()}</div><span class="sub-value">MMK</span><i class="icon fa-solid fa-file-invoice-dollar"></i></div>`;
-    
+    netAmountBox.innerHTML = `<div class="info-card-content"><h3>Total Outstanding Revenue</h3><div class="main-value">${netAmountLeft.toLocaleString()}</div><span class="sub-value">MMK</span><i class="icon fa-solid fa-file-invoice-dollar"></i></div>`;
+
     const now = new Date();
     const currentMonth = now.getMonth();
     const currentYear = now.getFullYear();
 
-    const ticketsThisMonth = state.allTickets
-        .filter(t => {
-            const ticketDate = parseSheetDate(t.issued_date);
-            const isCanceled = t.remarks?.toLowerCase().includes('cancel') || t.remarks?.toLowerCase().includes('refund');
-            return !isCanceled && ticketDate.getMonth() === currentMonth && ticketDate.getFullYear() === currentYear;
-        });
+    const ticketsThisMonth = validTickets.filter(t => {
+        const ticketDate = parseSheetDate(t.issued_date);
+        return ticketDate.getMonth() === currentMonth && ticketDate.getFullYear() === currentYear;
+    });
 
     const commissionThisMonth = ticketsThisMonth.reduce((sum, t) => sum + (t.commission || 0), 0);
-    const extraFareThisMonth = ticketsThisMonth.reduce((sum, t) => sum + (t.extra_fare || 0), 0);
-    const totalProfitThisMonth = commissionThisMonth + extraFareThisMonth;
+    
+    const endOfMonthSettlement = netAmountLeft - commissionThisMonth;
+
+    const monthlyDueBox = document.getElementById('settlement-monthly-due-box');
+    monthlyDueBox.innerHTML = `<div class="info-card-content"><h3>End-of-Month Settlement</h3><div class="main-value">${endOfMonthSettlement.toLocaleString()}</div><span class="sub-value">MMK</span><i class="icon fa-solid fa-cash-register"></i></div>`;
 
     const commissionBox = document.getElementById('settlement-commission-box');
-    commissionBox.innerHTML = `<div class="info-card-content"><h3>Total Profit</h3><div class="main-value">${totalProfitThisMonth.toLocaleString()}</div><span class="sub-value">MMK</span><i class="icon fa-solid fa-hand-holding-dollar"></i></div>`;
+    commissionBox.innerHTML = `<div class="info-card-content"><h3>Current Month's Commission</h3><div class="main-value">${commissionThisMonth.toLocaleString()}</div><span class="sub-value">MMK</span><i class="icon fa-solid fa-hand-holding-dollar"></i></div>`;
 }

@@ -1210,29 +1210,39 @@ function updateDashboardData() {
 
     if (isNaN(selectedMonth) || isNaN(selectedYear)) return;
 
-    const ticketsThisPeriod = state.allTickets.filter(t => {
+    // Filter for tickets in the selected period
+    const ticketsInPeriod = state.allTickets.filter(t => {
         const ticketDate = parseSheetDate(t.issued_date);
-        const isCanceled = t.remarks?.toLowerCase().includes('cancel') || t.remarks?.toLowerCase().includes('refund');
-        return ticketDate.getMonth() === selectedMonth && ticketDate.getFullYear() === selectedYear && !isCanceled;
+        return ticketDate.getMonth() === selectedMonth && ticketDate.getFullYear() === selectedYear;
     });
 
-    document.getElementById('total-tickets-value').textContent = ticketsThisPeriod.length;
+    // Total tickets count (includes all tickets issued in the period, even if later canceled)
+    document.getElementById('total-tickets-value').textContent = ticketsInPeriod.length;
 
-    const totalRevenue = ticketsThisPeriod.reduce((sum, t) => sum + (t.net_amount || 0) + (t.date_change || 0), 0);
+    // Revenue: Includes net amount from non-refunded tickets (partially canceled tickets have net_amount = fee)
+    const revenueTickets = ticketsInPeriod.filter(t => !t.remarks?.toLowerCase().includes('full refund'));
+    const totalRevenue = revenueTickets.reduce((sum, t) => sum + (t.net_amount || 0) + (t.date_change || 0), 0);
     const revenueBox = document.getElementById('monthly-revenue-box');
     revenueBox.innerHTML = `<div class="info-card-content"><h3>Total Revenue</h3><div class="main-value">${totalRevenue.toLocaleString()}</div><span class="sub-value">MMK</span><i class="icon fa-solid fa-sack-dollar"></i></div>`;
 
-    const totalCommission = ticketsThisPeriod.reduce((sum, t) => sum + (t.commission || 0), 0);
+    // Profit: Commission and Extra Fare from tickets that are NOT fully refunded.
+    const profitTickets = ticketsInPeriod.filter(t => {
+        const lowerRemarks = t.remarks?.toLowerCase() || '';
+        return !lowerRemarks.includes('full refund');
+    });
+
+    const totalCommission = profitTickets.reduce((sum, t) => sum + (t.commission || 0), 0);
     const commissionBox = document.getElementById('monthly-commission-box');
     commissionBox.innerHTML = `<div class="info-card-content"><h3>Total Commission</h3><div class="main-value">${totalCommission.toLocaleString()}</div><span class="sub-value">MMK</span><i class="icon fa-solid fa-hand-holding-dollar"></i></div>`;
 
-    const totalExtraFare = ticketsThisPeriod.reduce((sum, t) => sum + (t.extra_fare || 0), 0);
+    const totalExtraFare = profitTickets.reduce((sum, t) => sum + (t.extra_fare || 0), 0);
     const extraFareBox = document.getElementById('monthly-extra-fare-box');
     extraFareBox.innerHTML = `<div class="info-card-content"><h3>Total Extra Fare</h3><div class="main-value">${totalExtraFare.toLocaleString()}</div><span class="sub-value">MMK</span><i class="icon fa-solid fa-dollar-sign"></i></div>`;
     
     updateNotifications();
     updateSettlementDashboard();
 }
+
 
 /**
  * NEW FUNCTION: Dynamically updates countdown timers in notifications.
@@ -1451,7 +1461,7 @@ function showNotificationModal() {
         </div>
     `;
 
-    openModal(modalContent, 'large-modal');
+    openModal(content, 'large-modal');
     const modalContentEl = modal.querySelector('.modal-content');
     if (modalContentEl) {
         modalContentEl.classList.add('notification-modal-content');
@@ -2140,16 +2150,42 @@ function openCancelSubModal(rowIndex) {
         <h2>Cancel or Refund Ticket</h2>
         <p>For <strong>${ticket.name}</strong> (PNR: ${ticket.booking_reference})</p>
         <p>Current Net Amount: <strong>${(ticket.net_amount || 0).toLocaleString()} MMK</strong></p>
+        
         <div class="form-actions" style="flex-direction: column; gap: 1rem; margin-top: 1.5rem;">
-             <button type="button" class="btn btn-primary" style="background-color: var(--danger-accent); border-color: var(--danger-accent);" onclick="handleCancelTicket(${rowIndex}, 'refund')">Process Full Refund</button>
-             <form id="cancelForm" style="width: 100%;">
-                <div class="form-group">
-                    <label for="refund_amount">Partial Refund Amount (MMK)</label>
-                    <input type="number" id="refund_amount" required class="form-group input" style="text-align: center;">
-                </div>
-                <button type="submit" class="btn btn-secondary" style="width: 100%;">Process Partial Cancellation</button>
-            </form>
+            <button type="button" class="btn btn-primary" style="background-color: var(--danger-accent); border-color: var(--danger-accent);" onclick="handleCancelTicket(${rowIndex}, 'refund')">Process Full Refund</button>
         </div>
+
+        <hr style="border-color: rgba(255,255,255,0.2); margin: 1.5rem 0;">
+        
+        <h4>Partial Cancellation</h4>
+        <form id="cancelForm" style="width: 100%;">
+            <div class="form-grid" style="grid-template-columns: 1fr 1fr; gap: 1rem;">
+                <div class="form-group">
+                    <label for="cancellation_fee">Cancellation Fee (MMK)</label>
+                    <input type="number" id="cancellation_fee" required class="form-group input">
+                </div>
+                <div class="form-group">
+                    <label for="refund_amount">Refund Amount (MMK)</label>
+                    <input type="number" id="refund_amount" required class="form-group input">
+                </div>
+                <div class="form-group">
+                    <label for="refund_payment_method">Refund Payment Method</label>
+                    <select id="refund_payment_method" required>
+                        <option value="" disabled selected>Select Method</option>
+                        <option value="KBZ Pay">KBZ Pay</option>
+                        <option value="Mobile Banking">Mobile Banking</option>
+                        <option value="Aya Pay">Aya Pay</option>
+                        <option value="Cash">Cash</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="refund_transaction_id">Transaction ID (Optional)</label>
+                    <input type="text" id="refund_transaction_id" class="form-group input">
+                </div>
+            </div>
+            <button type="submit" class="btn btn-secondary" style="width: 100%; margin-top: 1rem;">Process Partial Cancellation</button>
+        </form>
+
         <div class="form-actions" style="margin-top: 2rem;">
             <button class="btn btn-secondary" onclick="openManageModal(${rowIndex})">Back to Modify</button>
         </div>
@@ -2158,69 +2194,104 @@ function openCancelSubModal(rowIndex) {
     document.getElementById('cancelForm').addEventListener('submit', (e) => {
         e.preventDefault();
         const refundAmount = parseFloat(document.getElementById('refund_amount').value);
+        const cancellationFee = parseFloat(document.getElementById('cancellation_fee').value);
+        const paymentMethod = document.getElementById('refund_payment_method').value;
+        const transactionId = document.getElementById('refund_transaction_id').value;
+
         if (isNaN(refundAmount) || refundAmount < 0) {
             showToast('Please enter a valid refund amount.', 'error');
             return;
         }
-        handleCancelTicket(rowIndex, 'cancel', refundAmount);
+        if (isNaN(cancellationFee) || cancellationFee < 0) {
+            showToast('Please enter a valid cancellation fee.', 'error');
+            return;
+        }
+        if (!paymentMethod) {
+            showToast('Please select a refund payment method.', 'error');
+            return;
+        }
+        
+        handleCancelTicket(rowIndex, 'cancel', {
+            refundAmount,
+            cancellationFee,
+            paymentMethod,
+            transactionId
+        });
     });
 }
 
-async function handleCancelTicket(rowIndex, type, refundAmount = 0) {
+async function handleCancelTicket(rowIndex, type, details = {}) {
     const ticket = state.allTickets.find(t => t.rowIndex === rowIndex);
     if (!ticket) return;
 
-    let updatedValues = [];
-    let historyDetails = '';
-    const now = new Date();
-    const dateStr = `${String(now.getMonth() + 1).padStart(2, '0')}/${String(now.getDate()).padStart(2, '0')}/${now.getFullYear()}`;
-
+    let confirmationMessage = '';
     if (type === 'refund') {
-        const remark = `Full Refund on ${dateStr}`;
-        updatedValues = [
-            ticket.issued_date, ticket.name, ticket.id_no, ticket.phone,
-            ticket.account_name, ticket.account_type, ticket.account_link,
-            ticket.departure, ticket.destination, ticket.departing_on,
-            ticket.airline, 0, ticket.booking_reference, 0,
-            ticket.paid, ticket.payment_method, ticket.paid_date,
-            0, remark, 0, 0
-        ];
-        historyDetails = "CANCELED: Full Refund processed.";
+        confirmationMessage = `Are you sure you want to process a <strong>Full Refund</strong> for ${ticket.name}? This will set the Net Amount and all financial values to 0.`;
     } else {
-        const newNetAmount = (ticket.net_amount || 0) - refundAmount;
-        const remark = `Canceled on ${dateStr} with ${refundAmount.toLocaleString()} refund`;
-        updatedValues = [
-            ticket.issued_date, ticket.name, ticket.id_no, ticket.phone,
-            ticket.account_name, ticket.account_type, ticket.account_link,
-            ticket.departure, ticket.destination, ticket.departing_on,
-            ticket.airline, ticket.base_fare, ticket.booking_reference, newNetAmount,
-            ticket.paid, ticket.payment_method, ticket.paid_date,
-            ticket.commission, remark, ticket.extra_fare,
-            ticket.date_change
-        ];
-        historyDetails = `CANCELED: Partial. Refunded: ${refundAmount.toLocaleString()} MMK.`;
+        confirmationMessage = `
+            <h3>Confirm Partial Cancellation</h3>
+            <p>Please review for <strong>${ticket.name}</strong>:</p>
+            <ul style="list-style: none; padding-left: 0; margin: 1rem 0;">
+                <li><strong>Cancellation Fee:</strong> ${details.cancellationFee.toLocaleString()} MMK</li>
+                <li><strong>Refund Amount:</strong> ${details.refundAmount.toLocaleString()} MMK</li>
+                <li><strong>Via:</strong> ${details.paymentMethod} ${details.transactionId ? `(${details.transactionId})` : ''}</li>
+            </ul>
+            <p>The ticket's Net Amount will be updated to the cancellation fee.</p>
+        `;
     }
 
-    try {
-        showToast('Processing cancellation...', 'info');
-        await gapi.client.sheets.spreadsheets.values.update({
-            spreadsheetId: CONFIG.SHEET_ID,
-            range: `${CONFIG.SHEET_NAME}!A${rowIndex}:U${rowIndex}`,
-            valueInputOption: 'USER_ENTERED',
-            resource: { values: [updatedValues] }
-        });
-        await saveHistory(ticket, historyDetails);
-        state.cache['ticketData'] = null;
-        state.cache['historyData'] = null;
-        showToast('Ticket canceled/refunded successfully!', 'success');
-        closeModal();
-        clearManageResults();
-        await Promise.all([loadTicketData(), loadHistory()]);
-        updateDashboardData();
-    } catch (error) {
-        showToast(`Cancellation Error: ${error.result?.error?.message || 'Could not process.'}`, 'error');
-    }
+    showConfirmModal(confirmationMessage, async () => {
+        let updatedValues = [];
+        let historyDetails = '';
+        const now = new Date();
+        const dateStr = `${String(now.getMonth() + 1).padStart(2, '0')}/${String(now.getDate()).padStart(2, '0')}/${now.getFullYear()}`;
+
+        if (type === 'refund') {
+            const remark = `Full Refund on ${dateStr}`;
+            updatedValues = [
+                ticket.issued_date, ticket.name, ticket.id_no, ticket.phone,
+                ticket.account_name, ticket.account_type, ticket.account_link,
+                ticket.departure, ticket.destination, ticket.departing_on,
+                ticket.airline, 0, ticket.booking_reference, 0,
+                ticket.paid, ticket.payment_method, ticket.paid_date,
+                0, remark, 0, 0
+            ];
+            historyDetails = "CANCELED: Full Refund processed.";
+        } else {
+            const remark = `Canceled on ${dateStr} with ${details.refundAmount.toLocaleString()} refund`;
+            updatedValues = [
+                ticket.issued_date, ticket.name, ticket.id_no, ticket.phone,
+                ticket.account_name, ticket.account_type, ticket.account_link,
+                ticket.departure, ticket.destination, ticket.departing_on,
+                ticket.airline, ticket.base_fare, ticket.booking_reference, details.cancellationFee,
+                ticket.paid, ticket.payment_method, ticket.paid_date,
+                ticket.commission, remark, ticket.extra_fare, ticket.date_change
+            ];
+            historyDetails = `CANCELED: Partial. Refunded: ${details.refundAmount.toLocaleString()} MMK via ${details.paymentMethod} ${details.transactionId ? `(ID: ${details.transactionId})` : ''}. New Net Amount: ${details.cancellationFee.toLocaleString()} MMK.`;
+        }
+
+        try {
+            showToast('Processing cancellation...', 'info');
+            await gapi.client.sheets.spreadsheets.values.update({
+                spreadsheetId: CONFIG.SHEET_ID,
+                range: `${CONFIG.SHEET_NAME}!A${rowIndex}:U${rowIndex}`,
+                valueInputOption: 'USER_ENTERED',
+                resource: { values: [updatedValues] }
+            });
+            await saveHistory(ticket, historyDetails);
+            state.cache['ticketData'] = null;
+            state.cache['historyData'] = null;
+            showToast('Ticket canceled/refunded successfully!', 'success');
+            closeModal();
+            clearManageResults();
+            await Promise.all([loadTicketData(), loadHistory()]);
+            updateDashboardData();
+        } catch (error) {
+            showToast(`Cancellation Error: ${error.result?.error?.message || 'Could not process.'}`, 'error');
+        }
+    });
 }
+
 
 
 // --- HISTORY LOGGING ---
@@ -2314,6 +2385,7 @@ function buildClientList() {
                 name: ticket.name,
                 phone: ticket.phone,
                 account_name: ticket.account_name,
+                id_no: ticket.id_no,
                 ticket_count: 0,
                 total_spent: 0,
                 last_travel: new Date(0)
@@ -2330,6 +2402,7 @@ function buildClientList() {
     state.allClients = Object.values(clients).sort((a, b) => a.name.localeCompare(b.name));
 }
 
+
 function renderClientsView(page = 1, searchQuery = '') {
     const tbody = document.getElementById('clientListTableBody');
     const paginationContainer = document.getElementById('clientListPagination');
@@ -2341,8 +2414,9 @@ function renderClientsView(page = 1, searchQuery = '') {
                 <div class="clients-header">
                     <h2><i class="fa-solid fa-users"></i> Client Directory</h2>
                     <div class="client-controls">
-                        <div class="client-search-box">
+                        <div class="client-search-box" style="display: flex; gap: 0.5rem;">
                             <input type="text" id="clientSearchInput" placeholder="Search by name or phone...">
+                            <button id="clientClearBtn" class="btn btn-secondary"><i class="fa-solid fa-eraser"></i></button>
                         </div>
                     </div>
                 </div>
@@ -2368,6 +2442,10 @@ function renderClientsView(page = 1, searchQuery = '') {
                 </div>
             </div>`;
         document.getElementById('clientSearchInput').addEventListener('input', (e) => debounce(() => renderClientsView(1, e.target.value), 300));
+        document.getElementById('clientClearBtn').addEventListener('click', () => {
+            document.getElementById('clientSearchInput').value = '';
+            renderClientsView(1, '');
+        });
         return renderClientsView(page, searchQuery); // Re-run now that it's built
     }
 
@@ -2541,11 +2619,15 @@ function sellTicketForClient(clientName) {
         document.getElementById('account_link').value = clientTicket.account_link || '';
     }
     
-    // Add a passenger form with the client's name
-    resetPassengerForms(); // Clear any existing passenger forms
+    // Add a passenger form with the client's name and ID
+    resetPassengerForms(); 
     const passengerNameInput = document.querySelector('#passenger-forms-container .passenger-name');
+    const passengerIdInput = document.querySelector('#passenger-forms-container .passenger-id');
     if (passengerNameInput) {
         passengerNameInput.value = client.name.toUpperCase();
+    }
+    if (passengerIdInput) {
+        passengerIdInput.value = client.id_no || '';
     }
     
     showToast(`Form pre-filled for ${client.name}.`, 'info');
@@ -2571,7 +2653,7 @@ function closeModal() {
 function showConfirmModal(message, onConfirm) {
     const content = `
         <div style="text-align: center;">
-            <p style="font-size: 1.1rem; margin-bottom: 2rem;">${message}</p>
+            <div style="font-size: 1.1rem; margin-bottom: 2rem;">${message}</div>
             <div class="form-actions">
                 <button id="confirmCancelBtn" class="btn btn-secondary">Cancel</button>
                 <button id="confirmActionBtn" class="btn btn-primary">Confirm</button>
@@ -3140,13 +3222,11 @@ async function handleNewSettlementSubmit(e) {
 }
 
 function updateSettlementDashboard() {
-    // Filter out canceled or refunded tickets before calculating revenue
-    const validTickets = state.allTickets.filter(t => {
-        const isCanceled = t.remarks?.toLowerCase().includes('cancel') || t.remarks?.toLowerCase().includes('refund');
-        return !isCanceled;
-    });
+    // Revenue: Includes net amount from non-fully-refunded tickets
+    const revenueTickets = state.allTickets.filter(t => !t.remarks?.toLowerCase().includes('full refund'));
+    const totalRevenue = revenueTickets.reduce((sum, t) => sum + (t.net_amount || 0) + (t.date_change || 0), 0);
 
-    const totalRevenue = validTickets.reduce((sum, t) => sum + (t.net_amount || 0) + (t.date_change || 0), 0);
+    // Total settlements made
     const totalAmountPaid = state.allSettlements.reduce((sum, s) => sum + (s.amount_paid || 0), 0);
     const netAmountLeft = totalRevenue - totalAmountPaid;
 
@@ -3157,19 +3237,22 @@ function updateSettlementDashboard() {
     const currentMonth = now.getMonth();
     const currentYear = now.getFullYear();
 
-    const ticketsThisMonth = validTickets.filter(t => {
+    // Profit: From tickets in the current month that are NOT fully refunded
+    const profitTicketsThisMonth = state.allTickets.filter(t => {
         const ticketDate = parseSheetDate(t.issued_date);
-        return ticketDate.getMonth() === currentMonth && ticketDate.getFullYear() === currentYear;
+        const lowerRemarks = t.remarks?.toLowerCase() || '';
+        return ticketDate.getMonth() === currentMonth && ticketDate.getFullYear() === currentYear && !lowerRemarks.includes('full refund');
     });
 
-    const commissionThisMonth = ticketsThisMonth.reduce((sum, t) => sum + (t.commission || 0), 0);
-    const extraFareThisMonth = ticketsThisMonth.reduce((sum, t) => sum + (t.extra_fare || 0), 0);
+    const commissionThisMonth = profitTicketsThisMonth.reduce((sum, t) => sum + (t.commission || 0), 0);
+    const extraFareThisMonth = profitTicketsThisMonth.reduce((sum, t) => sum + (t.extra_fare || 0), 0);
     const totalProfitThisMonth = commissionThisMonth + extraFareThisMonth;
     
-    const endOfMonthSettlement = netAmountLeft - commissionThisMonth;
+    // This calculation might need business logic refinement, but based on UI, it's what's displayed.
+    const endOfMonthSettlement = netAmountLeft - totalProfitThisMonth;
 
     const monthlyDueBox = document.getElementById('settlement-monthly-due-box');
-    monthlyDueBox.innerHTML = `<div class="info-card-content"><h3>End-of-Month Settlement</h3><div class="main-value">${endOfMonthSettlement.toLocaleString()}</div><span class="sub-value">MMK</span><i class="icon fa-solid fa-cash-register"></i></div>`;
+    monthlyDueBox.innerHTML = `<div class="info-card-content"><h3>End-of-Month Settlement Due</h3><div class="main-value">${endOfMonthSettlement.toLocaleString()}</div><span class="sub-value">MMK</span><i class="icon fa-solid fa-cash-register"></i></div>`;
 
     const commissionBox = document.getElementById('settlement-commission-box');
     commissionBox.innerHTML = `<div class="info-card-content"><h3>Current Month's Total Profit</h3><div class="main-value">${totalProfitThisMonth.toLocaleString()}</div><span class="sub-value">MMK</span><i class="icon fa-solid fa-hand-holding-dollar"></i></div>`;

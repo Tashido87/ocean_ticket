@@ -3092,9 +3092,15 @@ async function handleNewSettlementSubmit(e) {
 }
 
 function updateSettlementDashboard() {
-    const totalNetAmount = state.allTickets.reduce((sum, t) => sum + (t.net_amount || 0) + (t.date_change || 0), 0);
+    // Filter out canceled or refunded tickets before calculating revenue
+    const validTickets = state.allTickets.filter(t => {
+        const isCanceled = t.remarks?.toLowerCase().includes('cancel') || t.remarks?.toLowerCase().includes('refund');
+        return !isCanceled;
+    });
+
+    const totalRevenue = validTickets.reduce((sum, t) => sum + (t.net_amount || 0) + (t.date_change || 0), 0);
     const totalAmountPaid = state.allSettlements.reduce((sum, s) => sum + (s.amount_paid || 0), 0);
-    const netAmountLeft = totalNetAmount - totalAmountPaid;
+    const netAmountLeft = totalRevenue - totalAmountPaid;
 
     const netAmountBox = document.getElementById('settlement-net-amount-box');
     netAmountBox.innerHTML = `<div class="info-card-content"><h3>Net Amount Left</h3><div class="main-value">${netAmountLeft.toLocaleString()}</div><span class="sub-value">MMK</span><i class="icon fa-solid fa-file-invoice-dollar"></i></div>`;

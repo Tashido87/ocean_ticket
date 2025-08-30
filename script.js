@@ -1697,13 +1697,27 @@ async function handleSellTicket(e) {
         return;
     }
 
-    const pnrExists = state.allTickets.some(t => t.booking_reference === sharedData.booking_reference);
-    if (pnrExists) {
-        const message = `PNR <strong>${sharedData.booking_reference}</strong> already exists. Are you sure you want to add more passengers under this PNR?`;
-        showConfirmModal(message, () => confirmAndSaveTicket(form, sharedData, passengerData));
-    } else {
-        confirmAndSaveTicket(form, sharedData, passengerData);
-    }
+    const totalNetAmount = passengerData.reduce((sum, p) => sum + p.net_amount, 0);
+    const confirmationMessage = `
+        <h3>Confirm Submission</h3>
+        <p>Please review the details before submitting:</p>
+        <ul style="list-style: none; padding-left: 0; margin: 1rem 0;">
+            <li><strong>PNR Code:</strong> ${sharedData.booking_reference}</li>
+            <li><strong>Total Passengers:</strong> ${passengerData.length}</li>
+            <li><strong>Total Net Amount:</strong> ${totalNetAmount.toLocaleString()} MMK</li>
+            <li><strong>Payment Status:</strong> ${sharedData.paid ? `Paid via ${sharedData.payment_method}` : 'Not Paid'}</li>
+        </ul>
+    `;
+
+    showConfirmModal(confirmationMessage, () => {
+        const pnrExists = state.allTickets.some(t => t.booking_reference === sharedData.booking_reference);
+        if (pnrExists) {
+            const pnrMessage = `PNR <strong>${sharedData.booking_reference}</strong> already exists. Are you sure you want to add more passengers under this PNR?`;
+            showConfirmModal(pnrMessage, () => confirmAndSaveTicket(form, sharedData, passengerData));
+        } else {
+            confirmAndSaveTicket(form, sharedData, passengerData);
+        }
+    });
 }
 
 async function confirmAndSaveTicket(form, sharedData, passengerData) {
@@ -2396,8 +2410,9 @@ function renderClientsView(page = 1, searchQuery = '') {
             <td>${client.ticket_count}</td>
             <td>${client.total_spent.toLocaleString()}</td>
             <td>${client.last_travel.getTime() > 0 ? formatDateToDMMMY(client.last_travel) : 'N/A'}</td>
-            <td>
-                <button class="icon-btn icon-btn-table" onclick="viewClientHistory('${client.name}')"><i class="fa-solid fa-clock-rotate-left"></i></button>
+            <td class="actions-cell">
+                <button class="icon-btn icon-btn-table" title="View History" onclick="viewClientHistory('${client.name}')"><i class="fa-solid fa-clock-rotate-left"></i></button>
+                <button class="icon-btn icon-btn-table" title="Sell Ticket" onclick="sellTicketForClient('${client.name}')"><i class="fa-solid fa-ticket"></i></button>
             </td>
         `;
     });
@@ -2455,6 +2470,7 @@ function viewClientHistory(clientName) {
                 <p>ID: ${firstTicket.id_no || 'N/A'} | Phone: ${firstTicket.phone || 'N/A'} | Social: ${firstTicket.account_name || 'N/A'} (${firstTicket.account_type || 'N/A'})</p>
             </div>
             <div class="client-history-actions">
+                <button class="btn btn-primary" onclick="sellTicketForClient('${clientName}')"><i class="fa-solid fa-ticket"></i> Sell New Ticket</button>
                 <button class="btn btn-secondary" onclick="closeModal()">Close</button>
             </div>
         </div>
@@ -2501,6 +2517,38 @@ function toggleFeaturedClient(event, clientName) {
     const currentPage = state.clientPage;
     const currentSearch = document.getElementById('clientSearchInput')?.value || '';
     renderClientsView(currentPage, currentSearch);
+}
+
+// --- SELL TICKET FOR CLIENT ---
+function sellTicketForClient(clientName) {
+    const client = state.allClients.find(c => c.name === clientName);
+    if (!client) {
+        showToast('Could not find client details.', 'error');
+        return;
+    }
+
+    showView('sell');
+    closeModal(); // Close the history modal if it's open
+
+    // Pre-fill the form
+    document.getElementById('phone').value = client.phone || '';
+    document.getElementById('account_name').value = client.account_name || '';
+
+    // Find a ticket from this client to get more details
+    const clientTicket = state.allTickets.find(t => t.name === clientName);
+    if (clientTicket) {
+        document.getElementById('account_type').value = clientTicket.account_type || '';
+        document.getElementById('account_link').value = clientTicket.account_link || '';
+    }
+    
+    // Add a passenger form with the client's name
+    resetPassengerForms(); // Clear any existing passenger forms
+    const passengerNameInput = document.querySelector('#passenger-forms-container .passenger-name');
+    if (passengerNameInput) {
+        passengerNameInput.value = client.name.toUpperCase();
+    }
+    
+    showToast(`Form pre-filled for ${client.name}.`, 'info');
 }
 
 
@@ -3092,6 +3140,7 @@ async function handleNewSettlementSubmit(e) {
 }
 
 function updateSettlementDashboard() {
+    // Filter out canceled or refunded tickets before calculating revenue
     const validTickets = state.allTickets.filter(t => {
         const isCanceled = t.remarks?.toLowerCase().includes('cancel') || t.remarks?.toLowerCase().includes('refund');
         return !isCanceled;
@@ -3103,7 +3152,7 @@ function updateSettlementDashboard() {
 
     const netAmountBox = document.getElementById('settlement-net-amount-box');
     netAmountBox.innerHTML = `<div class="info-card-content"><h3>Total Outstanding Revenue</h3><div class="main-value">${netAmountLeft.toLocaleString()}</div><span class="sub-value">MMK</span><i class="icon fa-solid fa-file-invoice-dollar"></i></div>`;
-
+    
     const now = new Date();
     const currentMonth = now.getMonth();
     const currentYear = now.getFullYear();
@@ -3114,6 +3163,8 @@ function updateSettlementDashboard() {
     });
 
     const commissionThisMonth = ticketsThisMonth.reduce((sum, t) => sum + (t.commission || 0), 0);
+    const extraFareThisMonth = ticketsThisMonth.reduce((sum, t) => sum + (t.extra_fare || 0), 0);
+    const totalProfitThisMonth = commissionThisMonth + extraFareThisMonth;
     
     const endOfMonthSettlement = netAmountLeft - commissionThisMonth;
 
@@ -3121,5 +3172,5 @@ function updateSettlementDashboard() {
     monthlyDueBox.innerHTML = `<div class="info-card-content"><h3>End-of-Month Settlement</h3><div class="main-value">${endOfMonthSettlement.toLocaleString()}</div><span class="sub-value">MMK</span><i class="icon fa-solid fa-cash-register"></i></div>`;
 
     const commissionBox = document.getElementById('settlement-commission-box');
-    commissionBox.innerHTML = `<div class="info-card-content"><h3>Current Month's Commission</h3><div class="main-value">${commissionThisMonth.toLocaleString()}</div><span class="sub-value">MMK</span><i class="icon fa-solid fa-hand-holding-dollar"></i></div>`;
+    commissionBox.innerHTML = `<div class="info-card-content"><h3>Current Month's Total Profit</h3><div class="main-value">${totalProfitThisMonth.toLocaleString()}</div><span class="sub-value">MMK</span><i class="icon fa-solid fa-hand-holding-dollar"></i></div>`;
 }

@@ -3232,11 +3232,11 @@ async function handleNewSettlementSubmit(e) {
 }
 
 function updateSettlementDashboard() {
-    // Revenue: Includes net amount from non-fully-refunded tickets
+    // Revenue: Includes net amount from non-fully-refunded tickets for ALL time
     const revenueTickets = state.allTickets.filter(t => !t.remarks?.toLowerCase().includes('full refund'));
     const totalRevenue = revenueTickets.reduce((sum, t) => sum + (t.net_amount || 0) + (t.date_change || 0), 0);
 
-    // Total settlements made
+    // Total settlements made for ALL time
     const totalAmountPaid = state.allSettlements.reduce((sum, s) => sum + (s.amount_paid || 0), 0);
     const netAmountLeft = totalRevenue - totalAmountPaid;
 
@@ -3247,22 +3247,31 @@ function updateSettlementDashboard() {
     const currentMonth = now.getMonth();
     const currentYear = now.getFullYear();
 
-    // Profit: From tickets in the current month that are NOT fully refunded
-    const profitTicketsThisMonth = state.allTickets.filter(t => {
+    // Tickets from the CURRENT month that are NOT fully refunded
+    const ticketsThisMonth = state.allTickets.filter(t => {
         const ticketDate = parseSheetDate(t.issued_date);
         const lowerRemarks = t.remarks?.toLowerCase() || '';
         return ticketDate.getMonth() === currentMonth && ticketDate.getFullYear() === currentYear && !lowerRemarks.includes('full refund');
     });
 
-    const commissionThisMonth = profitTicketsThisMonth.reduce((sum, t) => sum + (t.commission || 0), 0);
-    const extraFareThisMonth = profitTicketsThisMonth.reduce((sum, t) => sum + (t.extra_fare || 0), 0);
-    const totalProfitThisMonth = commissionThisMonth + extraFareThisMonth;
+    // --- Corrected "End-of-Month Settlement Due" Calculation ---
+    const totalRevenueThisMonth = ticketsThisMonth.reduce((sum, t) => sum + (t.net_amount || 0) + (t.date_change || 0), 0);
+    const commissionThisMonth = ticketsThisMonth.reduce((sum, t) => sum + (t.commission || 0), 0);
     
-    // This calculation might need business logic refinement, but based on UI, it's what's displayed.
-    const endOfMonthSettlement = netAmountLeft - totalProfitThisMonth;
+    const settlementsThisMonth = state.allSettlements.filter(s => {
+        const settlementDate = parseSheetDate(s.settlement_date);
+        return settlementDate.getMonth() === currentMonth && settlementDate.getFullYear() === currentYear;
+    });
+    const totalSettlementsThisMonth = settlementsThisMonth.reduce((sum, s) => sum + (s.amount_paid || 0), 0);
+    
+    const endOfMonthSettlement = totalRevenueThisMonth - (commissionThisMonth + totalSettlementsThisMonth);
 
     const monthlyDueBox = document.getElementById('settlement-monthly-due-box');
     monthlyDueBox.innerHTML = `<div class="info-card-content"><h3>End-of-Month Settlement Due</h3><div class="main-value">${endOfMonthSettlement.toLocaleString()}</div><span class="sub-value">MMK</span><i class="icon fa-solid fa-cash-register"></i></div>`;
+
+    // --- "Current Month's Total Profit" Calculation (Commission + Extra Fare) ---
+    const extraFareThisMonth = ticketsThisMonth.reduce((sum, t) => sum + (t.extra_fare || 0), 0);
+    const totalProfitThisMonth = commissionThisMonth + extraFareThisMonth;
 
     const commissionBox = document.getElementById('settlement-commission-box');
     commissionBox.innerHTML = `<div class="info-card-content"><h3>Current Month's Total Profit</h3><div class="main-value">${totalProfitThisMonth.toLocaleString()}</div><span class="sub-value">MMK</span><i class="icon fa-solid fa-hand-holding-dollar"></i></div>`;

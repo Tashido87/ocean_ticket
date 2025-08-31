@@ -62,6 +62,7 @@ const monthSelector = document.getElementById('dashboard-month');
 const yearSelector = document.getElementById('dashboard-year');
 const flightTypeToggle = document.getElementById('flightTypeToggle');
 const exportConfirmModal = document.getElementById('exportConfirmModal');
+const exportPrivateReportBtn = document.getElementById('exportPrivateReportBtn');
 
 // --- INITIALIZATION ---
 window.onload = async () => {
@@ -244,6 +245,11 @@ function setupEventListeners() {
          document.getElementById(id).addEventListener('change', performSearch);
     });
 
+    // Add event listeners to date inputs to check for private report button disable/enable
+    document.getElementById('searchStartDate').addEventListener('change', togglePrivateReportButton);
+    document.getElementById('searchEndDate').addEventListener('change', togglePrivateReportButton);
+
+
     document.querySelectorAll('.preset-btn').forEach(btn => {
         btn.addEventListener('click', (e) => {
             setDateRangePreset(e.target.dataset.range);
@@ -256,6 +262,8 @@ function setupEventListeners() {
     document.getElementById('clearBtn').addEventListener('click', clearSearch);
     document.getElementById('exportPdfBtn').addEventListener('click', () => exportConfirmModal.classList.add('show'));
     document.getElementById('confirmExportBtn').addEventListener('click', exportToPdf);
+    document.getElementById('exportPrivateReportBtn').addEventListener('click', exportPrivateReportToPdf);
+
 
     document.querySelectorAll('input[name="exportType"]').forEach(radio => {
         radio.addEventListener('change', (e) => {
@@ -1610,6 +1618,7 @@ function setDateRangePreset(range) {
     startDateInput.value = formatDateForSheet(startDate);
     endDateInput.value = formatDateForSheet(today);
     performSearch();
+    togglePrivateReportButton();
 }
 
 function performSearch() {
@@ -1658,6 +1667,7 @@ function clearSearch() {
     });
     document.querySelectorAll('.preset-btn').forEach(b => b.classList.remove('active'));
     performSearch();
+    togglePrivateReportButton();
 }
 
 function setupPagination(items) {
@@ -2850,7 +2860,7 @@ async function exportToPdf() {
     // --- Header ---
     doc.setFontSize(18);
     doc.setFont('helvetica', 'bold');
-    doc.text('Ticket Sales Report', 105, 15, { align: 'center' });
+    doc.text('Agent Report', 105, 15, { align: 'center' });
     doc.setFontSize(10);
     doc.setFont('helvetica', 'normal');
     const reportTypeStr = exportType === 'filtered' ? 'Filtered Results' : `Date Range: ${dateRangeString}`;
@@ -2977,9 +2987,10 @@ async function exportToPdf() {
         });
     }
     
-    doc.save(`ticket_report_${new Date().toISOString().slice(0,10)}.pdf`);
+    doc.save(`agent_report_${new Date().toISOString().slice(0,10)}.pdf`);
     exportConfirmModal.classList.remove('show');
 }
+
 // --- AUTOSUGGEST ---
 function handleAutosuggest(inputElement, fieldType) {
     const value = inputElement.value.toLowerCase();
@@ -3275,4 +3286,114 @@ function updateSettlementDashboard() {
 
     const commissionBox = document.getElementById('settlement-commission-box');
     commissionBox.innerHTML = `<div class="info-card-content"><h3>Current Month's Total Profit</h3><div class="main-value">${totalProfitThisMonth.toLocaleString()}</div><span class="sub-value">MMK</span><i class="icon fa-solid fa-hand-holding-dollar"></i></div>`;
+}
+
+// --- NEW/MODIFIED FUNCTIONS FOR PRIVATE REPORT ---
+
+function togglePrivateReportButton() {
+    const startDate = document.getElementById('searchStartDate').value;
+    const endDate = document.getElementById('searchEndDate').value;
+    exportPrivateReportBtn.disabled = !(startDate && endDate);
+}
+
+async function exportPrivateReportToPdf() {
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({ orientation: 'p', unit: 'mm', format: 'a4' });
+
+    const startDateStr = document.getElementById('searchStartDate').value;
+    const endDateStr = document.getElementById('searchEndDate').value;
+    const startDate = parseSheetDate(startDateStr);
+    const endDate = parseSheetDate(endDateStr);
+    
+    startDate.setHours(0, 0, 0, 0);
+    endDate.setHours(23, 59, 59, 999);
+
+    const ticketsInMonth = state.allTickets.filter(t => {
+        const issuedDate = parseSheetDate(t.issued_date);
+        return issuedDate >= startDate && issuedDate <= endDate;
+    });
+
+    const historyInMonth = state.history.filter(h => {
+        const historyDate = new Date(h.date);
+        return historyDate >= startDate && historyDate <= endDate;
+    });
+
+    if (ticketsInMonth.length === 0) {
+        showToast('No tickets to export in the selected month.', 'info');
+        return;
+    }
+
+    const dateRangeString = `${formatDateToDMMMY(startDate)} to ${formatDateToDMMMY(endDate)}`;
+
+    // --- Header ---
+    doc.setFontSize(18);
+    doc.setFont('helvetica', 'bold');
+    doc.text('Private Report', 105, 15, { align: 'center' });
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'normal');
+    doc.text(dateRangeString, 105, 20, { align: 'center' });
+
+    // --- Summary Section ---
+    const totalTickets = ticketsInMonth.length;
+    const totalRevenue = ticketsInMonth.reduce((sum, t) => sum + t.net_amount, 0);
+    const totalCommission = ticketsInMonth.reduce((sum, t) => sum + t.commission, 0);
+    const totalExtraFare = ticketsInMonth.reduce((sum, t) => sum + t.extra_fare, 0);
+    const totalProfit = totalCommission + totalExtraFare;
+
+    const summaryBody = [
+        ['Total Ticket Sales', `${totalTickets} tickets`],
+        ['Total Revenue', `${totalRevenue.toLocaleString()} MMK`],
+        ['Total Commission', `${totalCommission.toLocaleString()} MMK`],
+        ['Total Extra Fare', `${totalExtraFare.toLocaleString()} MMK`],
+        ['Total Profit', `${totalProfit.toLocaleString()} MMK`],
+    ];
+    doc.autoTable({
+        body: summaryBody,
+        startY: 25,
+        theme: 'grid',
+        headStyles: { fillColor: [44, 62, 80], fontSize: 10, fontStyle: 'bold' },
+        styles: { fontSize: 9, cellPadding: 2 },
+        columnStyles: { 0: { fontStyle: 'bold' } },
+    });
+
+    let finalY = doc.lastAutoTable.finalY + 10;
+
+    // --- Airline Analysis ---
+    const airlineSales = ticketsInMonth.reduce((acc, ticket) => {
+        acc[ticket.airline] = (acc[ticket.airline] || 0) + 1;
+        return acc;
+    }, {});
+    const airlineData = Object.entries(airlineSales).map(([airline, count]) => ({
+        airline,
+        count,
+        percentage: ((count / totalTickets) * 100).toFixed(2)
+    }));
+    const airlineBody = airlineData.map(a => [a.airline, a.count, `${a.percentage}%`]);
+
+    doc.autoTable({
+        head: [['Airline', 'Tickets Sold', 'Percentage']],
+        body: airlineBody,
+        startY: finalY,
+        theme: 'grid',
+        headStyles: { fillColor: [44, 62, 80] },
+    });
+
+    finalY = doc.lastAutoTable.finalY + 10;
+
+    // --- Modification History ---
+    if (historyInMonth.length > 0) {
+        const historyBody = historyInMonth.map(h => [h.date, h.name, h.pnr, h.details]);
+        doc.autoTable({
+            head: [['Date', 'Name', 'PNR', 'Details']],
+            body: historyBody,
+            startY: finalY,
+            theme: 'grid',
+            headStyles: { fillColor: [44, 62, 80] },
+            styles: { fontSize: 8, cellPadding: 1.5 },
+        });
+    } else {
+        doc.text('No modification history for this period.', 14, finalY);
+    }
+
+    doc.save(`private_report_${new Date().toISOString().slice(0,10)}.pdf`);
 }

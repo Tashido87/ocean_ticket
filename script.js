@@ -2712,34 +2712,44 @@ function initializeUISettings() {
     const applyTheme = (isMaterial, isDark) => {
         const uploadBtn = document.getElementById('background-upload-btn');
         const resetBtn = document.getElementById('background-reset-btn');
+        const customBg = localStorage.getItem('customBackground');
+
+        // Add a class to disable transitions temporarily
+        document.body.classList.add('theme-transitioning');
 
         if (isMaterial) {
-            document.body.classList.add('material-theme');
+            document.body.style.backgroundImage = 'none'; // No background in material
             darkModeContainer.style.display = 'flex';
             glassSettingsContainer.style.display = 'none';
             uploadBtn.disabled = true;
             resetBtn.disabled = true;
+
+            document.body.classList.add('material-theme');
              if (isDark) {
                 document.body.classList.add('dark-theme');
             } else {
                 document.body.classList.remove('dark-theme');
             }
         } else {
-            document.body.classList.remove('material-theme', 'dark-theme');
+            // This ensures your glass mode ALWAYS has the correct background
+            if (customBg) {
+                document.body.style.backgroundImage = `url(${customBg})`;
+            } else {
+                document.body.style.backgroundImage = `url('https://images.unsplash.com/photo-1550684376-efcbd6e3f031?q=80&w=2970&auto=format&fit=crop')`;
+            }
+
             darkModeContainer.style.display = 'none';
             glassSettingsContainer.style.display = 'block';
             uploadBtn.disabled = false;
             resetBtn.disabled = false;
+
+            document.body.classList.remove('material-theme', 'dark-theme');
         }
         
-        const customBg = localStorage.getItem('customBackground');
-        if (isMaterial) {
-            document.body.style.backgroundImage = 'none';
-        } else if (customBg) {
-            document.body.style.backgroundImage = `url(${customBg})`;
-        } else {
-            document.body.style.backgroundImage = `url('https://images.unsplash.com/photo-1550684376-efcbd6e3f031?q=80&w=2970&auto=format&fit=crop')`;
-        }
+        // Use a short timeout to re-enable transitions after the theme classes are applied
+        setTimeout(() => {
+            document.body.classList.remove('theme-transitioning');
+        }, 50); // 50ms is enough for the browser to apply the new styles
     };
 
     const isMaterialSaved = localStorage.getItem('isMaterial') === 'true';

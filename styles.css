@@ -149,7 +149,7 @@ body::before {
 }
 
 .main-content {
-    margin-top: 80px;
+    margin-top: 0px;
     padding: 2rem;
     flex-grow: 1;
 }

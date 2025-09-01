@@ -190,7 +190,7 @@ async function initializeApp() {
         state.timeUpdateInterval = setInterval(updateDynamicTimes, 60000); // Update every minute
         updateDynamicTimes(); // Run once immediately
 
-        // ADD THIS CODE: Set an interval to refresh the token every 45 minutes
+        // Set an interval to refresh the token every 45 minutes
         setInterval(() => {
             console.log("Refreshing access token automatically...");
             tokenClient.requestAccessToken({ prompt: '' });
@@ -1712,6 +1712,18 @@ async function handleSellTicket(e) {
         return;
     }
 
+    // --- DUPLICATE PREVENTION ---
+    const isDuplicate = passengerData.some(p => 
+        state.allTickets.some(t => 
+            t.name === p.name && t.booking_reference === sharedData.booking_reference
+        )
+    );
+
+    if (isDuplicate) {
+        showToast('A ticket with the same Name and PNR already exists.', 'error');
+        return;
+    }
+
     const totalNetAmount = passengerData.reduce((sum, p) => sum + p.net_amount, 0);
     const confirmationMessage = `
         <h3>Confirm Submission</h3>
@@ -2822,11 +2834,13 @@ function initializeUISettings() {
     `;
     document.head.appendChild(styleSheet);
 }
+
 // --- PDF EXPORT ---
 async function exportToPdf() {
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF({ orientation: 'p', unit: 'mm', format: 'a4' });
     const exportType = document.querySelector('input[name="exportType"]:checked').value;
+    const isMerged = document.getElementById('mergeToggle')?.checked;
 
     let ticketsToExport;
     let startDate, endDate;
@@ -2873,31 +2887,78 @@ async function exportToPdf() {
     doc.text(reportTypeStr, 105, 20, { align: 'center' });
 
     // --- Table ---
-    const head = [['No.', 'Issued Date', 'Name', 'PNR', 'Route', 'Net Amount', 'Date Change', 'Commission']];
-    const body = ticketsToExport.map((t, index) => {
-        const route = `${(t.departure||'').split('(')[0].trim()} - ${(t.destination||'').split('(')[0].trim()}`;
-        return [
-            index + 1,
-            formatDateToDMMMY(t.issued_date),
-            t.name,
-            t.booking_reference,
-            route,
-            (t.net_amount || 0).toLocaleString(),
-            (t.date_change || 0).toLocaleString(),
-            (t.commission || 0).toLocaleString()
-        ];
-    });
+    let head, body, columnStyles;
+    let totalNetAmount = 0, totalDateChange = 0, totalCommission = 0;
 
-    const totalNetAmount = ticketsToExport.reduce((sum, t) => sum + (t.net_amount || 0), 0);
-    const totalDateChange = ticketsToExport.reduce((sum, t) => sum + (t.date_change || 0), 0);
-    const totalCommission = ticketsToExport.reduce((sum, t) => sum + (t.commission || 0), 0);
-    
-    body.push([
-        { content: 'Total', colSpan: 5, styles: { halign: 'right', fontStyle: 'bold' } },
-        { content: totalNetAmount.toLocaleString(), styles: { fontStyle: 'bold', halign: 'right' } },
-        { content: totalDateChange.toLocaleString(), styles: { fontStyle: 'bold', halign: 'right' } },
-        { content: totalCommission.toLocaleString(), styles: { fontStyle: 'bold', halign: 'right' } }
-    ]);
+    if (isMerged) {
+        head = [['No.', 'Issued Date', 'Name', 'PNR', 'Route', 'Pax', 'Net Amount', 'Date Change', 'Commission']];
+        const mergedData = {};
+        ticketsToExport.forEach(t => {
+            const key = `${t.account_link}-${t.issued_date}`;
+            if (!mergedData[key]) {
+                mergedData[key] = { ...t, pax: 0, net_amount: 0, date_change: 0, commission: 0 };
+            }
+            mergedData[key].pax++;
+            mergedData[key].net_amount += (t.net_amount || 0);
+            mergedData[key].date_change += (t.date_change || 0);
+            mergedData[key].commission += (t.commission || 0);
+        });
+
+        body = Object.values(mergedData).map((t, index) => {
+            const route = `${(t.departure||'').split('(')[0].trim()} - ${(t.destination||'').split('(')[0].trim()}`;
+            return [
+                index + 1,
+                formatDateToDMMMY(t.issued_date),
+                t.name,
+                t.booking_reference,
+                route,
+                t.pax,
+                t.net_amount.toLocaleString(),
+                t.date_change.toLocaleString(),
+                t.commission.toLocaleString()
+            ];
+        });
+        
+        totalNetAmount = Object.values(mergedData).reduce((sum, t) => sum + t.net_amount, 0);
+        totalDateChange = Object.values(mergedData).reduce((sum, t) => sum + t.date_change, 0);
+        totalCommission = Object.values(mergedData).reduce((sum, t) => sum + t.commission, 0);
+
+        body.push([
+            { content: 'Total', colSpan: 6, styles: { halign: 'right', fontStyle: 'bold' } },
+            { content: totalNetAmount.toLocaleString(), styles: { fontStyle: 'bold', halign: 'right' } },
+            { content: totalDateChange.toLocaleString(), styles: { fontStyle: 'bold', halign: 'right' } },
+            { content: totalCommission.toLocaleString(), styles: { fontStyle: 'bold', halign: 'right' } }
+        ]);
+        columnStyles = { 5: { halign: 'center' }, 6: { halign: 'right' }, 7: { halign: 'right' }, 8: { halign: 'right' } };
+
+    } else {
+        head = [['No.', 'Issued Date', 'Name', 'PNR', 'Route', 'Net Amount', 'Date Change', 'Commission']];
+        body = ticketsToExport.map((t, index) => {
+            const route = `${(t.departure||'').split('(')[0].trim()} - ${(t.destination||'').split('(')[0].trim()}`;
+            return [
+                index + 1,
+                formatDateToDMMMY(t.issued_date),
+                t.name,
+                t.booking_reference,
+                route,
+                (t.net_amount || 0).toLocaleString(),
+                (t.date_change || 0).toLocaleString(),
+                (t.commission || 0).toLocaleString()
+            ];
+        });
+        
+        totalNetAmount = ticketsToExport.reduce((sum, t) => sum + (t.net_amount || 0), 0);
+        totalDateChange = ticketsToExport.reduce((sum, t) => sum + (t.date_change || 0), 0);
+        totalCommission = ticketsToExport.reduce((sum, t) => sum + (t.commission || 0), 0);
+
+        body.push([
+            { content: 'Total', colSpan: 5, styles: { halign: 'right', fontStyle: 'bold' } },
+            { content: totalNetAmount.toLocaleString(), styles: { fontStyle: 'bold', halign: 'right' } },
+            { content: totalDateChange.toLocaleString(), styles: { fontStyle: 'bold', halign: 'right' } },
+            { content: totalCommission.toLocaleString(), styles: { fontStyle: 'bold', halign: 'right' } }
+        ]);
+        columnStyles = { 5: { halign: 'right' }, 6: { halign: 'right' }, 7: { halign: 'right' } };
+    }
 
     doc.autoTable({
         head: head,
@@ -2906,29 +2967,13 @@ async function exportToPdf() {
         theme: 'grid',
         headStyles: { fillColor: [44, 62, 80], fontSize: 8 },
         styles: { fontSize: 7, cellPadding: 1.5 },
-        columnStyles: {
-            0: { halign: 'center', cellWidth: 8 }, // No.
-            1: { cellWidth: 18 }, // Issued Date
-            2: { cellWidth: 30 }, // Name
-            3: { cellWidth: 18 }, // PNR
-            4: { cellWidth: 40 }, // Route
-            5: { halign: 'right', cellWidth: 20 }, // Net
-            6: { halign: 'right', cellWidth: 20 }, // Date Change
-            7: { halign: 'right', cellWidth: 20 }  // Commission
-        },
-        didParseCell: function (data) {
-            if (data.row.raw[0].content === 'Total') {
-                data.cell.styles.fontStyle = 'bold';
-            }
-        }
+        columnStyles: columnStyles
     });
-
+    
     let finalY = doc.lastAutoTable.finalY;
     const pageHeight = doc.internal.pageSize.getHeight();
     const pageMargin = 15;
     
-    // Check if space is left for the summary. If not, add a new page.
-    // Estimate required height: 10mm for title + 4 * 7mm for rows = ~40-50mm
     if (finalY + 50 > pageHeight - pageMargin) {
         doc.addPage();
         finalY = pageMargin;
@@ -2938,7 +2983,6 @@ async function exportToPdf() {
     
     const grandTotal = totalNetAmount + totalDateChange;
     
-    // --- Summary & Settlement Section (only for date range) ---
     if (exportType === 'range') {
         const settlementsInRange = state.allSettlements.filter(s => {
             const settlementDate = parseSheetDate(s.settlement_date);
@@ -2947,14 +2991,11 @@ async function exportToPdf() {
         const totalSettlements = settlementsInRange.reduce((sum, s) => sum + s.amount_paid, 0);
         const amountToPay = grandTotal - (totalCommission + totalSettlements);
 
-        // --- Create Settlement Breakdown Body ---
-        let settlementBody = [];
-        settlementBody.push(
+        let settlementBody = [
             [{ content: `Grand Total for ${dateRangeString}:`, styles: { fontStyle: 'bold' } }, { content: `${grandTotal.toLocaleString()} MMK`, styles: { halign: 'right', fontStyle: 'bold' } }],
             [{ content: `Commissions for ${dateRangeString}:`, styles: {} }, { content: `(${totalCommission.toLocaleString()}) MMK`, styles: { halign: 'right' } }],
-        );
+        ];
 
-        // Add line-by-line settlements
         if(settlementsInRange.length > 0) {
             settlementsInRange.forEach(s => {
                 const notes = s.notes ? `, ${s.notes}` : '';
@@ -2969,12 +3010,10 @@ async function exportToPdf() {
             );
         }
         
-        // Final Balance Row
         settlementBody.push(
              [{ content: 'Remaining Balance to Settle:', styles: { fontStyle: 'bold' } }, { content: `${amountToPay.toLocaleString()} MMK`, styles: { halign: 'right', fontStyle: 'bold' } }]
         );
 
-        // Draw the settlement summary table
         doc.autoTable({
             body: settlementBody,
             startY: finalY,
@@ -2984,7 +3023,6 @@ async function exportToPdf() {
             tableWidth: 'auto',
             margin: { left: 14 },
             didDrawCell: (data) => {
-                 // Draw a line before the final balance row
                  if (data.row.index === settlementBody.length - 2) {
                     doc.setLineWidth(0.2);
                     doc.line(data.cell.x, data.cell.y + data.cell.height + 1, data.cell.x + 182, data.cell.y + data.cell.height + 1);
@@ -2996,6 +3034,7 @@ async function exportToPdf() {
     doc.save(`agent_report_${new Date().toISOString().slice(0,10)}.pdf`);
     exportConfirmModal.classList.remove('show');
 }
+
 
 // --- AUTOSUGGEST ---
 function handleAutosuggest(inputElement, fieldType) {

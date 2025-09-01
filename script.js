@@ -1058,12 +1058,12 @@ function showView(viewName) {
         updateToggleLabels();
     } else {
         // BUG FIX: Ensure bookingToUpdate is cleared when navigating away from the sell page
-        state.bookingToUpdate = null;
+        state.bookingToUpdate = null; 
     }
     if (viewName === 'booking') {
         hideNewBookingForm();
     }
-    if (viewName === 'settle') {
+     if (viewName === 'settle') {
         hideNewSettlementForm();
         displaySettlements();
         updateSettlementDashboard();
@@ -1077,7 +1077,6 @@ function showView(viewName) {
         clearManageResults();
     }
 }
-
 
 function displayInitialTickets() {
     const sorted = [...state.allTickets].sort((a, b) => parseSheetDate(b.issued_date) - parseSheetDate(a.issued_date) || b.rowIndex - a.rowIndex);
@@ -2412,6 +2411,8 @@ function buildClientList() {
                 name: ticket.name,
                 phone: ticket.phone,
                 account_name: ticket.account_name,
+                account_type: ticket.account_type,
+                account_link: ticket.account_link,
                 id_no: ticket.id_no,
                 ticket_count: 0,
                 total_spent: 0,
@@ -2540,6 +2541,7 @@ function renderClientsView(page) {
             <td>${client.last_travel.getTime() > 0 ? formatDateToDMMMY(client.last_travel) : 'N/A'}</td>
             <td class="actions-cell">
                 <button class="icon-btn icon-btn-table" title="View History" onclick="viewClientHistory('${client.name}')"><i class="fa-solid fa-clock-rotate-left"></i></button>
+                <button class="icon-btn icon-btn-table" title="New Booking" onclick="bookForClient('${client.name}')"><i class="fa-solid fa-calendar-plus"></i></button>
                 <button class="icon-btn icon-btn-table" title="Sell Ticket" onclick="sellTicketForClient('${client.name}')"><i class="fa-solid fa-ticket"></i></button>
             </td>
         `;
@@ -2680,6 +2682,39 @@ function sellTicketForClient(clientName) {
     }
     
     showToast(`Form pre-filled for ${client.name}.`, 'info');
+}
+
+// --- NEW BOOKING FOR CLIENT ---
+function bookForClient(clientName) {
+    const client = state.allClients.find(c => c.name === clientName);
+    if (!client) {
+        showToast('Could not find client details.', 'error');
+        return;
+    }
+
+    showView('booking');
+    showNewBookingForm(); // Make sure the form is visible
+    closeModal(); // Close any other modals
+
+    // Pre-fill the booking form
+    document.getElementById('booking_phone').value = client.phone || '';
+    document.getElementById('booking_account_name').value = client.account_name || '';
+    document.getElementById('booking_account_type').value = client.account_type || '';
+    document.getElementById('booking_account_link').value = client.account_link || '';
+
+    // Pre-fill the first passenger
+    resetBookingPassengerForms();
+    const passengerNameInput = document.querySelector('#booking-passenger-forms-container .booking-passenger-name');
+    const passengerIdInput = document.querySelector('#booking-passenger-forms-container .booking-passenger-id');
+
+    if (passengerNameInput) {
+        passengerNameInput.value = client.name.toUpperCase();
+    }
+    if (passengerIdInput) {
+        passengerIdInput.value = client.id_no || '';
+    }
+
+    showToast(`Booking form pre-filled for ${client.name}.`, 'info');
 }
 
 

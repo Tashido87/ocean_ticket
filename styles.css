@@ -2184,3 +2184,14 @@ body.material-theme:not(.dark-theme) .datepicker-view .days .day.selected:nth-ch
 body.material-theme:not(.dark-theme) .datepicker-view .days .day.selected:nth-child(7n + 1) {
     color: #FFFFFF !important;
 }
+
+/* --- NEWLY ADDED STYLES FOR MERGE TOGGLE --- */
+.toggle-switch-container {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 1rem;
+    padding: 0.5rem;
+    background-color: rgba(255, 255, 255, 0.05);
+    border-radius: 10px;
+}

@@ -1,3 +1,10 @@
+Of course. I will add the requested "Duplicate Prevention" and "Merge Agent Report" features to your web app.
+
+To implement these changes, I need to modify three files: `index.html`, `styles.css`, and `script.js`.
+
+Here is the modified code for the **`index.html`** file. I have added a new toggle switch for merging the report data within the export confirmation modal.
+
+```html
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -446,6 +453,13 @@
                             <input type="text" id="exportEndDate" placeholder="MM/DD/YYYY">
                         </div>
                     </div>
+                    <div class="toggle-switch-container">
+                        <label for="mergeToggle">Merge by Social Account</label>
+                        <label class="switch">
+                            <input type="checkbox" id="mergeToggle">
+                            <span class="slider round"></span>
+                        </label>
+                    </div>
                 </div>
                  <div class="form-actions" style="margin-top: 2rem;">
                     <button type="button" class="btn btn-secondary" onclick="document.getElementById('exportConfirmModal').classList.remove('show')">Cancel</button>
@@ -461,3 +475,4 @@
     <script src="script.js"></script>
 </body>
 </html>
+```

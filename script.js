@@ -30,6 +30,7 @@ const state = {
     clientPage: 1,
     settlementPage: 1,
     searchTimeout: null,
+    clientSearchQuery: '', // Stores the last client search
     cache: {}, // In-memory cache
     bookingToUpdate: null,
     commissionRates: { // Default commission rates
@@ -1057,23 +1058,26 @@ function showView(viewName) {
         updateToggleLabels();
     } else {
         // BUG FIX: Ensure bookingToUpdate is cleared when navigating away from the sell page
-        state.bookingToUpdate = null; 
+        state.bookingToUpdate = null;
     }
     if (viewName === 'booking') {
         hideNewBookingForm();
     }
-     if (viewName === 'settle') {
+    if (viewName === 'settle') {
         hideNewSettlementForm();
         displaySettlements();
         updateSettlementDashboard();
     }
     if (viewName === 'clients') {
+        // When switching to the clients view, re-render it.
+        // renderClientsView will now pull the query and page from the state.
         renderClientsView();
     }
     if (viewName === 'manage') {
         clearManageResults();
     }
 }
+
 
 function displayInitialTickets() {
     const sorted = [...state.allTickets].sort((a, b) => parseSheetDate(b.issued_date) - parseSheetDate(a.issued_date) || b.rowIndex - a.rowIndex);
@@ -2426,7 +2430,13 @@ function buildClientList() {
 }
 
 
-function renderClientsView(page = 1, searchQuery = '') {
+function renderClientsView(page) {
+    // If page isn't specified, use the one from state, or default to 1
+    const pageToRender = page || state.clientPage || 1;
+    state.clientPage = pageToRender; // Update state with the current page
+
+    const searchQuery = state.clientSearchQuery || '';
+
     const tbody = document.getElementById('clientListTableBody');
     const paginationContainer = document.getElementById('clientListPagination');
     if (!tbody || !paginationContainer) {
@@ -2464,23 +2474,32 @@ function renderClientsView(page = 1, searchQuery = '') {
                     <div id="clientListPagination" class="pagination-container"></div>
                 </div>
             </div>`;
-        document.getElementById('clientSearchInput').addEventListener('input', (e) => debounce(() => renderClientsView(1, e.target.value), 300));
+        document.getElementById('clientSearchInput').addEventListener('input', (e) => debounce(() => {
+            state.clientSearchQuery = e.target.value; // Update state on search
+            renderClientsView(1); // Go to page 1 for new search
+        }, 300));
         document.getElementById('clientClearBtn').addEventListener('click', () => {
-            document.getElementById('clientSearchInput').value = '';
-            renderClientsView(1, '');
+            const searchInput = document.getElementById('clientSearchInput');
+            searchInput.value = '';
+            state.clientSearchQuery = ''; // Clear state
+            renderClientsView(1); // Re-render from page 1
         });
-        return renderClientsView(page, searchQuery); // Re-run now that it's built
+        // Set the input value from state when first building the view
+        document.getElementById('clientSearchInput').value = searchQuery;
+        return renderClientsView(pageToRender); // Re-run now that it's built
     }
+    
+    // Ensure the search box always shows the current search query from the state
+    document.getElementById('clientSearchInput').value = searchQuery;
 
     tbody.innerHTML = '';
     paginationContainer.innerHTML = '';
-    state.clientPage = page;
 
     const query = searchQuery.toLowerCase();
     const filteredClients = state.allClients.filter(c =>
         c.name.toLowerCase().includes(query) ||
-        c.phone.includes(query) ||
-        (c.account_name && c.account_name.toLowerCase().includes(query)) // MODIFIED LINE
+        c.phone.toLowerCase().includes(query) ||
+        (c.account_name && c.account_name.toLowerCase().includes(query))
     );
 
     // Sort featured clients to the top
@@ -2493,13 +2512,20 @@ function renderClientsView(page = 1, searchQuery = '') {
     });
 
 
-    if (filteredClients.length === 0) {
+    if (filteredClients.length === 0 && searchQuery) {
         const colSpan = 8;
         tbody.innerHTML = `<tr><td colspan="${colSpan}"><div class="empty-state" style="padding: 2rem 1rem;"><i class="fa-solid fa-user-slash"></i><h4>No Clients Found</h4><p>Your search for "${searchQuery}" did not match any clients.</p></div></td></tr>`;
         return;
     }
+    
+    if (filteredClients.length === 0) {
+         const colSpan = 8;
+        tbody.innerHTML = `<tr><td colspan="${colSpan}"><div class="empty-state" style="padding: 2rem 1rem;"><i class="fa-solid fa-users"></i><h4>No Clients</h4><p>There are no clients in the system yet.</p></div></td></tr>`;
+        return;
+    }
 
-    const paginated = filteredClients.slice((page - 1) * state.rowsPerPage, page * state.rowsPerPage);
+
+    const paginated = filteredClients.slice((pageToRender - 1) * state.rowsPerPage, pageToRender * state.rowsPerPage);
 
     paginated.forEach(client => {
         const isFeatured = state.featuredClients.includes(client.name);
@@ -2527,7 +2553,7 @@ function renderClientsView(page = 1, searchQuery = '') {
         b.className = 'pagination-btn';
         b.innerHTML = txt;
         b.disabled = !en;
-        if (en) b.onclick = () => renderClientsView(pg, searchQuery);
+        if (en) b.onclick = () => renderClientsView(pg);
         if (pg === state.clientPage) b.classList.add('active');
         return b;
     };
@@ -2617,8 +2643,7 @@ function toggleFeaturedClient(event, clientName) {
     saveFeaturedClients();
     // Re-render the current page to reflect the change immediately
     const currentPage = state.clientPage;
-    const currentSearch = document.getElementById('clientSearchInput')?.value || '';
-    renderClientsView(currentPage, currentSearch);
+    renderClientsView(currentPage);
 }
 
 // --- SELL TICKET FOR CLIENT ---
@@ -2891,11 +2916,11 @@ async function exportToPdf() {
     let head, body, columnStyles;
     let totalNetAmount = 0, totalDateChange = 0, totalCommission = 0;
 
-    if (isMerged) {
+    if (isMerged && exportType === 'range') {
         head = [['No.', 'Issued Date', 'Name', 'PNR', 'Route', 'Pax', 'Net Amount', 'Date Change', 'Commission']];
         const mergedData = {};
         ticketsToExport.forEach(t => {
-            const key = `${t.account_link}-${t.issued_date}`;
+            const key = `${t.account_link}-${t.issued_date}`; // Group by social account and date
             if (!mergedData[key]) {
                 mergedData[key] = { ...t, pax: 0, net_amount: 0, date_change: 0, commission: 0 };
             }
@@ -2910,7 +2935,7 @@ async function exportToPdf() {
             return [
                 index + 1,
                 formatDateToDMMMY(t.issued_date),
-                t.name,
+                t.account_name, // Use the social account name for the merged row
                 t.booking_reference,
                 route,
                 t.pax,
@@ -2932,7 +2957,7 @@ async function exportToPdf() {
         ]);
         columnStyles = { 5: { halign: 'center' }, 6: { halign: 'right' }, 7: { halign: 'right' }, 8: { halign: 'right' } };
 
-    } else {
+    } else { // Default behavior if not merged or not a date range export
         head = [['No.', 'Issued Date', 'Name', 'PNR', 'Route', 'Net Amount', 'Date Change', 'Commission']];
         body = ticketsToExport.map((t, index) => {
             const route = `${(t.departure||'').split('(')[0].trim()} - ${(t.destination||'').split('(')[0].trim()}`;

@@ -2493,6 +2493,7 @@ function renderClientsView(page) {
                                     <th>Client Name</th>
                                     <th>Phone</th>
                                     <th>Social Media</th>
+                                    <th>Social Media Type</th>
                                     <th>Total Tickets</th>
                                     <th>Action Buttons</th>
                                 </tr>
@@ -2528,7 +2529,8 @@ function renderClientsView(page) {
     const filteredClients = state.allClients.filter(c =>
         c.name.toLowerCase().includes(query) ||
         c.phone.toLowerCase().includes(query) ||
-        (c.account_name && c.account_name.toLowerCase().includes(query))
+        (c.account_name && c.account_name.toLowerCase().includes(query)) ||
+        (c.account_type && c.account_type.toLowerCase().includes(query))
     );
 
     // Sort featured clients to the top
@@ -2542,13 +2544,13 @@ function renderClientsView(page) {
 
 
     if (filteredClients.length === 0 && searchQuery) {
-        const colSpan = 6;
+        const colSpan = 7;
         tbody.innerHTML = `<tr><td colspan="${colSpan}"><div class="empty-state" style="padding: 2rem 1rem;"><i class="fa-solid fa-user-slash"></i><h4>No Clients Found</h4><p>Your search for "${searchQuery}" did not match any clients.</p></div></td></tr>`;
         return;
     }
     
     if (filteredClients.length === 0) {
-         const colSpan = 6;
+         const colSpan = 7;
         tbody.innerHTML = `<tr><td colspan="${colSpan}"><div class="empty-state" style="padding: 2rem 1rem;"><i class="fa-solid fa-users"></i><h4>No Clients</h4><p>There are no clients in the system yet.</p></div></td></tr>`;
         return;
     }
@@ -2564,6 +2566,7 @@ function renderClientsView(page) {
             <td class="client-name-cell">${client.name}</td>
             <td>${client.phone}</td>
             <td>${client.account_name}</td>
+            <td>${client.account_type}</td>
             <td>${client.ticket_count}</td>
             <td class="client-actions">
                 <button class="icon-btn icon-btn-table" title="Detail" onclick="viewClientHistory('${client.name}')"><i class="fa-solid fa-eye"></i></button>
@@ -3466,11 +3469,6 @@ async function exportPrivateReportToPdf() {
         return issuedDate >= startDate && issuedDate <= endDate;
     });
 
-    const historyInMonth = state.history.filter(h => {
-        const historyDate = new Date(h.date);
-        return historyDate >= startDate && historyDate <= endDate;
-    });
-
     if (ticketsInMonth.length === 0) {
         showToast('No tickets to export in the selected month.', 'info');
         return;
@@ -3504,23 +3502,98 @@ async function exportPrivateReportToPdf() {
         body: summaryBody,
         startY: 25,
         theme: 'grid',
-        headStyles: { fillColor: [44, 62, 80], fontSize: 10, fontStyle: 'bold' },
         styles: { fontSize: 9, cellPadding: 2 },
-        columnStyles: { 0: { fontStyle: 'bold' } },
+        columnStyles: { 0: { fontStyle: 'bold', fillColor: [230, 247, 255] } },
     });
 
     let finalY = doc.lastAutoTable.finalY + 10;
 
-    // --- Airline Analysis ---
+    // --- Most Traveled Route ---
+    const routeCounts = ticketsInMonth.reduce((acc, ticket) => {
+        // MODIFIED: Using a more visually appealing arrow.
+        const route = `${(ticket.departure||'').split('(')[0].trim()} ➔ ${(ticket.destination||'').split('(')[0].trim()}`;
+        acc[route] = (acc[route] || 0) + 1;
+        return acc;
+    }, {});
+
+    let mostTraveledRoute = 'N/A';
+    let maxCount = 0;
+    for (const route in routeCounts) {
+        if (routeCounts[route] > maxCount) {
+            mostTraveledRoute = route;
+            maxCount = routeCounts[route];
+        }
+    }
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'bold');
+    doc.text('Most Traveled Route:', 14, finalY);
+    doc.setFont('helvetica', 'normal');
+    doc.text(mostTraveledRoute, 55, finalY);
+    finalY += 8;
+
+
+    // --- Aggregate Data for New Tables ---
+    const airlineFinancials = ticketsInMonth.reduce((acc, t) => {
+        if (!acc[t.airline]) {
+            acc[t.airline] = { net: 0, commission: 0, extra: 0 };
+        }
+        acc[t.airline].net += t.net_amount;
+        acc[t.airline].commission += t.commission;
+        acc[t.airline].extra += t.extra_fare;
+        return acc;
+    }, {});
+
+    // --- Extra Fare Analysis Table ---
+    const extraFareData = Object.entries(airlineFinancials)
+        .map(([airline, data]) => ({
+            airline,
+            ...data,
+            percentage: data.net > 0 ? ((data.extra / data.net) * 100).toFixed(2) : 0
+        }))
+        .sort((a, b) => b.percentage - a.percentage);
+
+    const extraFareBody = extraFareData.map(a => [a.airline, a.extra.toLocaleString(), `${a.percentage}%`]);
+    doc.autoTable({
+        head: [['Airline', 'Total Extra Fare', 'Percentage of Net']],
+        body: extraFareBody,
+        startY: finalY,
+        theme: 'grid',
+        headStyles: { fillColor: [22, 160, 133], textColor: [255, 255, 255] },
+    });
+    finalY = doc.lastAutoTable.finalY + 10;
+
+    // --- Commission Analysis Table ---
+    const commissionData = Object.entries(airlineFinancials)
+        .map(([airline, data]) => ({
+            airline,
+            ...data,
+            percentage: data.net > 0 ? ((data.commission / data.net) * 100).toFixed(2) : 0
+        }))
+        .sort((a, b) => b.percentage - a.percentage);
+
+    const commissionBody = commissionData.map(a => [a.airline, a.commission.toLocaleString(), `${a.percentage}%`]);
+    doc.autoTable({
+        head: [['Airline', 'Total Commission', 'Percentage of Net']],
+        body: commissionBody,
+        startY: finalY,
+        theme: 'grid',
+        headStyles: { fillColor: [41, 128, 185], textColor: [255, 255, 255] },
+    });
+    finalY = doc.lastAutoTable.finalY + 10;
+
+    // --- Airline Ticket Analysis ---
     const airlineSales = ticketsInMonth.reduce((acc, ticket) => {
         acc[ticket.airline] = (acc[ticket.airline] || 0) + 1;
         return acc;
     }, {});
-    const airlineData = Object.entries(airlineSales).map(([airline, count]) => ({
-        airline,
-        count,
-        percentage: ((count / totalTickets) * 100).toFixed(2)
-    }));
+    const airlineData = Object.entries(airlineSales)
+        .map(([airline, count]) => ({
+            airline,
+            count,
+            percentage: ((count / totalTickets) * 100).toFixed(2)
+        }))
+        .sort((a, b) => b.count - a.count);
+    
     const airlineBody = airlineData.map(a => [a.airline, a.count, `${a.percentage}%`]);
 
     doc.autoTable({
@@ -3528,25 +3601,35 @@ async function exportPrivateReportToPdf() {
         body: airlineBody,
         startY: finalY,
         theme: 'grid',
-        headStyles: { fillColor: [44, 62, 80] },
+        headStyles: { fillColor: [142, 68, 173], textColor: [255, 255, 255] },
     });
 
     finalY = doc.lastAutoTable.finalY + 10;
 
-    // --- Modification History ---
-    if (historyInMonth.length > 0) {
-        const historyBody = historyInMonth.map(h => [h.date, h.name, h.pnr, h.details]);
-        doc.autoTable({
-            head: [['Date', 'Name', 'PNR', 'Details']],
-            body: historyBody,
-            startY: finalY,
-            theme: 'grid',
-            headStyles: { fillColor: [44, 62, 80] },
-            styles: { fontSize: 8, cellPadding: 1.5 },
-        });
-    } else {
-        doc.text('No modification history for this period.', 14, finalY);
-    }
+    // --- Social Media Analysis ---
+    const socialMediaSales = ticketsInMonth.reduce((acc, ticket) => {
+        const type = (ticket.account_type || 'Unknown').trim().toUpperCase();
+        acc[type] = (acc[type] || 0) + 1;
+        return acc;
+    }, {});
+
+    const socialMediaData = Object.entries(socialMediaSales)
+        .map(([type, count]) => ({
+            type,
+            count,
+            percentage: ((count / totalTickets) * 100).toFixed(2)
+        }))
+        .sort((a, b) => b.count - a.count);
+
+    const socialMediaBody = socialMediaData.map(s => [s.type, s.count, `${s.percentage}%`]);
+
+    doc.autoTable({
+        head: [['Social Media Platform', 'Clients', 'Percentage']],
+        body: socialMediaBody,
+        startY: finalY,
+        theme: 'grid',
+        headStyles: { fillColor: [243, 156, 18], textColor: [255, 255, 255] },
+    });
 
     doc.save(`private_report_${new Date().toISOString().slice(0,10)}.pdf`);
 }

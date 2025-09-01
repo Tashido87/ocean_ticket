@@ -2438,7 +2438,7 @@ function renderClientsView(page = 1, searchQuery = '') {
                     <h2><i class="fa-solid fa-users"></i> Client Directory</h2>
                     <div class="client-controls">
                         <div class="client-search-box" style="display: flex; gap: 0.5rem;">
-                            <input type="text" id="clientSearchInput" placeholder="Search by name or phone...">
+                            <input type="text" id="clientSearchInput" placeholder="Search by name, phone, or social media...">
                             <button id="clientClearBtn" class="btn btn-secondary"><i class="fa-solid fa-eraser"></i></button>
                         </div>
                     </div>
@@ -2479,7 +2479,8 @@ function renderClientsView(page = 1, searchQuery = '') {
     const query = searchQuery.toLowerCase();
     const filteredClients = state.allClients.filter(c =>
         c.name.toLowerCase().includes(query) ||
-        c.phone.includes(query)
+        c.phone.includes(query) ||
+        (c.account_name && c.account_name.toLowerCase().includes(query)) // MODIFIED LINE
     );
 
     // Sort featured clients to the top

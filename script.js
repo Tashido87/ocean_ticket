@@ -190,6 +190,12 @@ async function initializeApp() {
         state.timeUpdateInterval = setInterval(updateDynamicTimes, 60000); // Update every minute
         updateDynamicTimes(); // Run once immediately
 
+        // ADD THIS CODE: Set an interval to refresh the token every 45 minutes
+        setInterval(() => {
+            console.log("Refreshing access token automatically...");
+            tokenClient.requestAccessToken({ prompt: '' });
+        }, 2700000); // 45 minutes in milliseconds (45 * 60 * 1000)
+
     } catch (error) {
         console.error("Initialization failed:", error);
         showToast('A critical error occurred during data initialization. Please check the console (F12) for details.', 'error');

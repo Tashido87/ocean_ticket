@@ -2338,17 +2338,18 @@ async function loadHistory() {
     }
 }
 
+// From script.js - Replace the existing saveHistory function with this one
+
 async function saveHistory(ticket, details) {
     const now = new Date();
-    const timestamp = now.toLocaleString('en-US', {
-        month: '2-digit',
-        day: '2-digit',
-        year: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit',
-        hour12: true
-    });
+    
+    // Manually format the date to "DD-Mon-YYYY"
+    const day = String(now.getDate()).padStart(2, '0');
+    const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    const month = monthNames[now.getMonth()];
+    const year = now.getFullYear();
+
+    const timestamp = `${day}-${month}-${year}`;
 
     const values = [[timestamp, ticket.name, ticket.booking_reference, details]];
 
@@ -2364,7 +2365,6 @@ async function saveHistory(ticket, details) {
         showToast('Failed to log action to history.', 'error');
     }
 }
-
 function displayHistory(page, historyToShow = state.history) {
     const container = document.getElementById('modificationHistoryBody');
     const paginationContainer = document.getElementById('modificationHistoryPagination');

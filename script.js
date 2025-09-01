@@ -432,7 +432,7 @@ async function loadTicketData() {
     try {
         loading.style.display = 'block';
         dashboardContent.style.display = 'none';
-        const response = await fetchFromSheet(`${CONFIG.SHEET_NAME}!A:U`, 'ticketData');
+        const response = await fetchFromSheet(`${CONFIG.SHEET_NAME}!A:V`, 'ticketData');
 
         if (response.values && response.values.length > 1) {
             state.allTickets = parseTicketData(response.values);
@@ -470,7 +470,7 @@ function parseTicketData(values) {
 // --- BOOKING LOGIC ---
 async function loadBookingData() {
     try {
-        const response = await fetchFromSheet(`${CONFIG.BOOKING_SHEET_NAME}!A:N`, 'bookingData');
+        const response = await fetchFromSheet(`${CONFIG.BOOKING_SHEET_NAME}!A:O`, 'bookingData');
 
         if (response.values) {
             state.allBookings = parseBookingData(response.values);
@@ -530,10 +530,11 @@ async function handleExpiredBookings() {
                 'end', // Set remark to 'end'
                 booking.enddate || '',
                 booking.endtime || '',
-                ''
+                '',
+                booking.gender || ''
             ];
             expiredBookingsToUpdate.push({
-                range: `${CONFIG.BOOKING_SHEET_NAME}!A${booking.rowIndex}:N${booking.rowIndex}`,
+                range: `${CONFIG.BOOKING_SHEET_NAME}!A${booking.rowIndex}:O${booking.rowIndex}`,
                 values: [values]
             });
         }
@@ -731,10 +732,11 @@ async function updateBookingStatus(rowIndices, remarks) {
                 remarks,                    // K - The new remark: 'complete' or 'cancel'
                 booking.enddate || '',      // L
                 booking.endtime || '',      // M
-                ''                          // N
+                '',                          // N
+                booking.gender || ''
             ];
             return {
-                range: `${CONFIG.BOOKING_SHEET_NAME}!A${booking.rowIndex}:N${booking.rowIndex}`,
+                range: `${CONFIG.BOOKING_SHEET_NAME}!A${booking.rowIndex}:O${booking.rowIndex}`,
                 values: [values]
             };
         });
@@ -842,10 +844,11 @@ async function handleNewBookingSubmit(e) {
         const passengerForms = document.querySelectorAll('#booking-passenger-forms-container .passenger-form');
         const passengerData = [];
         passengerForms.forEach(form => {
+            const gender = form.querySelector('.booking-passenger-gender').value;
             const name = form.querySelector('.booking-passenger-name').value.toUpperCase();
             const id_no = form.querySelector('.booking-passenger-id').value.toUpperCase();
             if (name) {
-                passengerData.push({ name, id_no });
+                passengerData.push({ gender, name, id_no });
             }
         });
 
@@ -870,12 +873,13 @@ async function handleNewBookingSubmit(e) {
             '', // K
             formatDateForSheet(sharedData.enddate), // L
             sharedData.endtime, // M
-            '' // N (Remarks)
+            '', // N (Remarks)
+            passenger.gender // O
         ]);
 
         await gapi.client.sheets.spreadsheets.values.append({
             spreadsheetId: CONFIG.SHEET_ID,
-            range: `${CONFIG.BOOKING_SHEET_NAME}!A:N`,
+            range: `${CONFIG.BOOKING_SHEET_NAME}!A:O`,
             valueInputOption: 'USER_ENTERED',
             resource: { values },
         });
@@ -1001,7 +1005,7 @@ function sellTicketFromBooking(rowIndicesStr) {
     const passengerCount = bookingGroup.passengers.length;
 
     bookingGroup.passengers.forEach(passenger => {
-        addPassengerForm(passenger.name, passenger.id_no);
+        addPassengerForm(passenger.name, passenger.id_no, passenger.gender);
     });
 
     showToast(`Form pre-filled for ${bookingGroup.passengers[0].name}${passengerCount > 1 ? ` and ${passengerCount - 1} other(s)`: ''}. Complete financial details.`, 'info');
@@ -1808,6 +1812,7 @@ function collectFormData(form) {
     const passengerForms = form.querySelectorAll('.passenger-form');
     passengerForms.forEach(pForm => {
         const passenger = {
+            gender: pForm.querySelector('.passenger-gender').value,
             name: pForm.querySelector('.passenger-name').value.toUpperCase(),
             id_no: pForm.querySelector('.passenger-id').value.toUpperCase(),
             base_fare: parseFloat(pForm.querySelector('.passenger-base-fare').value) || 0,
@@ -1848,19 +1853,20 @@ async function saveTicket(sharedData, passengerData) {
             agentCommission, // Save the calculated agent's commission
             p.remarks,
             p.extra_fare,
-            0
+            0,
+            p.gender
         ];
     });
 
     await gapi.client.sheets.spreadsheets.values.append({
         spreadsheetId: CONFIG.SHEET_ID,
-        range: `${CONFIG.SHEET_NAME}!A:U`,
+        range: `${CONFIG.SHEET_NAME}!A:V`,
         valueInputOption: 'USER_ENTERED',
         resource: { values },
     });
 }
 
-function addPassengerForm(name = '', id_no = '') {
+function addPassengerForm(name = '', id_no = '', gender = 'MR') {
     const container = document.getElementById('passenger-forms-container');
     const passengerCount = container.children.length;
 
@@ -1870,7 +1876,19 @@ function addPassengerForm(name = '', id_no = '') {
         <hr style="border-color: rgba(255,255,255,0.1); margin-bottom: 1rem;">
         <h4>Passenger ${passengerCount + 1}</h4>
         <div class="form-grid">
-            <div class="form-group"><label>Client Name</label><input type="text" class="passenger-name" value="${name}" required></div>
+            <div class="form-group passenger-name-group">
+                <div class="form-group">
+                    <label>Gender</label>
+                    <select class="passenger-gender">
+                        <option value="MR" ${gender === 'MR' ? 'selected' : ''}>MR</option>
+                        <option value="MS" ${gender === 'MS' ? 'selected' : ''}>MS</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Client Name</label>
+                    <input type="text" class="passenger-name" value="${name}" required>
+                </div>
+            </div>
             <div class="form-group"><label>ID Number</label><input type="text" class="passenger-id" value="${id_no}" required></div>
             <div class="form-group"><label>Base Fare (MMK)</label><input type="number" class="passenger-base-fare" step="1" required></div>
             <div class="form-group"><label>Net Amount (MMK)</label><input type="number" class="passenger-net-amount" step="1" required></div>
@@ -1918,7 +1936,19 @@ function addBookingPassengerForm() {
         ${passengerCount > 0 ? '<hr style="border-color: rgba(255,255,255,0.1); margin: 1rem 0;">' : ''}
         <h4>Passenger ${passengerCount + 1}</h4>
         <div class="booking-passenger-grid">
-            <div class="form-group"><label>Client Name</label><input type="text" class="booking-passenger-name" required></div>
+             <div class="form-group passenger-name-group">
+                <div class="form-group">
+                    <label>Gender</label>
+                    <select class="booking-passenger-gender">
+                        <option value="MR">MR</option>
+                        <option value="MS">MS</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Client Name</label>
+                    <input type="text" class="booking-passenger-name" required>
+                </div>
+            </div>
             <div class="form-group"><label>ID Number</label><input type="text" class="booking-passenger-id"></div>
         </div>
     `;
@@ -2137,14 +2167,14 @@ async function handleUpdateTicket(e) {
         let finalPaidDate = newPaidDate ? formatDateForSheet(newPaidDate) : ticket.paid_date;
 
         return {
-            range: `${CONFIG.SHEET_NAME}!A${ticket.rowIndex}:U${ticket.rowIndex}`,
+            range: `${CONFIG.SHEET_NAME}!A${ticket.rowIndex}:V${ticket.rowIndex}`,
             values: [[
                 ticket.issued_date, ticket.name, ticket.id_no, ticket.phone,
                 ticket.account_name, ticket.account_type, ticket.account_link,
                 ticket.departure, ticket.destination, formattedNewTravelDateForSheet || ticket.departing_on,
                 ticket.airline, finalBaseFare, ticket.booking_reference, finalNetAmount,
                 finalPaid, finalPaymentMethod, finalPaidDate,
-                finalCommission, ticket.remarks, finalExtraFare, finalDateChangeFees
+                finalCommission, ticket.remarks, finalExtraFare, finalDateChangeFees, ticket.gender
             ]]
         };
     });
@@ -2281,7 +2311,7 @@ async function handleCancelTicket(rowIndex, type, details = {}) {
                 ticket.departure, ticket.destination, ticket.departing_on,
                 ticket.airline, 0, ticket.booking_reference, 0,
                 ticket.paid, ticket.payment_method, ticket.paid_date,
-                0, remark, 0, 0
+                0, remark, 0, 0, ticket.gender
             ];
             historyDetails = "CANCELED: Full Refund processed.";
         } else {
@@ -2292,7 +2322,7 @@ async function handleCancelTicket(rowIndex, type, details = {}) {
                 ticket.departure, ticket.destination, ticket.departing_on,
                 ticket.airline, ticket.base_fare, ticket.booking_reference, details.cancellationFee,
                 ticket.paid, ticket.payment_method, ticket.paid_date,
-                ticket.commission, remark, ticket.extra_fare, ticket.date_change
+                ticket.commission, remark, ticket.extra_fare, ticket.date_change, ticket.gender
             ];
             historyDetails = `CANCELED: Partial. Refunded: ${details.refundAmount.toLocaleString()} MMK via ${details.paymentMethod} ${details.transactionId ? `(ID: ${details.transactionId})` : ''}. New Net Amount: ${details.cancellationFee.toLocaleString()} MMK.`;
         }
@@ -2301,7 +2331,7 @@ async function handleCancelTicket(rowIndex, type, details = {}) {
             showToast('Processing cancellation...', 'info');
             await gapi.client.sheets.spreadsheets.values.update({
                 spreadsheetId: CONFIG.SHEET_ID,
-                range: `${CONFIG.SHEET_NAME}!A${rowIndex}:U${rowIndex}`,
+                range: `${CONFIG.SHEET_NAME}!A${rowIndex}:V${rowIndex}`,
                 valueInputOption: 'USER_ENTERED',
                 resource: { values: [updatedValues] }
             });
@@ -2414,6 +2444,7 @@ function buildClientList() {
                 account_type: ticket.account_type,
                 account_link: ticket.account_link,
                 id_no: ticket.id_no,
+                gender: ticket.gender,
                 ticket_count: 0,
                 total_spent: 0,
                 last_travel: new Date(0)
@@ -2429,7 +2460,6 @@ function buildClientList() {
 
     state.allClients = Object.values(clients).sort((a, b) => a.name.localeCompare(b.name));
 }
-
 
 function renderClientsView(page) {
     // If page isn't specified, use the one from state, or default to 1
@@ -2464,9 +2494,7 @@ function renderClientsView(page) {
                                     <th>Phone</th>
                                     <th>Social Media</th>
                                     <th>Total Tickets</th>
-                                    <th>Total Spent (MMK)</th>
-                                    <th>Last Travel</th>
-                                    <th>Actions</th>
+                                    <th>Action Buttons</th>
                                 </tr>
                             </thead>
                             <tbody id="clientListTableBody"></tbody>
@@ -2514,13 +2542,13 @@ function renderClientsView(page) {
 
 
     if (filteredClients.length === 0 && searchQuery) {
-        const colSpan = 8;
+        const colSpan = 6;
         tbody.innerHTML = `<tr><td colspan="${colSpan}"><div class="empty-state" style="padding: 2rem 1rem;"><i class="fa-solid fa-user-slash"></i><h4>No Clients Found</h4><p>Your search for "${searchQuery}" did not match any clients.</p></div></td></tr>`;
         return;
     }
     
     if (filteredClients.length === 0) {
-         const colSpan = 8;
+         const colSpan = 6;
         tbody.innerHTML = `<tr><td colspan="${colSpan}"><div class="empty-state" style="padding: 2rem 1rem;"><i class="fa-solid fa-users"></i><h4>No Clients</h4><p>There are no clients in the system yet.</p></div></td></tr>`;
         return;
     }
@@ -2537,12 +2565,11 @@ function renderClientsView(page) {
             <td>${client.phone}</td>
             <td>${client.account_name}</td>
             <td>${client.ticket_count}</td>
-            <td>${client.total_spent.toLocaleString()}</td>
-            <td>${client.last_travel.getTime() > 0 ? formatDateToDMMMY(client.last_travel) : 'N/A'}</td>
-            <td class="actions-cell">
-                <button class="icon-btn icon-btn-table" title="View History" onclick="viewClientHistory('${client.name}')"><i class="fa-solid fa-clock-rotate-left"></i></button>
+            <td class="client-actions">
+                <button class="icon-btn icon-btn-table" title="Detail" onclick="viewClientHistory('${client.name}')"><i class="fa-solid fa-eye"></i></button>
+                <button class="icon-btn icon-btn-table" title="Copy Info" onclick="copyClientInfo('${client.name}', '${client.id_no}', '${client.phone}', '${client.gender}')"><i class="fa-solid fa-copy"></i></button>
                 <button class="icon-btn icon-btn-table" title="New Booking" onclick="bookForClient('${client.name}')"><i class="fa-solid fa-calendar-plus"></i></button>
-                <button class="icon-btn icon-btn-table" title="Sell Ticket" onclick="sellTicketForClient('${client.name}')"><i class="fa-solid fa-ticket"></i></button>
+                <button class="icon-btn icon-btn-table" title="Sell New Ticket" onclick="sellTicketForClient('${client.name}')"><i class="fa-solid fa-ticket"></i></button>
             </td>
         `;
     });
@@ -2563,6 +2590,18 @@ function renderClientsView(page) {
     for (let i = 1; i <= pageCount; i++) paginationContainer.append(btn(i, i));
     paginationContainer.append(btn('&raquo;', state.clientPage + 1, state.clientPage < pageCount));
 }
+
+function copyClientInfo(name, id, phone, gender) {
+    const prefix = gender ? `${gender} ` : '';
+    const textToCopy = `${prefix}${name}\n${id}\n${phone}`;
+    navigator.clipboard.writeText(textToCopy).then(() => {
+        showToast(`Copied info for ${name}`, 'success');
+    }, (err) => {
+        showToast('Failed to copy text.', 'error');
+        console.error('Could not copy text: ', err);
+    });
+}
+
 
 function viewClientHistory(clientName) {
     const clientTickets = state.allTickets.filter(t => t.name === clientName)
@@ -2672,8 +2711,12 @@ function sellTicketForClient(clientName) {
     
     // Add a passenger form with the client's name and ID
     resetPassengerForms(); 
+    const passengerGenderSelect = document.querySelector('#passenger-forms-container .passenger-gender');
     const passengerNameInput = document.querySelector('#passenger-forms-container .passenger-name');
     const passengerIdInput = document.querySelector('#passenger-forms-container .passenger-id');
+    if(passengerGenderSelect) {
+        passengerGenderSelect.value = client.gender || 'MR';
+    }
     if (passengerNameInput) {
         passengerNameInput.value = client.name.toUpperCase();
     }
@@ -2704,9 +2747,13 @@ function bookForClient(clientName) {
 
     // Pre-fill the first passenger
     resetBookingPassengerForms();
+    const passengerGenderSelect = document.querySelector('#booking-passenger-forms-container .booking-passenger-gender');
     const passengerNameInput = document.querySelector('#booking-passenger-forms-container .booking-passenger-name');
     const passengerIdInput = document.querySelector('#booking-passenger-forms-container .booking-passenger-id');
 
+    if(passengerGenderSelect) {
+        passengerGenderSelect.value = client.gender || 'MR';
+    }
     if (passengerNameInput) {
         passengerNameInput.value = client.name.toUpperCase();
     }

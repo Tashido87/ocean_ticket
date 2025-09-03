@@ -877,19 +877,26 @@ async function handleNewBookingSubmit(e) {
             passenger.gender // O
         ]);
 
-        await gapi.client.sheets.spreadsheets.values.append({
+        const result = await gapi.client.sheets.spreadsheets.values.append({
             spreadsheetId: CONFIG.SHEET_ID,
             range: `${CONFIG.BOOKING_SHEET_NAME}!A:O`,
             valueInputOption: 'USER_ENTERED',
             resource: { values },
         });
 
+        console.log('Google Sheets API Response:', result);
+
+        if (result.status !== 200 || !result.result.updates || result.result.updates.updatedRows === 0) {
+            throw new Error('API call succeeded but failed to append rows. Check Sheets permissions.');
+        }
+
         state.cache['bookingData'] = null;
         showToast(`Booking for ${passengerData.length} passenger(s) saved!`, 'success');
         hideNewBookingForm();
         await loadBookingData();
-        updateNotifications(); // BUG FIX: Refresh notifications after adding a booking
+        updateNotifications(); 
     } catch (error) {
+        console.error('Error submitting booking:', error);
         showToast(`Error: ${error.message || 'Could not save booking.'}`, 'error');
     } finally {
         state.isSubmitting = false;
@@ -1719,15 +1726,18 @@ async function handleSellTicket(e) {
         return;
     }
 
-    // --- DUPLICATE PREVENTION ---
-    const isDuplicate = passengerData.some(p => 
-        state.allTickets.some(t => 
-            t.name === p.name && t.booking_reference === sharedData.booking_reference
+    // --- MODIFIED DUPLICATE PREVENTION ---
+    const isDuplicate = passengerData.some(p =>
+        state.allTickets.some(t =>
+            t.name === p.name &&
+            t.booking_reference === sharedData.booking_reference &&
+            t.departure === sharedData.departure &&
+            t.destination === sharedData.destination
         )
     );
 
     if (isDuplicate) {
-        showToast('A ticket with the same Name and PNR already exists.', 'error');
+        showToast('A ticket with the same Name, PNR, and Route already exists.', 'error');
         return;
     }
 
@@ -1742,15 +1752,12 @@ async function handleSellTicket(e) {
             <li><strong>Payment Status:</strong> ${sharedData.paid ? `Paid via ${sharedData.payment_method}` : 'Not Paid'}</li>
         </ul>
     `;
-
+    
+    // --- MODIFIED CONFIRMATION ---
+    // The generic PNR check has been removed to align with the request to allow
+    // saving the same PNR with a different route without an extra warning.
     showConfirmModal(confirmationMessage, () => {
-        const pnrExists = state.allTickets.some(t => t.booking_reference === sharedData.booking_reference);
-        if (pnrExists) {
-            const pnrMessage = `PNR <strong>${sharedData.booking_reference}</strong> already exists. Are you sure you want to add more passengers under this PNR?`;
-            showConfirmModal(pnrMessage, () => confirmAndSaveTicket(form, sharedData, passengerData));
-        } else {
-            confirmAndSaveTicket(form, sharedData, passengerData);
-        }
+        confirmAndSaveTicket(form, sharedData, passengerData);
     });
 }
 

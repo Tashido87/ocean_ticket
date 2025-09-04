@@ -418,7 +418,6 @@ body.dark-text-theme:not(.material-theme) .nav-btn.active {
     margin-bottom: 1.5rem;
 }
 
-/* MODIFIED: Added a rule to fix the layout of the extra search options */
 .search-inputs .desktop-only {
     display: flex;
     flex-direction: column;
@@ -2265,6 +2264,18 @@ body.material-theme:not(.dark-theme) .datepicker-view .days .day.selected:nth-ch
     
     .header-left {
         flex-grow: 1;
+    }
+
+    /* ADDED: Hide non-essential settings buttons on mobile */
+    .settings-buttons a[title="Open Google Sheet"],
+    #background-upload-btn,
+    #background-reset-btn {
+        display: none;
+    }
+
+    /* ADDED: Hide the Material Design toggle on mobile */
+    #material-theme-setting {
+        display: none;
     }
 
     .title {

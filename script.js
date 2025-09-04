@@ -3465,6 +3465,12 @@ async function exportPrivateReportToPdf() {
 
     const startDateStr = document.getElementById('searchStartDate').value;
     const endDateStr = document.getElementById('searchEndDate').value;
+
+    if (!startDateStr || !endDateStr) {
+        showToast('Please select a valid date range for the private report.', 'error');
+        return;
+    }
+    
     const startDate = parseSheetDate(startDateStr);
     const endDate = parseSheetDate(endDateStr);
     

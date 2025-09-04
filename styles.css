@@ -2371,3 +2371,4 @@ body.material-theme:not(.dark-theme) .datepicker-view .days .day.selected:nth-ch
         -webkit-backdrop-filter: blur(var(--blur-amount));
     }
 }
+

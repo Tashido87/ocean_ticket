@@ -2070,21 +2070,16 @@ body.material-theme.dark-theme .booking-search-section select:focus {
     box-shadow: 0 0 0 3px rgba(251, 146, 60, 0.25);
 }
 
-body.material-theme .search-inputs select,
-body.material-theme .form-group select,
-body.material-theme .booking-search-section select {
-     background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3e%3cpath fill='none' stroke='%23343a40' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M2 5l6 6 6-6'/%3e%3c/svg%3e");
-     -webkit-appearance: none;
-     -moz-appearance: none;
-     appearance: none;
+/* FIX: Universal rule for all select elements in Material mode */
+body.material-theme select {
+    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3e%3cpath fill='none' stroke='%23343a40' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M2 5l6 6 6-6'/%3e%3c/svg%3e");
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    appearance: none;
 }
-body.material-theme.dark-theme .search-inputs select,
-body.material-theme.dark-theme .form-group select,
-body.material-theme.dark-theme .booking-search-section select {
-     background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3e%3cpath fill='none' stroke='%23f8f9fa' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M2 5l6 6 6-6'/%3e%3c/svg%3e");
-     -webkit-appearance: none;
-     -moz-appearance: none;
-     appearance: none;
+
+body.material-theme.dark-theme select {
+    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3e%3cpath fill='none' stroke='%23f8f9fa' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M2 5l6 6 6-6'/%3e%3c/svg%3e");
 }
 
 body.material-theme .modal {

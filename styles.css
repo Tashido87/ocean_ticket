@@ -561,9 +561,6 @@ tbody tr:hover { background-color: var(--glass-bg-hover); }
     font-size: 1rem;
     transition: all 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94);
     text-transform: uppercase;
-    -webkit-appearance: none;
-    -moz-appearance: none;
-    appearance: none;
     resize: none;
     backdrop-filter: blur(20px) saturate(180%);
     -webkit-backdrop-filter: blur(20px) saturate(180%);
@@ -585,6 +582,9 @@ tbody tr:hover { background-color: var(--glass-bg-hover); }
     background-repeat: no-repeat;
     background-position: right 0.75rem center;
     background-size: 16px 12px;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    appearance: none;
 }
 
 /* NEW: SVG color for dark text theme */
@@ -1719,30 +1719,6 @@ td .icon-btn-table {
     background: var(--primary-accent-dark);
 }
 
-.notification-group-title {
-    font-size: 1rem;
-    font-weight: 600;
-    color: var(--text-secondary);
-    margin: 1rem 0 0.5rem 0.5rem;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    display: flex;
-    align-items: center;
-}
-
-.notification-group-title .fa-solid {
-    margin-right: 0.75rem;
-    font-size: 0.9em;
-}
-
-.notification-group-title .fa-clock-fast-forward {
-    color: var(--danger-accent);
-}
-
-.notification-group-title .fa-file-invoice-dollar {
-    color: var(--primary-accent);
-}
-
 .notification-modal-item {
     display: grid;
     grid-template-columns: 45px 1fr auto;
@@ -2098,11 +2074,17 @@ body.material-theme .search-inputs select,
 body.material-theme .form-group select,
 body.material-theme .booking-search-section select {
      background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3e%3cpath fill='none' stroke='%23343a40' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M2 5l6 6 6-6'/%3e%3c/svg%3e");
+     -webkit-appearance: none;
+     -moz-appearance: none;
+     appearance: none;
 }
 body.material-theme.dark-theme .search-inputs select,
 body.material-theme.dark-theme .form-group select,
 body.material-theme.dark-theme .booking-search-section select {
      background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3e%3cpath fill='none' stroke='%23f8f9fa' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M2 5l6 6 6-6'/%3e%3c/svg%3e");
+     -webkit-appearance: none;
+     -moz-appearance: none;
+     appearance: none;
 }
 
 body.material-theme .modal {
@@ -2158,7 +2140,7 @@ body.material-theme .notification-icon {
 body.material-theme.dark-theme .notification-item,
 body.material-theme.dark-theme .notification-modal-item,
 body.material-theme.dark-theme .notification-icon {
-    background-color: #495057;
+    background-color: #343a40;
 }
 
 /* Client Name Highlighting */

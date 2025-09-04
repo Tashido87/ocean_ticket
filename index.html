@@ -70,9 +70,30 @@
                                 <i class="icon fa-solid fa-ticket-simple"></i>
                             </div>
                         </div>
-                        <div id="monthly-revenue-box" class="info-card glass-card"></div>
-                        <div id="monthly-commission-box" class="info-card glass-card"></div>
-                        <div id="monthly-extra-fare-box" class="info-card glass-card"></div>
+                        <div id="monthly-revenue-box" class="info-card glass-card">
+                             <div class="info-card-content">
+                                <h3>Total Revenue</h3>
+                                <div class="main-value" id="monthly-revenue-value"></div>
+                                <span class="sub-value">MMK</span>
+                                <i class="icon fa-solid fa-sack-dollar"></i>
+                            </div>
+                        </div>
+                        <div id="monthly-commission-box" class="info-card glass-card">
+                            <div class="info-card-content">
+                                <h3>Total Commission</h3>
+                                <div class="main-value" id="monthly-commission-value"></div>
+                                <span class="sub-value">MMK</span>
+                                <i class="icon fa-solid fa-hand-holding-dollar"></i>
+                            </div>
+                        </div>
+                        <div id="monthly-extra-fare-box" class="info-card glass-card">
+                            <div class="info-card-content">
+                                <h3>Total Extra Fare</h3>
+                                <div class="main-value" id="monthly-extra-fare-value"></div>
+                                <span class="sub-value">MMK</span>
+                                <i class="icon fa-solid fa-dollar-sign"></i>
+                            </div>
+                        </div>
                         <div id="notification-panel-box" class="info-card chart-card glass-card notification-panel">
                             <a href="#" id="notification-title-link" class="notification-title-link">
                                 <h3><i class="fa-solid fa-bell"></i> Notifications</h3>
@@ -405,6 +426,15 @@
                         <span id="glass-value">0.15</span>
                     </div>
                     <input type="range" id="glass-slider" min="0" max="1" step="0.01">
+                </div>
+                <div class="setting-item" id="glass-text-settings-container">
+                    <div class="setting-label-group">
+                        <label for="glass-text-toggle">Dark Text Color</label>
+                    </div>
+                    <label class="switch">
+                        <input type="checkbox" id="glass-text-toggle">
+                        <span class="slider round"></span>
+                    </label>
                 </div>
             </div>
         </div>

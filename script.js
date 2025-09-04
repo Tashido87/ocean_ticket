@@ -2898,7 +2898,15 @@ function initializeUISettings() {
         }, 50); // 50ms is enough for the browser to apply the new styles
     };
 
-    const isMaterialSaved = localStorage.getItem('isMaterial') === 'true';
+    // MODIFIED: Check for mobile view
+    const isMobile = window.innerWidth <= 768;
+    let isMaterialSaved = localStorage.getItem('isMaterial') === 'true';
+    
+    // If on mobile, force material theme
+    if (isMobile) {
+        isMaterialSaved = true;
+    }
+
     const isDarkSaved = localStorage.getItem('isDark') === 'true';
 
     themeToggle.checked = isMaterialSaved;

@@ -110,15 +110,15 @@
                                 <div class="search-inputs">
                                     <input type="text" id="searchName" placeholder="Client Name">
                                     <input type="text" id="searchBooking" placeholder="Booking Reference">
+                                    <div class="date-range-group">
+                                        <input type="text" id="searchStartDate" placeholder="Start Date">
+                                        <input type="text" id="searchEndDate" placeholder="End Date">
+                                    </div>
                                     <div class="desktop-only">
                                         <div class="date-range-presets">
                                             <button type="button" class="preset-btn" data-range="7">Last 7 Days</button>
                                             <button type="button" class="preset-btn" data-range="30">Last 30 Days</button>
                                             <button type="button" class="preset-btn" data-range="month">This Month</button>
-                                        </div>
-                                        <div class="date-range-group">
-                                            <input type="text" id="searchStartDate" placeholder="Start Date">
-                                            <input type="text" id="searchEndDate" placeholder="End Date">
                                         </div>
                                         <input type="text" id="searchTravelDate" placeholder="Travel Date (MM/DD/YYYY)">
                                         <select id="searchDeparture">
@@ -150,14 +150,14 @@
                         <div class="results-section glass-card">
                             <div class="results-header">
                                 <h3>Search Results</h3>
-                                <div class="desktop-only">
+                                <div>
                                     <button id="exportPdfBtn" class="btn btn-secondary" title="Export Agent Report to PDF">
                                         <i class="fa-solid fa-file-pdf"></i>
-                                        <span>Agent Report</span>
+                                        <span class="desktop-only">Agent Report</span>
                                     </button>
                                     <button id="exportPrivateReportBtn" class="btn btn-primary" title="Export Private Report to PDF">
                                         <i class="fa-solid fa-file-pdf"></i>
-                                        <span>Private Report</span>
+                                        <span class="desktop-only">Private Report</span>
                                     </button>
                                 </div>
                             </div>
@@ -361,7 +361,7 @@
                     </form>
                     <div id="manageResultsContainer" class="results-section" style="padding: 1rem 0 0 0; background: transparent; border: none; box-shadow: none;"></div>
                     
-                    <div id="modificationHistoryContainer" class="results-section glass-card desktop-only" style="margin-top: 2rem; display: none;">
+                    <div id="modificationHistoryContainer" class="results-section glass-card" style="margin-top: 2rem; display: none;">
                         <h3><i class="fa-solid fa-clock-rotate-left"></i> Modification & Cancellation History</h3>
                         <div class="table-container">
                             <table id="modificationHistoryTable">

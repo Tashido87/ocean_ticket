@@ -49,6 +49,16 @@ body:not(.material-theme) .settings-panel {
     --overlay-opacity: 0.5;
 }
 
+/* NEW: Dark Text Theme for Glass Mode */
+body.dark-text-theme:not(.material-theme) {
+    --primary-accent: #0056b3;
+    --primary-accent-dark: #004494;
+    --secondary-accent: #218838;
+    --danger-accent: #dc3545;
+    --text-primary: #212529;
+    --text-secondary: #6c757d;
+}
+
 body {
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     background-color: var(--bg-color);
@@ -149,7 +159,7 @@ body::before {
 }
 
 .main-content {
-    margin-top: 80px; /* MODIFIED: Changed from 80px to 70px to reduce the gap */
+    margin-top: 80px;
     padding: 2rem;
     flex-grow: 1;
 }
@@ -210,6 +220,10 @@ body::before {
     border-color: var(--primary-accent);
     box-shadow: 0 8px 24px rgba(254, 230, 190, 0.3);
 }
+body.dark-text-theme:not(.material-theme) .nav-btn.active {
+    color: #fff;
+}
+
 
 .header-right { display: flex; align-items: center; gap: 1rem; }
 .settings-buttons, .auth-buttons { display: flex; gap: 0.5rem; }
@@ -463,6 +477,12 @@ th, td {
 th { font-weight: 600; color: var(--text-secondary); background: rgba(0,0,0,0.2); text-transform: uppercase; }
 tbody tr:hover { background-color: var(--glass-bg-hover); }
 
+/* ADDED: Bold client name in search results */
+#resultsBody td:nth-child(2) {
+    font-weight: bold;
+}
+
+
 .canceled-row {
     background-color: rgba(70, 70, 70, 0.4) !important;
     color: #a0a0a0 !important;
@@ -559,6 +579,13 @@ tbody tr:hover { background-color: var(--glass-bg-hover); }
     background-repeat: no-repeat;
     background-position: right 0.75rem center;
     background-size: 16px 12px;
+}
+
+/* NEW: SVG color for dark text theme */
+body.dark-text-theme:not(.material-theme) .form-group select,
+body.dark-text-theme:not(.material-theme) .search-inputs select,
+body.dark-text-theme:not(.material-theme) .booking-search-section select {
+    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3e%3cpath fill='none' stroke='%23333333' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M2 5l6 6 6-6'/%3e%3c/svg%3e");
 }
 
 .form-group select:invalid {
@@ -823,6 +850,12 @@ td .action-checkbox {
     opacity: 1;
 }
 
+body.dark-text-theme:not(.material-theme) .datepicker-view .day.selected,
+body.dark-text-theme:not(.material-theme) .datepicker-view .month.selected,
+body.dark-text-theme:not(.material-theme) .datepicker-view .year.selected {
+    color: #fff !important;
+}
+
 .datepicker-view .day.disabled,
 .datepicker-view .months .month.disabled,
 .datepicker-view .years .year.disabled {
@@ -838,7 +871,10 @@ td .action-checkbox {
 .datepicker-view .days .day.selected:nth-child(7n + 1) {
     color: #0d1117 !important;
 }
-
+body.dark-text-theme:not(.material-theme) .datepicker-view .days .day.selected:nth-child(7n),
+body.dark-text-theme:not(.material-theme) .datepicker-view .days .day.selected:nth-child(7n + 1) {
+    color: #fff !important;
+}
 
 /* --- GENERIC STYLES --- */
 .btn {
@@ -883,6 +919,10 @@ td .action-checkbox {
     color: var(--bg-color);
     border-color: var(--primary-accent);
     box-shadow: 0 8px 24px rgba(254, 230, 190, 0.3);
+}
+
+body.dark-text-theme:not(.material-theme) .btn-primary {
+    color: #fff;
 }
 
 .btn-primary:hover {
@@ -1254,6 +1294,10 @@ td .action-checkbox {
     box-shadow: 0 8px 24px rgba(254, 230, 190, 0.3);
 }
 
+body.dark-text-theme:not(.material-theme) .pagination-btn.active {
+    color: #fff;
+}
+
 .pagination-btn:disabled {
     opacity: 0.4;
     cursor: not-allowed;
@@ -1339,6 +1383,10 @@ td .action-checkbox {
     background: var(--primary-accent);
     color: var(--bg-color);
     border-color: var(--primary-accent);
+}
+body.dark-text-theme:not(.material-theme) .preset-btn:hover,
+body.dark-text-theme:not(.material-theme) .preset-btn.active {
+    color: #fff;
 }
 
 /* Client Auto-suggest */
@@ -1661,7 +1709,6 @@ td .icon-btn-table {
     gap: 0.5rem;
 }
 
-/* MODIFIED: This is the general notification count style */
 .notification-count {
     background-color: var(--danger-accent);
     color: #FFFFFF !important;
@@ -1883,14 +1930,14 @@ td .icon-btn-table {
 .notification-modal-item.deadline {
     border-left-color: var(--danger-accent);
 }
-.notification-modal-item.deadline .notification-icon i { /* MODIFIED RULE */
+.notification-modal-item.deadline .notification-icon i {
     color: var(--danger-accent);
 }
 
 .notification-modal-item.unpaid {
     border-left-color: var(--primary-accent);
 }
-.notification-modal-item.unpaid .notification-icon i { /* MODIFIED RULE */
+.notification-modal-item.unpaid .notification-icon i {
     color: var(--primary-accent);
 }
 
@@ -1912,26 +1959,26 @@ td .icon-btn-table {
 
 /* --- NEW: MATERIAL UI THEME --- */
 body.material-theme {
-    --bg-color: #F7F5F6;
-    --primary-accent: #FF6B6B;
-    --primary-accent-dark: #e05a5a;
-    --secondary-accent: #4ECDC4;
-    --danger-accent: #F85149;
-    --text-primary: #2b2b2b;
-    --text-secondary: #888888;
-    --border-color: rgba(0, 0, 0, 0.1);
-    --liquid-radius: 12px;
+    --bg-color: #f8f9fa;
+    --primary-accent: #f97316;
+    --primary-accent-dark: #ea580c;
+    --secondary-accent: #198754;
+    --danger-accent: #dc3545;
+    --text-primary: #212529;
+    --text-secondary: #6c757d;
+    --border-color: #dee2e6;
+    --liquid-radius: 8px;
 }
 
 body.material-theme.dark-theme {
-    --bg-color: #1e272e;
-    --primary-accent: #ff7979;
-    --primary-accent-dark: #ff5252;
-    --secondary-accent: #2bcbba;
-    --danger-accent: #ff5252;
-    --text-primary: #f5f6fa;
-    --text-secondary: #aaa69d;
-    --border-color: rgba(255, 255, 255, 0.1);
+    --bg-color: #212529;
+    --primary-accent: #fb923c;
+    --primary-accent-dark: #f97316;
+    --secondary-accent: #198754;
+    --danger-accent: #dc3545;
+    --text-primary: #f8f9fa;
+    --text-secondary: #adb5bd;
+    --border-color: #495057;
 }
 
 
@@ -1942,42 +1989,132 @@ body.material-theme::before {
 body.material-theme .glass-card,
 body.material-theme .settings-panel,
 body.material-theme .modal-content {
-    background: #FFFFFF;
+    background: #ffffff;
     backdrop-filter: none;
     -webkit-backdrop-filter: none;
     border: 1px solid var(--border-color);
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
 }
 body.material-theme.dark-theme .glass-card,
 body.material-theme.dark-theme .settings-panel,
 body.material-theme.dark-theme .modal-content {
-    background: #2f3a47;
+    background: #343a40;
 }
 
 
 body.material-theme .glass-card:hover {
     transform: translateY(-2px);
-    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.1);
-    background: #FFFFFF;
-    border-color: rgba(0, 0, 0, 0.15);
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.08);
+    background: #ffffff;
+    border-color: var(--border-color);
     backdrop-filter: none;
     -webkit-backdrop-filter: none;
 }
 body.material-theme.dark-theme .glass-card:hover {
-    background: #344150;
-    border-color: rgba(255, 255, 255, 0.15);
+    background: #495057;
+    border-color: #6c757d;
+}
+
+/* MODIFIED: Info Card layout for Material Theme */
+body.material-theme .info-card {
+    height: 180px;
+}
+
+body.material-theme .info-card .info-card-content {
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+}
+
+body.material-theme .info-card h3 {
+    margin-bottom: 0.5rem;
+    font-size: 1rem;
+}
+body.material-theme .info-card .main-value {
+    color: var(--text-primary);
+    font-size: 2rem;
+    font-weight: 600;
+}
+body.material-theme .info-card .sub-value {
+    font-weight: 500;
+    color: var(--text-secondary);
+}
+
+/* MODIFIED: Generic icon style for position, visibility, and size */
+body.material-theme .info-card .icon {
+    position: absolute;
+    bottom: -0.5rem;
+    right: 0.5rem;
+    top: auto;
+    font-size: 2.2rem; /* Reduced icon size */
+    opacity: 1;
+    width: auto;
+    height: auto;
+    border-radius: 0;
+    background-color: transparent !important;
+}
+
+/* ADDED: Specific SOFT background colors for main dashboard cards */
+body.material-theme #total-tickets-box { background-color: #f5f3ff; }
+body.material-theme #total-tickets-box .icon { color: #8b5cf6; }
+
+body.material-theme #monthly-revenue-box { background-color: #f0fdf4; }
+body.material-theme #monthly-revenue-box .icon { color: #22c55e; }
+
+body.material-theme #monthly-commission-box { background-color: #ecfeff; }
+body.material-theme #monthly-commission-box .icon { color: #06b6d4; }
+
+body.material-theme #monthly-extra-fare-box { background-color: #fff7ed; }
+body.material-theme #monthly-extra-fare-box .icon { color: #f97316; }
+
+/* ADDED: Specific SOFT background colors for Settlement dashboard cards */
+body.material-theme #settlement-net-amount-box { background-color: #eff6ff; }
+body.material-theme #settlement-net-amount-box .icon { color: #3b82f6; }
+
+body.material-theme #settlement-monthly-due-box { background-color: #fdf2f8; }
+body.material-theme #settlement-monthly-due-box .icon { color: #ec4899; }
+
+body.material-theme #settlement-commission-box { background-color: #fefce8; }
+body.material-theme #settlement-commission-box .icon { color: #eab308; }
+
+
+body.material-theme .dashboard-controls {
+    display: none;
+}
+
+/* Styling for headers in Material mode */
+body.material-theme .search-section h3,
+body.material-theme .results-header h3,
+body.material-theme .form-header h2,
+body.material-theme .clients-header h2,
+body.material-theme .table-header h3,
+body.material-theme .settings-title,
+body.material-theme .notification-modal-header h2 {
+    color: var(--text-primary);
+    font-weight: 600;
+}
+
+body.material-theme .results-header h3,
+body.material-theme .search-section h3 {
+    color: var(--primary-accent);
+}
+
+
+body.material-theme th {
+    color: var(--text-secondary);
+    font-weight: 600;
 }
 
 
 body.material-theme .header {
-    background: #FFFFFF;
+    background: #ffffff;
     backdrop-filter: none;
     -webkit-backdrop-filter: none;
     border-bottom: 1px solid var(--border-color);
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
 }
 body.material-theme.dark-theme .header {
-    background: #2f3a47;
+    background: #343a40;
 }
 
 body.material-theme .nav-btn,
@@ -1995,15 +2132,16 @@ body.material-theme .nav-btn:hover,
 body.material-theme .btn-secondary:hover,
 body.material-theme .icon-btn:hover,
 body.material-theme .pagination-btn:hover:not(:disabled) {
-    background: rgba(0,0,0,0.04);
+    background: #f1f3f5;
     color: var(--text-primary);
-    border-color: var(--border-color);
+    border-color: #ced4da;
 }
 body.material-theme.dark-theme .nav-btn:hover,
 body.material-theme.dark-theme .btn-secondary:hover,
 body.material-theme.dark-theme .icon-btn:hover,
 body.material-theme.dark-theme .pagination-btn:hover:not(:disabled) {
-    background: rgba(255,255,255,0.08);
+    background: rgba(255,255,255,0.1);
+    border-color: #6c757d;
 }
 
 body.material-theme .nav-btn.active,
@@ -2011,26 +2149,20 @@ body.material-theme .pagination-btn.active {
     background: var(--primary-accent);
     color: #FFFFFF;
     border-color: var(--primary-accent);
-    box-shadow: 0 4px 12px rgba(255, 107, 107, 0.4);
-}
-body.material-theme.dark-theme .nav-btn.active {
-     box-shadow: 0 4px 12px rgba(255, 121, 121, 0.3);
+    box-shadow: none;
 }
 
 body.material-theme .btn-primary {
     color: #FFFFFF;
-    box-shadow: 0 4px 12px rgba(255, 107, 107, 0.4);
+    background: var(--primary-accent);
+    border-color: var(--primary-accent);
+    box-shadow: none;
 }
 body.material-theme .btn-primary:hover {
-    box-shadow: 0 6px 16px rgba(255, 107, 107, 0.5);
+    background: var(--primary-accent-dark);
+    border-color: var(--primary-accent-dark);
+    box-shadow: none;
 }
-body.material-theme.dark-theme .btn-primary {
-     box-shadow: 0 4px 12px rgba(255, 121, 121, 0.3);
-}
-body.material-theme.dark-theme .btn-primary:hover {
-    box-shadow: 0 6px 16px rgba(255, 121, 121, 0.4);
-}
-
 
 body.material-theme .search-inputs input, 
 body.material-theme .search-inputs select, 
@@ -2039,8 +2171,8 @@ body.material-theme .form-group select,
 body.material-theme .form-group textarea,
 body.material-theme .booking-search-section select,
 body.material-theme .client-search-box input {
-    background-color: #f5f5f5;
-    border: 1px solid #e0e0e0;
+    background-color: #f8f9fa;
+    border: 1px solid #ced4da;
     color: var(--text-primary);
     backdrop-filter: none;
     -webkit-backdrop-filter: none;
@@ -2052,8 +2184,8 @@ body.material-theme.dark-theme .form-group select,
 body.material-theme.dark-theme .form-group textarea,
 body.material-theme.dark-theme .booking-search-section select,
 body.material-theme.dark-theme .client-search-box input {
-    background-color: #1e272e;
-    border: 1px solid rgba(255,255,255,0.1);
+    background-color: #495057;
+    border: 1px solid #6c757d;
 }
 
 
@@ -2063,9 +2195,10 @@ body.material-theme .form-group input:focus,
 body.material-theme .form-group select:focus, 
 body.material-theme .form-group textarea:focus,
 body.material-theme .booking-search-section select:focus {
-    background-color: #FFFFFF;
+    background-color: #ffffff;
     border-color: var(--primary-accent);
-    box-shadow: 0 0 0 3px rgba(255, 107, 107, 0.2);
+    /* MODIFIED: Changed focus ring to orange */
+    box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.25);
 }
 body.material-theme.dark-theme .search-inputs input:focus, 
 body.material-theme.dark-theme .search-inputs select:focus,
@@ -2073,22 +2206,20 @@ body.material-theme.dark-theme .form-group input:focus,
 body.material-theme.dark-theme .form-group select:focus, 
 body.material-theme.dark-theme .form-group textarea:focus,
 body.material-theme.dark-theme .booking-search-section select:focus {
-    background-color: #2f3a47;
-    box-shadow: 0 0 0 3px rgba(255, 121, 121, 0.2);
+    background-color: #495057;
+    /* MODIFIED: Changed focus ring to orange */
+    box-shadow: 0 0 0 3px rgba(251, 146, 60, 0.25);
 }
 
 body.material-theme .search-inputs select,
 body.material-theme .form-group select,
 body.material-theme .booking-search-section select {
-     background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3e%3cpath fill='none' stroke='%23333333' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M2 5l6 6 6-6'/%3e%3c/svg%3e");
-     background-repeat: no-repeat;
-     background-position: right 0.75rem center;
-     background-size: 16px 12px;
+     background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3e%3cpath fill='none' stroke='%23343a40' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M2 5l6 6 6-6'/%3e%3c/svg%3e");
 }
 body.material-theme.dark-theme .search-inputs select,
 body.material-theme.dark-theme .form-group select,
 body.material-theme.dark-theme .booking-search-section select {
-     background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3e%3cpath fill='none' stroke='%23f5f6fa' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M2 5l6 6 6-6'/%3e%3c/svg%3e");
+     background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3e%3cpath fill='none' stroke='%23f8f9fa' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M2 5l6 6 6-6'/%3e%3c/svg%3e");
 }
 
 body.material-theme .modal {
@@ -2098,26 +2229,26 @@ body.material-theme .modal {
 }
 
 body.material-theme th {
-    background: #f9f9f9;
+    background: #f8f9fa;
 }
 body.material-theme.dark-theme th {
-    background: #1e272e;
+    background: #495057;
 }
 
 body.material-theme tbody tr:hover {
-    background-color: #f5f5f5;
+    background-color: #f1f3f5;
 }
 body.material-theme.dark-theme tbody tr:hover {
-    background-color: #344150;
+    background-color: #495057;
 }
 
 body.material-theme .slider {
-    background-color: #ccc;
+    background-color: #dee2e6;
     backdrop-filter: none;
     -webkit-backdrop-filter: none;
 }
 body.material-theme.dark-theme .slider {
-    background-color: #4a5a6a;
+    background-color: #6c757d;
 }
 
 body.material-theme input:checked + .slider {
@@ -2138,9 +2269,14 @@ body.material-theme .flight-type-toggle {
 body.material-theme .notification-item,
 body.material-theme .notification-modal-item,
 body.material-theme .notification-icon {
-    background-color: rgba(0,0,0,0.03);
+    background-color: #f8f9fa;
+    border: 1px solid var(--border-color);
 }
-
+body.material-theme.dark-theme .notification-item,
+body.material-theme.dark-theme .notification-modal-item,
+body.material-theme.dark-theme .notification-icon {
+    background-color: #495057;
+}
 
 /* Client Name Highlighting */
 #clientListTable .client-name-cell {
@@ -2150,10 +2286,10 @@ body.material-theme .notification-icon {
 
 /* Notification Modal Readability */
 body.material-theme .notification-modal-item {
-    background-color: #f9f9f9;
+    background-color: #f8f9fa;
 }
 body.material-theme.dark-theme .notification-modal-item {
-    background-color: #1e272e;
+    background-color: #343a40;
 }
 
 /* --- FIX FOR DATEPICKER LIGHT THEME --- */
@@ -2170,7 +2306,7 @@ body.material-theme:not(.dark-theme) .datepicker-picker .datepicker-controls .vi
 
 body.material-theme:not(.dark-theme) .datepicker-picker .datepicker-controls .button:hover,
 body.material-theme:not(.dark-theme) .datepicker-picker .datepicker-controls .view-switch:hover {
-    background-color: rgba(0,0,0,0.04) !important;
+    background-color: #e9ecef !important;
     color: var(--primary-accent) !important;
 }
 
@@ -2187,7 +2323,7 @@ body.material-theme:not(.dark-theme) .datepicker-view .years .year {
 body.material-theme:not(.dark-theme) .datepicker-view .days .day:not(.disabled):not(.selected):hover,
 body.material-theme:not(.dark-theme) .datepicker-view .months .month:not(.disabled):not(.selected):hover,
 body.material-theme:not(.dark-theme) .datepicker-view .years .year:not(.disabled):not(.selected):hover {
-    background-color: rgba(255, 107, 107, 0.1) !important;
+    background-color: rgba(249, 115, 22, 0.1) !important;
 }
 
 body.material-theme:not(.dark-theme) .datepicker-view .day.prev,

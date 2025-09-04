@@ -58,7 +58,7 @@
                 <div class="dashboard-content-wrapper" id="dashboard-content" style="display: none;">
                      <div class="info-grid">
                         <div id="total-tickets-box" class="info-card glass-card">
-                             <div class="dashboard-controls">
+                             <div class="dashboard-controls desktop-only">
                                 <div class="date-selectors">
                                     <select id="dashboard-month"></select>
                                     <select id="dashboard-year"></select>
@@ -94,7 +94,7 @@
                                 <i class="icon fa-solid fa-dollar-sign"></i>
                             </div>
                         </div>
-                        <div id="notification-panel-box" class="info-card chart-card glass-card notification-panel">
+                        <div id="notification-panel-box" class="info-card chart-card glass-card notification-panel desktop-only">
                             <a href="#" id="notification-title-link" class="notification-title-link">
                                 <h3><i class="fa-solid fa-bell"></i> Notifications</h3>
                             </a>
@@ -110,31 +110,33 @@
                                 <div class="search-inputs">
                                     <input type="text" id="searchName" placeholder="Client Name">
                                     <input type="text" id="searchBooking" placeholder="Booking Reference">
-                                    <div class="date-range-presets">
-                                        <button type="button" class="preset-btn" data-range="7">Last 7 Days</button>
-                                        <button type="button" class="preset-btn" data-range="30">Last 30 Days</button>
-                                        <button type="button" class="preset-btn" data-range="month">This Month</button>
-                                    </div>
-                                    <div class="date-range-group">
-                                        <input type="text" id="searchStartDate" placeholder="Start Date">
-                                        <input type="text" id="searchEndDate" placeholder="End Date">
-                                    </div>
-                                    <input type="text" id="searchTravelDate" placeholder="Travel Date (MM/DD/YYYY)">
-                                    <select id="searchDeparture">
-                                        <option value="" disabled selected>DEPARTURE</option>
-                                    </select>
-                                    <select id="searchDestination">
-                                        <option value="" disabled selected>DESTINATION</option>
-                                    </select>
-                                    <select id="searchAirline">
-                                        <option value="" disabled selected>AIRLINE</option>
-                                    </select>
-                                    <div class="toggle-switch">
-                                        <label for="searchNotPaidToggle" id="unpaid-only-label">Unpaid Only</label>
-                                        <label class="switch">
-                                            <input type="checkbox" id="searchNotPaidToggle">
-                                            <span class="slider round"></span>
-                                        </label>
+                                    <div class="desktop-only">
+                                        <div class="date-range-presets">
+                                            <button type="button" class="preset-btn" data-range="7">Last 7 Days</button>
+                                            <button type="button" class="preset-btn" data-range="30">Last 30 Days</button>
+                                            <button type="button" class="preset-btn" data-range="month">This Month</button>
+                                        </div>
+                                        <div class="date-range-group">
+                                            <input type="text" id="searchStartDate" placeholder="Start Date">
+                                            <input type="text" id="searchEndDate" placeholder="End Date">
+                                        </div>
+                                        <input type="text" id="searchTravelDate" placeholder="Travel Date (MM/DD/YYYY)">
+                                        <select id="searchDeparture">
+                                            <option value="" disabled selected>DEPARTURE</option>
+                                        </select>
+                                        <select id="searchDestination">
+                                            <option value="" disabled selected>DESTINATION</option>
+                                        </select>
+                                        <select id="searchAirline">
+                                            <option value="" disabled selected>AIRLINE</option>
+                                        </select>
+                                        <div class="toggle-switch">
+                                            <label for="searchNotPaidToggle" id="unpaid-only-label">Unpaid Only</label>
+                                            <label class="switch">
+                                                <input type="checkbox" id="searchNotPaidToggle">
+                                                <span class="slider round"></span>
+                                            </label>
+                                        </div>
                                     </div>
                                 </div>
                                 <div class="search-buttons">
@@ -148,7 +150,7 @@
                         <div class="results-section glass-card">
                             <div class="results-header">
                                 <h3>Search Results</h3>
-                                <div>
+                                <div class="desktop-only">
                                     <button id="exportPdfBtn" class="btn btn-secondary" title="Export Agent Report to PDF">
                                         <i class="fa-solid fa-file-pdf"></i>
                                         <span>Agent Report</span>
@@ -359,7 +361,7 @@
                     </form>
                     <div id="manageResultsContainer" class="results-section" style="padding: 1rem 0 0 0; background: transparent; border: none; box-shadow: none;"></div>
                     
-                    <div id="modificationHistoryContainer" class="results-section glass-card" style="margin-top: 2rem; display: none;">
+                    <div id="modificationHistoryContainer" class="results-section glass-card desktop-only" style="margin-top: 2rem; display: none;">
                         <h3><i class="fa-solid fa-clock-rotate-left"></i> Modification & Cancellation History</h3>
                         <div class="table-container">
                             <table id="modificationHistoryTable">

@@ -418,6 +418,13 @@ body.dark-text-theme:not(.material-theme) .nav-btn.active {
     margin-bottom: 1.5rem;
 }
 
+/* MODIFIED: Added a rule to fix the layout of the extra search options */
+.search-inputs .desktop-only {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
 .search-inputs input,
 .search-inputs select {
     width: 100%;
@@ -1496,6 +1503,7 @@ td .icon-btn-table {
     margin-bottom: 2rem;
     border-bottom: 1px solid var(--border-color);
     padding-bottom: 1.5rem;
+    flex-wrap: wrap;
 }
 .client-history-info h2 {
     font-size: 1.8rem;
@@ -1507,6 +1515,7 @@ td .icon-btn-table {
 .client-history-actions {
     display: flex;
     gap: 1rem;
+    flex-wrap: wrap;
 }
 .client-history-stats {
     display: grid;
@@ -1930,6 +1939,13 @@ body.material-theme #monthly-commission-box .icon { color: #06b6d4; }
 body.material-theme #monthly-extra-fare-box { background-color: #fff7ed; }
 body.material-theme #monthly-extra-fare-box .icon { color: #f97316; }
 
+/* ADDED: Specific DARK background colors for main dashboard cards */
+body.material-theme.dark-theme #total-tickets-box { background-color: #282547; }
+body.material-theme.dark-theme #monthly-revenue-box { background-color: #163b22; }
+body.material-theme.dark-theme #monthly-commission-box { background-color: #1e3a45; }
+body.material-theme.dark-theme #monthly-extra-fare-box { background-color: #422814; }
+
+
 /* ADDED: Specific SOFT background colors for Settlement dashboard cards */
 body.material-theme #settlement-net-amount-box { background-color: #eff6ff; }
 body.material-theme #settlement-net-amount-box .icon { color: #3b82f6; }
@@ -1939,6 +1955,11 @@ body.material-theme #settlement-monthly-due-box .icon { color: #ec4899; }
 
 body.material-theme #settlement-commission-box { background-color: #fefce8; }
 body.material-theme #settlement-commission-box .icon { color: #eab308; }
+
+/* ADDED: Specific DARK background colors for Settlement dashboard cards */
+body.material-theme.dark-theme #settlement-net-amount-box { background-color: #1c2f57; }
+body.material-theme.dark-theme #settlement-monthly-due-box { background-color: #442233; }
+body.material-theme.dark-theme #settlement-commission-box { background-color: #413a1a; }
 
 
 body.material-theme .dashboard-controls {
@@ -2294,7 +2315,6 @@ body.material-theme:not(.dark-theme) .datepicker-view .days .day.selected:nth-ch
     }
 
     #home-view .search-inputs .date-range-presets,
-    #home-view .search-inputs .date-range-group,
     #home-view .search-inputs #searchTravelDate,
     #home-view .search-inputs #searchDeparture,
     #home-view .search-inputs #searchDestination,
@@ -2322,10 +2342,6 @@ body.material-theme:not(.dark-theme) .datepicker-view .days .day.selected:nth-ch
     #clientListTable td:last-child {
         display: table-cell;
     }
-    
-    #modificationHistoryContainer {
-        display: none !important;
-    }
 
     .info-card {
         height: auto;
@@ -2338,5 +2354,32 @@ body.material-theme:not(.dark-theme) .datepicker-view .days .day.selected:nth-ch
 
     .passenger-name-group {
         grid-column: span 1;
+    }
+
+    .client-history-header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 1rem;
+    }
+
+    .client-history-stats {
+        grid-template-columns: 1fr;
+    }
+
+    .stat-card {
+        text-align: left;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+
+    .stat-card .value {
+        font-size: 1.2rem;
+    }
+
+    body:not(.material-theme) .nav {
+        background: rgba(13, 17, 23, 0.7);
+        backdrop-filter: blur(var(--blur-amount));
+        -webkit-backdrop-filter: blur(var(--blur-amount));
     }
 }

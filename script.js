@@ -1472,7 +1472,7 @@ function showNotificationModal() {
         </div>
     `;
 
-    openModal(content, 'large-modal');
+    openModal(modalContent, 'large-modal');
     const modalContentEl = modal.querySelector('.modal-content');
     if (modalContentEl) {
         modalContentEl.classList.add('notification-modal-content');

@@ -470,7 +470,7 @@ function parseTicketData(values) {
 // --- BOOKING LOGIC ---
 async function loadBookingData() {
     try {
-        const response = await fetchFromSheet(`${CONFIG.BOOKING_SHEET_NAME}!A:O`, 'bookingData');
+        const response = await fetchFromSheet(`${CONFIG.BOOKING_SHEET_NAME}!A:M`, 'bookingData');
 
         if (response.values) {
             state.allBookings = parseBookingData(response.values);
@@ -488,13 +488,13 @@ async function loadBookingData() {
 
 function parseBookingData(values) {
     if (values.length < 1) return [];
-    const headers = values[0].map(h => h.toLowerCase().replace(/\s+/g, '_').replace('nrc', 'id'));
+    const headers = values[0].map(h => h.toLowerCase().replace(/\s+/g, '_').replace('nrc_no', 'id_no'));
     return values.slice(1).map((row, i) => {
         const booking = {};
         headers.forEach((h, j) => {
             const value = row[j] || '';
             let propertyName = h;
-            if (propertyName === 'remarks') {
+             if (propertyName === 'remark') {
                 propertyName = 'remark';
             }
             booking[propertyName] = typeof value === 'string' ? value.trim() : value;
@@ -530,11 +530,9 @@ async function handleExpiredBookings() {
                 'end', // Set remark to 'end'
                 booking.enddate || '',
                 booking.endtime || '',
-                '',
-                booking.gender || ''
             ];
             expiredBookingsToUpdate.push({
-                range: `${CONFIG.BOOKING_SHEET_NAME}!A${booking.rowIndex}:O${booking.rowIndex}`,
+                range: `${CONFIG.BOOKING_SHEET_NAME}!A${booking.rowIndex}:M${booking.rowIndex}`,
                 values: [values]
             });
         }
@@ -732,11 +730,9 @@ async function updateBookingStatus(rowIndices, remarks) {
                 remarks,                    // K - The new remark: 'complete' or 'cancel'
                 booking.enddate || '',      // L
                 booking.endtime || '',      // M
-                '',                          // N
-                booking.gender || ''
             ];
             return {
-                range: `${CONFIG.BOOKING_SHEET_NAME}!A${booking.rowIndex}:O${booking.rowIndex}`,
+                range: `${CONFIG.BOOKING_SHEET_NAME}!A${booking.rowIndex}:M${booking.rowIndex}`,
                 values: [values]
             };
         });
@@ -832,13 +828,13 @@ async function handleNewBookingSubmit(e) {
             phone: document.getElementById('booking_phone').value,
             pnr: document.getElementById('booking_pnr').value.toUpperCase(),
             account_name: document.getElementById('booking_account_name').value.toUpperCase(),
-            account_type: document.getElementById('booking_account_type').value.toUpperCase(),
+            account_type: document.getElementById('booking_account_type').value,
             account_link: document.getElementById('booking_account_link').value,
-            departure: document.getElementById('booking_departure').value.toUpperCase(),
-            destination: document.getElementById('booking_destination').value.toUpperCase(),
+            departure: document.getElementById('booking_departure').value,
+            destination: document.getElementById('booking_destination').value,
             departing_on: document.getElementById('booking_departing_on').value,
             enddate: document.getElementById('booking_end_date').value,
-            endtime: `${hour}:${String(minute).padStart(2, '0')} ${ampm}`
+            endtime: hour && minute && ampm ? `${hour}:${String(minute).padStart(2, '0')} ${ampm}` : ''
         };
 
         const passengerForms = document.querySelectorAll('#booking-passenger-forms-container .passenger-form');
@@ -860,26 +856,24 @@ async function handleNewBookingSubmit(e) {
         }
 
         const values = passengerData.map(passenger => [
-            passenger.name, // A
-            passenger.id_no, // B
-            sharedData.phone, // C
-            sharedData.account_name, // D
-            sharedData.account_type, // E
-            sharedData.account_link, // F
-            sharedData.departure, // G
-            sharedData.destination, // H
-            formatDateForSheet(sharedData.departing_on), // I
-            sharedData.pnr, // J
-            '', // K
-            formatDateForSheet(sharedData.enddate), // L
-            sharedData.endtime, // M
-            '', // N (Remarks)
-            passenger.gender // O
+            `${passenger.gender} ${passenger.name}`, // A: name
+            passenger.id_no,                     // B: nrc_no
+            sharedData.phone,                    // C: phone
+            sharedData.account_name,             // D: account_name
+            sharedData.account_type,             // E: account_type
+            sharedData.account_link,             // F: account_link
+            sharedData.departure,                // G: departure
+            sharedData.destination,              // H: destination
+            formatDateForSheet(sharedData.departing_on), // I: departing_on
+            sharedData.pnr,                      // J: pnr
+            '',                                  // K: remark
+            formatDateForSheet(sharedData.enddate), // L: enddate
+            sharedData.endtime                   // M: endtime
         ]);
 
         const result = await gapi.client.sheets.spreadsheets.values.append({
             spreadsheetId: CONFIG.SHEET_ID,
-            range: `${CONFIG.BOOKING_SHEET_NAME}!A:O`,
+            range: `${CONFIG.BOOKING_SHEET_NAME}!A:M`,
             valueInputOption: 'USER_ENTERED',
             resource: { values },
         });
@@ -1478,7 +1472,7 @@ function showNotificationModal() {
         </div>
     `;
 
-    openModal(modalContent, 'large-modal');
+    openModal(content, 'large-modal');
     const modalContentEl = modal.querySelector('.modal-content');
     if (modalContentEl) {
         modalContentEl.classList.add('notification-modal-content');
@@ -2469,17 +2463,19 @@ function buildClientList() {
 }
 
 function renderClientsView(page) {
+    const container = document.getElementById('clients-view');
+    if (!container) {
+        console.warn("Clients view container not found. Skipping render.");
+        return;
+    }
     // If page isn't specified, use the one from state, or default to 1
     const pageToRender = page || state.clientPage || 1;
     state.clientPage = pageToRender; // Update state with the current page
 
     const searchQuery = state.clientSearchQuery || '';
 
-    const tbody = document.getElementById('clientListTableBody');
-    const paginationContainer = document.getElementById('clientListPagination');
-    if (!tbody || !paginationContainer) {
-        // If the view hasn't been built yet, build it
-        const container = document.getElementById('clients-view');
+    // Build the view's inner HTML if it's not already there
+    if (!container.querySelector('.clients-container')) {
         container.innerHTML = `
             <div class="clients-container">
                 <div class="clients-header">
@@ -2521,10 +2517,10 @@ function renderClientsView(page) {
             state.clientSearchQuery = ''; // Clear state
             renderClientsView(1); // Re-render from page 1
         });
-        // Set the input value from state when first building the view
-        document.getElementById('clientSearchInput').value = searchQuery;
-        return renderClientsView(pageToRender); // Re-run now that it's built
     }
+
+    const tbody = document.getElementById('clientListTableBody');
+    const paginationContainer = document.getElementById('clientListPagination');
     
     // Ensure the search box always shows the current search query from the state
     document.getElementById('clientSearchInput').value = searchQuery;
@@ -2974,6 +2970,8 @@ async function exportToPdf() {
 
     if (exportType === 'filtered') {
         ticketsToExport = state.filteredTickets;
+        // For filtered results, we can't reliably calculate a "previous month due"
+        // so we'll just show the filtered data as is.
     } else {
         const startDateStr = document.getElementById('exportStartDate').value;
         const endDateStr = document.getElementById('exportEndDate').value;
@@ -3017,13 +3015,21 @@ async function exportToPdf() {
     let totalNetAmount = 0, totalDateChange = 0, totalCommission = 0;
 
     if (isMerged && exportType === 'range') {
-        head = [['No.', 'Issued Date', 'Name', 'PNR', 'Route', 'Pax', 'Net Amount', 'Date Change', 'Commission']];
+        head = [['No.', 'Issued Date', 'Client Name(s)', 'PNR', 'Route', 'Pax', 'Net Amount', 'Date Change', 'Commission']];
         const mergedData = {};
         ticketsToExport.forEach(t => {
             const key = `${t.account_link}-${t.issued_date}`; // Group by social account and date
             if (!mergedData[key]) {
-                mergedData[key] = { ...t, pax: 0, net_amount: 0, date_change: 0, commission: 0 };
+                mergedData[key] = { 
+                    ...t, 
+                    clientNames: [], // Array to hold client names
+                    pax: 0, 
+                    net_amount: 0, 
+                    date_change: 0, 
+                    commission: 0 
+                };
             }
+            mergedData[key].clientNames.push(t.name); // Add each client name to the array
             mergedData[key].pax++;
             mergedData[key].net_amount += (t.net_amount || 0);
             mergedData[key].date_change += (t.date_change || 0);
@@ -3035,7 +3041,7 @@ async function exportToPdf() {
             return [
                 index + 1,
                 formatDateToDMMMY(t.issued_date),
-                t.account_name, // Use the social account name for the merged row
+                t.clientNames.join(', '), // Join the array of names
                 t.booking_reference,
                 route,
                 t.pax,
@@ -3110,17 +3116,52 @@ async function exportToPdf() {
     const grandTotal = totalNetAmount + totalDateChange;
     
     if (exportType === 'range') {
+        // --- Calculate Previous Month's Due ---
+        const firstDayOfCurrentMonth = new Date(startDate.getFullYear(), startDate.getMonth(), 1);
+        const lastDayOfPreviousMonth = new Date(firstDayOfCurrentMonth.getTime() - 1);
+        const previousMonth = lastDayOfPreviousMonth.getMonth();
+        const previousYear = lastDayOfPreviousMonth.getFullYear();
+
+        const ticketsLastMonth = state.allTickets.filter(t => {
+            const ticketDate = parseSheetDate(t.issued_date);
+            const lowerRemarks = t.remarks?.toLowerCase() || '';
+            return ticketDate.getMonth() === previousMonth && ticketDate.getFullYear() === previousYear && !lowerRemarks.includes('full refund');
+        });
+        
+        const revenueLastMonth = ticketsLastMonth.reduce((sum, t) => sum + (t.net_amount || 0) + (t.date_change || 0), 0);
+        const commissionLastMonth = ticketsLastMonth.reduce((sum, t) => sum + (t.commission || 0), 0);
+        
+        const settlementsLastMonth = state.allSettlements.filter(s => {
+            const settlementDate = parseSheetDate(s.settlement_date);
+            return settlementDate.getMonth() === previousMonth && settlementDate.getFullYear() === previousYear;
+        });
+        const totalSettlementsLastMonth = settlementsLastMonth.reduce((sum, s) => sum + (s.amount_paid || 0), 0);
+        
+        const previousEndOfMonthDue = revenueLastMonth - (commissionLastMonth + totalSettlementsLastMonth);
+        
+        // --- Calculate Current Range Settlements ---
         const settlementsInRange = state.allSettlements.filter(s => {
             const settlementDate = parseSheetDate(s.settlement_date);
             return settlementDate >= startDate && settlementDate <= endDate;
         });
-        const totalSettlements = settlementsInRange.reduce((sum, s) => sum + s.amount_paid, 0);
-        const amountToPay = grandTotal - (totalCommission + totalSettlements);
+        const totalSettlements = settlementsInRange.reduce((sum, s) => sum + (s.amount_paid || 0), 0);
+
+        // --- Final Calculation ---
+        const amountToPay = (grandTotal + (previousEndOfMonthDue > 0 ? previousEndOfMonthDue : 0)) - (totalCommission + totalSettlements);
 
         let settlementBody = [
             [{ content: `Grand Total for ${dateRangeString}:`, styles: { fontStyle: 'bold' } }, { content: `${grandTotal.toLocaleString()} MMK`, styles: { halign: 'right', fontStyle: 'bold' } }],
-            [{ content: `Commissions for ${dateRangeString}:`, styles: {} }, { content: `(${totalCommission.toLocaleString()}) MMK`, styles: { halign: 'right' } }],
         ];
+
+        if (previousEndOfMonthDue > 0) {
+            settlementBody.push(
+                [{ content: `Carried Over Balance:`, styles: { fontStyle: 'bold' } }, { content: `${previousEndOfMonthDue.toLocaleString()} MMK`, styles: { halign: 'right', fontStyle: 'bold' } }]
+            );
+        }
+
+        settlementBody.push(
+            [{ content: `Commissions for ${dateRangeString}:`, styles: {} }, { content: `(${totalCommission.toLocaleString()}) MMK`, styles: { halign: 'right' } }]
+        );
 
         if(settlementsInRange.length > 0) {
             settlementsInRange.forEach(s => {
@@ -3413,48 +3454,68 @@ async function handleNewSettlementSubmit(e) {
     }
 }
 
+// Corrected function
 function updateSettlementDashboard() {
-    // Revenue: Includes net amount from non-fully-refunded tickets for ALL time
-    const revenueTickets = state.allTickets.filter(t => !t.remarks?.toLowerCase().includes('full refund'));
-    const totalRevenue = revenueTickets.reduce((sum, t) => sum + (t.net_amount || 0) + (t.date_change || 0), 0);
-
-    // Total settlements made for ALL time
-    const totalAmountPaid = state.allSettlements.reduce((sum, s) => sum + (s.amount_paid || 0), 0);
-    const netAmountLeft = totalRevenue - totalAmountPaid;
-
-    const netAmountBox = document.getElementById('settlement-net-amount-box');
-    netAmountBox.innerHTML = `<div class="info-card-content"><h3>Total Outstanding Revenue</h3><div class="main-value">${netAmountLeft.toLocaleString()}</div><span class="sub-value">MMK</span><i class="icon fa-solid fa-file-invoice-dollar"></i></div>`;
-    
     const now = new Date();
     const currentMonth = now.getMonth();
     const currentYear = now.getFullYear();
 
-    // Tickets from the CURRENT month that are NOT fully refunded
+    // --- Calculate Previous Month's End-of-Month Settlement Due ---
+    const firstDayOfCurrentMonth = new Date(currentYear, currentMonth, 1);
+    const lastDayOfPreviousMonth = new Date(firstDayOfCurrentMonth.getTime() - 1);
+    const previousMonth = lastDayOfPreviousMonth.getMonth();
+    const previousYear = lastDayOfPreviousMonth.getFullYear();
+
+    const ticketsLastMonth = state.allTickets.filter(t => {
+        const ticketDate = parseSheetDate(t.issued_date);
+        const lowerRemarks = t.remarks?.toLowerCase() || '';
+        return ticketDate.getMonth() === previousMonth && ticketDate.getFullYear() === previousYear && !lowerRemarks.includes('full refund');
+    });
+
+    const revenueLastMonth = ticketsLastMonth.reduce((sum, t) => sum + (t.net_amount || 0) + (t.date_change || 0), 0);
+    const commissionLastMonth = ticketsLastMonth.reduce((sum, t) => sum + (t.commission || 0), 0);
+
+    const settlementsLastMonth = state.allSettlements.filter(s => {
+        const settlementDate = parseSheetDate(s.settlement_date);
+        return settlementDate.getMonth() === previousMonth && settlementDate.getFullYear() === previousYear;
+    });
+    const totalSettlementsLastMonth = settlementsLastMonth.reduce((sum, s) => sum + (s.amount_paid || 0), 0);
+    
+    // This is the amount that carries over to the new month
+    const previousEndOfMonthDue = revenueLastMonth - (commissionLastMonth + totalSettlementsLastMonth);
+
+
+    // --- Calculate Current Month's Figures ---
     const ticketsThisMonth = state.allTickets.filter(t => {
         const ticketDate = parseSheetDate(t.issued_date);
         const lowerRemarks = t.remarks?.toLowerCase() || '';
         return ticketDate.getMonth() === currentMonth && ticketDate.getFullYear() === currentYear && !lowerRemarks.includes('full refund');
     });
 
-    // --- Corrected "End-of-Month Settlement Due" Calculation ---
-    const totalRevenueThisMonth = ticketsThisMonth.reduce((sum, t) => sum + (t.net_amount || 0) + (t.date_change || 0), 0);
+    const revenueThisMonth = ticketsThisMonth.reduce((sum, t) => sum + (t.net_amount || 0) + (t.date_change || 0), 0);
     const commissionThisMonth = ticketsThisMonth.reduce((sum, t) => sum + (t.commission || 0), 0);
-    
+    const extraFareThisMonth = ticketsThisMonth.reduce((sum, t) => sum + (t.extra_fare || 0), 0);
+
     const settlementsThisMonth = state.allSettlements.filter(s => {
         const settlementDate = parseSheetDate(s.settlement_date);
         return settlementDate.getMonth() === currentMonth && settlementDate.getFullYear() === currentYear;
     });
     const totalSettlementsThisMonth = settlementsThisMonth.reduce((sum, s) => sum + (s.amount_paid || 0), 0);
-    
-    const endOfMonthSettlement = totalRevenueThisMonth - (commissionThisMonth + totalSettlementsThisMonth);
 
+    // --- Apply New Formulas ---
+    
+    // (1) Total Outstanding Revenue
+    const totalOutstandingRevenue = (revenueThisMonth + previousEndOfMonthDue) - totalSettlementsThisMonth;
+    const netAmountBox = document.getElementById('settlement-net-amount-box');
+    netAmountBox.innerHTML = `<div class="info-card-content"><h3>Total Outstanding Revenue</h3><div class="main-value">${totalOutstandingRevenue.toLocaleString()}</div><span class="sub-value">MMK</span><i class="icon fa-solid fa-file-invoice-dollar"></i></div>`;
+
+    // (2) End-of-Month Settlement Due
+    const endOfMonthSettlement = totalOutstandingRevenue - commissionThisMonth;
     const monthlyDueBox = document.getElementById('settlement-monthly-due-box');
     monthlyDueBox.innerHTML = `<div class="info-card-content"><h3>End-of-Month Settlement Due</h3><div class="main-value">${endOfMonthSettlement.toLocaleString()}</div><span class="sub-value">MMK</span><i class="icon fa-solid fa-cash-register"></i></div>`;
 
-    // --- "Current Month's Total Profit" Calculation (Commission + Extra Fare) ---
-    const extraFareThisMonth = ticketsThisMonth.reduce((sum, t) => sum + (t.extra_fare || 0), 0);
+    // (3) Current Month's Total Profit
     const totalProfitThisMonth = commissionThisMonth + extraFareThisMonth;
-
     const commissionBox = document.getElementById('settlement-commission-box');
     commissionBox.innerHTML = `<div class="info-card-content"><h3>Current Month's Total Profit</h3><div class="main-value">${totalProfitThisMonth.toLocaleString()}</div><span class="sub-value">MMK</span><i class="icon fa-solid fa-hand-holding-dollar"></i></div>`;
 }

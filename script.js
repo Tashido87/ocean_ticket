@@ -3022,14 +3022,14 @@ async function exportToPdf() {
             if (!mergedData[key]) {
                 mergedData[key] = { 
                     ...t, 
-                    clientNames: [], // Array to hold client names
+                    clientNames: new Set(), // Use a Set to store unique names
                     pax: 0, 
                     net_amount: 0, 
                     date_change: 0, 
                     commission: 0 
                 };
             }
-            mergedData[key].clientNames.push(t.name); // Add each client name to the array
+            mergedData[key].clientNames.add(t.name); // Add client name to the Set
             mergedData[key].pax++;
             mergedData[key].net_amount += (t.net_amount || 0);
             mergedData[key].date_change += (t.date_change || 0);
@@ -3041,7 +3041,7 @@ async function exportToPdf() {
             return [
                 index + 1,
                 formatDateToDMMMY(t.issued_date),
-                t.clientNames.join(', '), // Join the array of names
+                Array.from(t.clientNames).join(', '), // Convert Set to Array and join
                 t.booking_reference,
                 route,
                 t.pax,

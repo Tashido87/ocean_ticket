@@ -2321,12 +2321,10 @@ body.material-theme:not(.dark-theme) .datepicker-view .days .day.selected:nth-ch
         display: table-cell;
     }
 
-    /*
     #clientListTable th:nth-child(n+3),
     #clientListTable td:nth-child(n+3) {
         display: none;
     }
-    */
     
     #clientListTable th:last-child,
     #clientListTable td:last-child {

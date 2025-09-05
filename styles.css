@@ -2294,6 +2294,12 @@ body.material-theme:not(.dark-theme) .datepicker-view .days .day.selected:nth-ch
         padding: 1rem;
     }
 
+    /* --- ADD THIS CODE BLOCK --- */
+    .clients-container {
+        padding: 0;
+    }
+    /* --------------------------- */
+
     .info-grid {
         grid-template-columns: 1fr 1fr;
     }
@@ -2371,4 +2377,3 @@ body.material-theme:not(.dark-theme) .datepicker-view .days .day.selected:nth-ch
         -webkit-backdrop-filter: blur(var(--blur-amount));
     }
 }
-

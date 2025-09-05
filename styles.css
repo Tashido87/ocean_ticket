@@ -2293,12 +2293,10 @@ body.material-theme:not(.dark-theme) .datepicker-view .days .day.selected:nth-ch
         margin-bottom: 60px;
         padding: 1rem;
     }
-
-    /* --- ADD THIS CODE BLOCK --- */
+    
     .clients-container {
         padding: 0;
     }
-    /* --------------------------- */
 
     .info-grid {
         grid-template-columns: 1fr 1fr;
@@ -2325,6 +2323,12 @@ body.material-theme:not(.dark-theme) .datepicker-view .days .day.selected:nth-ch
     #resultsTable th:last-child,
     #resultsTable td:last-child {
         display: table-cell;
+    }
+
+    /* NEW RULE TO HIDE STAR ICON COLUMN */
+    #clientListTable th:first-child,
+    #clientListTable td:first-child {
+        display: none;
     }
 
     #clientListTable th:nth-child(n+3),

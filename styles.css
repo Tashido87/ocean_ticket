@@ -1814,7 +1814,7 @@ body.material-theme {
     --text-primary: #212529;
     --text-secondary: #6c757d;
     --border-color: #dee2e6;
-    --liquid-radius: 8px;
+    --liquid-radius: 35px;
 }
 
 body.material-theme.dark-theme {

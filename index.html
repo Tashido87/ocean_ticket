@@ -108,8 +108,8 @@
                             <h3><i class="fa-solid fa-magnifying-glass"></i> Search Tickets</h3>
                             <form id="searchForm" onsubmit="return false;">
                                 <div class="search-inputs">
-                                    <input type="text" id="searchName" placeholder="Client Name">
-                                    <input type="text" id="searchBooking" placeholder="Booking Reference">
+                                    <input type="text" id="searchName" placeholder="Client Name" autocomplete="off">
+                                    <input type="text" id="searchBooking" placeholder="Booking Reference" autocomplete="off">
                                     <div class="date-range-group">
                                         <input type="text" id="searchStartDate" placeholder="Start Date" autocomplete="off">
                                         <input type="text" id="searchEndDate" placeholder="End Date" autocomplete="off">
@@ -223,9 +223,9 @@
                     <h2><i class="fa-solid fa-calendar-plus"></i> New Booking Request</h2>
                     <form id="newBookingForm">
                         <div class="form-grid">
-                           <div class="form-group"><label for="booking_phone">Phone</label><input type="tel" id="booking_phone"></div>
-                           <div class="form-group"><label for="booking_pnr">PNR Code (Optional)</label><input type="text" id="booking_pnr"></div>
-                           <div class="form-group"><label for="booking_account_name">Social Account Name</label><input type="text" id="booking_account_name"></div>
+                           <div class="form-group"><label for="booking_phone">Phone</label><input type="tel" id="booking_phone" autocomplete="off"></div>
+                           <div class="form-group"><label for="booking_pnr">PNR Code (Optional)</label><input type="text" id="booking_pnr" autocomplete="off"></div>
+                           <div class="form-group"><label for="booking_account_name">Social Account Name</label><input type="text" id="booking_account_name" autocomplete="off"></div>
                            <div class="form-group"><label for="booking_account_type">Social Account Type</label><select id="booking_account_type"><option value="" disabled selected>Select Type</option><option value="Facebook Page">Facebook Page</option><option value="Messenger">Messenger</option><option value="Viber">Viber</option><option value="Telegram">Telegram</option><option value="WeChat">WeChat</option><option value="Phone">Phone</option></select></div>
                            <div class="form-group"><label for="booking_account_link">Account Link</label><input type="text" id="booking_account_link" placeholder="URL, phone or @username"></div>
                            <div class="form-group"><label for="booking_departure">Departure</label><select id="booking_departure" required><option value="" disabled selected>Select Departure</option>
@@ -298,7 +298,7 @@
                    <form id="sellForm">
                        <div class="form-grid">
                            <div class="form-group"><label for="issued_date">Issued Date</label><input type="text" id="issued_date" placeholder="MM/DD/YYYY" required autocomplete="off"></div>
-                           <div class="form-group"><label for="booking_reference">PNR Code</label><input type="text" id="booking_reference" required></div>
+                           <div class="form-group"><label for="booking_reference">PNR Code</label><input type="text" id="booking_reference" required autocomplete="off"></div>
                            <div class="form-group client-autosuggest-group">
                                <label for="phone">Contact Phone</label>
                                <input type="tel" id="phone" required autocomplete="off">
@@ -352,7 +352,7 @@
                     <form class="centered-form" onsubmit="return false;">
                         <div class="form-group">
                             <label for="managePnr">Enter PNR Code to Manage</label>
-                            <input type="text" id="managePnr" name="managePnr" placeholder="e.g., BDUVUU">
+                            <input type="text" id="managePnr" name="managePnr" placeholder="e.g., BDUVUU" autocomplete="off">
                         </div>
                         <div class="form-actions">
                             <button id="findTicketBtn" type="button" class="btn btn-primary"><i class="fa-solid fa-magnifying-glass"></i> Find Ticket</button>

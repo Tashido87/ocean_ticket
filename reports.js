@@ -112,9 +112,60 @@ export async function exportToPdf() {
             mergedData[key].date_change += (t.date_change || 0);
             mergedData[key].commission += (t.commission || 0);
         });
-        body = Object.values(mergedData).map((t, index) => { /* ... body generation ... */ });
-        // ... total calculations for merged
-        columnStyles = { /* ... column styles for merged ... */ };
+
+        // ### START OF FIX ###
+        body = Object.values(mergedData).map((t, index) => {
+            return [
+                index + 1,
+                formatDateToDMMMY(t.issued_date),
+                Array.from(t.clientNames).join(', '),
+                t.booking_reference,
+                `${(t.departure||'').split('(')[0].trim()} - ${(t.destination||'').split('(')[0].trim()}`,
+                t.pax,
+                (t.net_amount || 0).toLocaleString(),
+                (t.date_change || 0).toLocaleString(),
+                (t.commission || 0).toLocaleString()
+            ];
+        });
+
+        totalNetAmount = Object.values(mergedData).reduce((sum, t) => sum + (t.net_amount || 0), 0);
+        totalDateChange = Object.values(mergedData).reduce((sum, t) => sum + (t.date_change || 0), 0);
+        totalCommission = Object.values(mergedData).reduce((sum, t) => sum + (t.commission || 0), 0);
+
+        body.push([{
+            content: 'Total',
+            colSpan: 6,
+            styles: {
+                halign: 'right',
+                fontStyle: 'bold'
+            }
+        }, {
+            content: totalNetAmount.toLocaleString(),
+            styles: {
+                fontStyle: 'bold',
+                halign: 'right'
+            }
+        }, {
+            content: totalDateChange.toLocaleString(),
+            styles: {
+                fontStyle: 'bold',
+                halign: 'right'
+            }
+        }, {
+            content: totalCommission.toLocaleString(),
+            styles: {
+                fontStyle: 'bold',
+                halign: 'right'
+            }
+        }]);
+        // ### END OF FIX ###
+
+        columnStyles = {
+            5: { halign: 'center' },
+            6: { halign: 'right' },
+            7: { halign: 'right' },
+            8: { halign: 'right' }
+        };
     } else {
         // Standard report logic
         head = [

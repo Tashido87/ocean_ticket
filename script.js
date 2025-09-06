@@ -815,87 +815,108 @@ function hideNewBookingForm() {
 async function handleNewBookingSubmit(e) {
     e.preventDefault();
     if (state.isSubmitting) return;
-    state.isSubmitting = true;
+
     const submitButton = e.target.querySelector('button[type="submit"]');
-    if (submitButton) submitButton.disabled = true;
+    
+    // --- 1. Collect Form Data ---
+    const hour = document.getElementById('booking_end_time_hour').value;
+    const minute = document.getElementById('booking_end_time_minute').value;
+    const ampm = document.getElementById('booking_end_time_ampm').value;
+    
+    const sharedData = {
+        phone: document.getElementById('booking_phone').value,
+        pnr: document.getElementById('booking_pnr').value.toUpperCase(),
+        account_name: document.getElementById('booking_account_name').value.toUpperCase(),
+        account_type: document.getElementById('booking_account_type').value,
+        account_link: document.getElementById('booking_account_link').value,
+        departure: document.getElementById('booking_departure').value,
+        destination: document.getElementById('booking_destination').value,
+        departing_on: document.getElementById('booking_departing_on').value,
+        enddate: document.getElementById('booking_end_date').value,
+        endtime: hour && minute && ampm ? `${hour}:${String(minute).padStart(2, '0')} ${ampm}` : ''
+    };
 
-    try {
-        const hour = document.getElementById('booking_end_time_hour').value;
-        const minute = document.getElementById('booking_end_time_minute').value;
-        const ampm = document.getElementById('booking_end_time_ampm').value;
-        
-        const sharedData = {
-            phone: document.getElementById('booking_phone').value,
-            pnr: document.getElementById('booking_pnr').value.toUpperCase(),
-            account_name: document.getElementById('booking_account_name').value.toUpperCase(),
-            account_type: document.getElementById('booking_account_type').value,
-            account_link: document.getElementById('booking_account_link').value,
-            departure: document.getElementById('booking_departure').value,
-            destination: document.getElementById('booking_destination').value,
-            departing_on: document.getElementById('booking_departing_on').value,
-            enddate: document.getElementById('booking_end_date').value,
-            endtime: hour && minute && ampm ? `${hour}:${String(minute).padStart(2, '0')} ${ampm}` : ''
-        };
-
-        const passengerForms = document.querySelectorAll('#booking-passenger-forms-container .passenger-form');
-        const passengerData = [];
-        passengerForms.forEach(form => {
-            const gender = form.querySelector('.booking-passenger-gender').value;
-            const name = form.querySelector('.booking-passenger-name').value.toUpperCase();
-            const id_no = form.querySelector('.booking-passenger-id').value.toUpperCase();
-            if (name) {
-                passengerData.push({ gender, name, id_no });
-            }
-        });
-
-        if (passengerData.length === 0) {
-            throw new Error('At least one passenger with a Name is required.');
+    const passengerForms = document.querySelectorAll('#booking-passenger-forms-container .passenger-form');
+    const passengerData = [];
+    passengerForms.forEach(form => {
+        const gender = form.querySelector('.booking-passenger-gender').value;
+        const name = form.querySelector('.booking-passenger-name').value.toUpperCase();
+        const id_no = form.querySelector('.booking-passenger-id').value.toUpperCase();
+        if (name) {
+            passengerData.push({ gender, name, id_no });
         }
-        if (!sharedData.departing_on || !sharedData.departure || !sharedData.destination) {
-            throw new Error('Departure, Destination, and Travel Date are required.');
-        }
+    });
 
-        const values = passengerData.map(passenger => [
-            `${passenger.gender} ${passenger.name}`, // A: name
-            passenger.id_no,                     // B: nrc_no
-            sharedData.phone,                    // C: phone
-            sharedData.account_name,             // D: account_name
-            sharedData.account_type,             // E: account_type
-            sharedData.account_link,             // F: account_link
-            sharedData.departure,                // G: departure
-            sharedData.destination,              // H: destination
-            formatDateForSheet(sharedData.departing_on), // I: departing_on
-            sharedData.pnr,                      // J: pnr
-            '',                                  // K: remark
-            formatDateForSheet(sharedData.enddate), // L: enddate
-            sharedData.endtime                   // M: endtime
-        ]);
-
-        const result = await gapi.client.sheets.spreadsheets.values.append({
-            spreadsheetId: CONFIG.SHEET_ID,
-            range: `${CONFIG.BOOKING_SHEET_NAME}!A:M`,
-            valueInputOption: 'USER_ENTERED',
-            resource: { values },
-        });
-
-        console.log('Google Sheets API Response:', result);
-
-        if (result.status !== 200 || !result.result.updates || result.result.updates.updatedRows === 0) {
-            throw new Error('API call succeeded but failed to append rows. Check Sheets permissions.');
-        }
-
-        state.cache['bookingData'] = null;
-        showToast(`Booking for ${passengerData.length} passenger(s) saved!`, 'success');
-        hideNewBookingForm();
-        await loadBookingData();
-        updateNotifications(); 
-    } catch (error) {
-        console.error('Error submitting booking:', error);
-        showToast(`Error: ${error.message || 'Could not save booking.'}`, 'error');
-    } finally {
-        state.isSubmitting = false;
-        if (submitButton) submitButton.disabled = false;
+    // --- 2. Validate Data ---
+    if (passengerData.length === 0) {
+        showToast('At least one passenger with a Name is required.', 'error');
+        return;
     }
+    if (!sharedData.departing_on || !sharedData.departure || !sharedData.destination) {
+        showToast('Departure, Destination, and Travel Date are required.', 'error');
+        return;
+    }
+    
+    // --- 3. Show Confirmation Modal ---
+    const passengerNames = passengerData.map(p => p.name).join(', ');
+    const confirmationMessage = `
+        <h3>Confirm New Booking</h3>
+        <p>Please review the details before submitting:</p>
+        <ul style="list-style: none; padding-left: 0; margin: 1rem 0; text-align: left;">
+            <li><strong>Client:</strong> ${passengerNames}</li>
+            <li><strong>Route:</strong> ${sharedData.departure.split('(')[0]} -> ${sharedData.destination.split('(')[0]}</li>
+            <li><strong>Travel Date:</strong> ${sharedData.departing_on}</li>
+            <li><strong>Total Passengers:</strong> ${passengerData.length}</li>
+        </ul>
+    `;
+
+    showConfirmModal(confirmationMessage, async () => {
+        // --- 4. This code runs only after user clicks "Confirm" ---
+        state.isSubmitting = true;
+        if (submitButton) submitButton.disabled = true;
+        closeModal(); // Close the confirmation modal first
+
+        try {
+            const values = passengerData.map(passenger => [
+                `${passenger.gender} ${passenger.name}`,
+                passenger.id_no,
+                sharedData.phone,
+                sharedData.account_name,
+                sharedData.account_type,
+                sharedData.account_link,
+                sharedData.departure,
+                sharedData.destination,
+                formatDateForSheet(sharedData.departing_on),
+                sharedData.pnr,
+                '',
+                formatDateForSheet(sharedData.enddate),
+                sharedData.endtime
+            ]);
+
+            const result = await gapi.client.sheets.spreadsheets.values.append({
+                spreadsheetId: CONFIG.SHEET_ID,
+                range: `${CONFIG.BOOKING_SHEET_NAME}!A:M`,
+                valueInputOption: 'USER_ENTERED',
+                resource: { values },
+            });
+
+            if (result.status !== 200 || !result.result.updates || result.result.updates.updatedRows === 0) {
+                throw new Error('API call succeeded but failed to append rows.');
+            }
+
+            state.cache['bookingData'] = null;
+            showToast(`Booking for ${passengerData.length} passenger(s) saved!`, 'success');
+            hideNewBookingForm();
+            await loadBookingData();
+            updateNotifications();
+        } catch (error) {
+            console.error('Error submitting booking:', error);
+            showToast(`Error: ${error.message || 'Could not save booking.'}`, 'error');
+        } finally {
+            state.isSubmitting = false;
+            if (submitButton) submitButton.disabled = false;
+        }
+    });
 }
 
 

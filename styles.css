@@ -301,14 +301,15 @@ body.dark-text-theme:not(.material-theme) .nav-btn.active {
 .date-selectors select {
     font-size: 0.8rem;
     font-weight: 500;
-    padding: 0.4rem 0.6rem;
+    padding: 0.4rem;
+    padding-right: 1.5rem; /* Add space for the native arrow */
     border: none;
     border-radius: 8px;
     background: transparent;
     color: var(--text-secondary);
-    -webkit-appearance: none;
-    -moz-appearance: none;
-    appearance: none;
+    -webkit-appearance: menulist; /* Restore default appearance */
+    -moz-appearance: menulist;    /* Restore default appearance */
+    appearance: menulist;         /* Restore default appearance */
     cursor: pointer;
     transition: color 0.3s ease;
 }
@@ -1936,10 +1937,11 @@ body.material-theme.dark-theme #settlement-net-amount-box { background-color: #1
 body.material-theme.dark-theme #settlement-monthly-due-box { background-color: #442233; }
 body.material-theme.dark-theme #settlement-commission-box { background-color: #413a1a; }
 
-
+/*
 body.material-theme .dashboard-controls {
     display: none;
 }
+*/
 
 /* Styling for headers in Material mode */
 body.material-theme .search-section h3,
@@ -2080,6 +2082,15 @@ body.material-theme select {
 
 body.material-theme.dark-theme select {
     background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3e%3cpath fill='none' stroke='%23f8f9fa' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M2 5l6 6 6-6'/%3e%3c/svg%3e");
+}
+
+/* FIX: Override for small dashboard date selectors in Material Theme */
+body.material-theme .date-selectors select {
+    background-image: none;
+    -webkit-appearance: menulist;
+    -moz-appearance: menulist;
+    appearance: menulist;
+    padding-right: 0.5rem; /* Adjust padding back */
 }
 
 body.material-theme .modal {

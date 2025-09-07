@@ -190,8 +190,14 @@ async function handleUpdateTicket(e) {
 
     // Build history log
     if (newTravelDateVal && parseSheetDate(newTravelDateVal).getTime() !== parseSheetDate(originalTicket.departing_on).getTime()) historyDetails.push(`Travel Date: ${originalTicket.departing_on} to ${newTravelDateVal}`);
-    if (!isNaN(newBaseFare)) historyDetails.push(`Base Fare: ${originalTicket.base_fare} to ${newBaseFare}`);
-    // ... add history logs for all other changed fields
+    if (!isNaN(newBaseFare) && newBaseFare !== originalTicket.base_fare) historyDetails.push(`Base Fare: ${originalTicket.base_fare} to ${newBaseFare}`);
+    if (!isNaN(newNetAmount) && newNetAmount !== originalTicket.net_amount) historyDetails.push(`Net Amount: ${originalTicket.net_amount} to ${newNetAmount}`);
+    if (!isNaN(newCommission) && newCommission !== originalTicket.commission) historyDetails.push(`Commission: ${originalTicket.commission} to ${newCommission}`);
+    if (dateChangeFees > 0) historyDetails.push(`Date Change Fees Added: ${dateChangeFees}`);
+    if (extraFare > 0) historyDetails.push(`Extra Fare Added: ${extraFare}`);
+    if (newPaidStatus && !originalTicket.paid) historyDetails.push(`Status: Unpaid to Paid`);
+    if (newPaymentMethod && newPaymentMethod !== originalTicket.payment_method) historyDetails.push(`Payment Method: ${originalTicket.payment_method} to ${newPaymentMethod}`);
+    if (newPaidDate && newPaidDate !== originalTicket.paid_date) historyDetails.push(`Paid Date: ${originalTicket.paid_date} to ${newPaidDate}`);
 
     if (historyDetails.length === 0) {
         showToast('No changes were made.', 'info');

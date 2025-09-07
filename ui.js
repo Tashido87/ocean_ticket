@@ -352,7 +352,7 @@ export function showNotificationModal() {
 
     if (groupedDeadlineBookings.length > 0) {
         notificationCount += groupedDeadlineBookings.length;
-        modalContent += '<h3 class="notification-group-title"><i class="fa-solid fa-clock-fast-forward"></i>Approaching Deadlines</h3>';
+        modalContent += '<h3 class="notification-group-title"><i class="fa-solid fa-clock"></i>Approaching Deadlines</h3>';
         groupedDeadlineBookings.forEach(group => {
             const deadline = parseDeadline(group.enddate, group.endtime);
             const timeLeft = Math.round((deadline.getTime() - now.getTime()) / (1000 * 60));
@@ -361,7 +361,7 @@ export function showNotificationModal() {
 
             modalContent += `
                 <div class="notification-modal-item deadline">
-                    <div class="notification-icon"><i class="fa-solid fa-clock-fast-forward"></i></div>
+                    <div class="notification-icon"><i class="fa-solid fa-clock"></i></div>
                     <div class="notification-content">
                         <div class="notification-title">${title}</div>
                         <div class="notification-details">

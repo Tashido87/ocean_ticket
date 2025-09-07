@@ -10,6 +10,8 @@ import { renderClientsView } from './clients.js';
 import { clearManageResults } from './manage.js';
 import { displaySettlements, hideNewSettlementForm, updateSettlementDashboard } from './settlement.js';
 import { showToast } from './utils.js';
+import { displayTickets } from './tickets.js';
+import { renderBookingPage } from './booking.js';
 
 
 /**
@@ -587,9 +589,7 @@ function setupGenericPagination(data, containerId, renderPageFn, currentPage) {
  * @param {Array<Object>} tickets The array of tickets to paginate.
  */
 export function setupPagination(tickets = state.filteredTickets) {
-    const { displayTickets } =
-    import ('./tickets.js');
-    setupGenericPagination(tickets, 'pagination', displayTickets, state.currentPage);
+    setupGenericPagination(tickets, 'pagination', (page) => displayTickets(tickets, page), state.currentPage);
 }
 
 /**
@@ -597,10 +597,9 @@ export function setupPagination(tickets = state.filteredTickets) {
  * @param {Array<Object>} bookings The array of bookings to paginate.
  */
 export function setupBookingPagination(bookings = state.filteredBookings) {
-    const { renderBookingPage } =
-    import ('./booking.js');
     setupGenericPagination(bookings, 'bookingPagination', renderBookingPage, state.bookingCurrentPage);
 }
+
 
 /**
  * Sets up pagination for the settlement records view.

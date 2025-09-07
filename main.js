@@ -72,10 +72,7 @@ function setupEventListeners() {
     document.getElementById('authorize_button').addEventListener('click', handleAuthClick);
     document.getElementById('settings-btn').addEventListener('click', () => document.getElementById('settings-panel').classList.toggle('show'));
     document.getElementById('background-upload-btn').addEventListener('click', () => document.getElementById('background-uploader').click());
-    document.getElementById('background-reset-btn').addEventListener('click', () => {
-        document.body.style.backgroundImage = 'none';
-        localStorage.removeItem('backgroundImage');
-    });
+   
 
     // Dashboard Search
     document.getElementById('searchName').addEventListener('input', () => debounce(performSearch, 300));

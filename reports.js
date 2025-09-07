@@ -48,7 +48,7 @@ export async function exportToPdf() {
         }
         startDate.setHours(0, 0, 0, 0);
         endDate.setHours(23, 59, 59, 999);
-        
+
         dateRangeString = `${formatDateToDMMMY(startDate)} to ${formatDateToDMMMY(endDate)}`;
 
         ticketsToExport = state.allTickets.filter(t => {
@@ -84,20 +84,22 @@ export async function exportToPdf() {
         ticketsToExport.forEach(t => {
             const key = `${t.account_link}-${t.issued_date}`; // Group by social account and date
             if (!mergedData[key]) {
-                mergedData[key] = { ...t, pax: 0, net_amount: 0, date_change: 0, commission: 0 };
+                mergedData[key] = { ...t, pax: 0, net_amount: 0, date_change: 0, commission: 0, names: new Set() };
             }
             mergedData[key].pax++;
             mergedData[key].net_amount += (t.net_amount || 0);
             mergedData[key].date_change += (t.date_change || 0);
             mergedData[key].commission += (t.commission || 0);
+            mergedData[key].names.add(t.name);
         });
 
         body = Object.values(mergedData).map((t, index) => {
             const route = `${(t.departure||'').split('(')[0].trim()} - ${(t.destination||'').split('(')[0].trim()}`;
+            const clientNames = [...t.names].join(', ');
             return [
                 index + 1,
                 formatDateToDMMMY(t.issued_date),
-                t.account_name, // Use the social account name for the merged row
+                clientNames,
                 t.booking_reference,
                 route,
                 t.pax,
@@ -106,7 +108,7 @@ export async function exportToPdf() {
                 t.commission.toLocaleString()
             ];
         });
-        
+
         totalNetAmount = Object.values(mergedData).reduce((sum, t) => sum + t.net_amount, 0);
         totalDateChange = Object.values(mergedData).reduce((sum, t) => sum + t.date_change, 0);
         totalCommission = Object.values(mergedData).reduce((sum, t) => sum + t.commission, 0);
@@ -134,7 +136,7 @@ export async function exportToPdf() {
                 (t.commission || 0).toLocaleString()
             ];
         });
-        
+
         totalNetAmount = ticketsToExport.reduce((sum, t) => sum + (t.net_amount || 0), 0);
         totalDateChange = ticketsToExport.reduce((sum, t) => sum + (t.date_change || 0), 0);
         totalCommission = ticketsToExport.reduce((sum, t) => sum + (t.commission || 0), 0);
@@ -157,21 +159,21 @@ export async function exportToPdf() {
         styles: { fontSize: 7, cellPadding: 1.5 },
         columnStyles: columnStyles
     });
-    
+
     let finalY = doc.lastAutoTable.finalY;
     const pageHeight = doc.internal.pageSize.getHeight();
     const pageMargin = 15;
-    
+
     if (finalY + 50 > pageHeight - pageMargin) {
         doc.addPage();
         finalY = pageMargin;
     } else {
         finalY += 10;
     }
-    
+
     // This calculation now happens *before* the settlement section is built
     let grandTotal = totalNetAmount + totalDateChange;
-    
+
     if (exportType === 'range') {
         // --- Previous Month's Due Calculation ---
         const firstDayOfCurrentMonth = new Date(startDate.getFullYear(), startDate.getMonth(), 1);
@@ -186,7 +188,7 @@ export async function exportToPdf() {
 
         const revenueLastMonth = ticketsLastMonth.reduce((sum, t) => sum + (t.net_amount || 0) + (t.date_change || 0), 0);
         const commissionLastMonth = ticketsLastMonth.reduce((sum, t) => sum + (t.commission || 0), 0);
-        
+
         const settlementsLastMonth = state.allSettlements.filter(s => {
             const settlementDate = parseSheetDate(s.settlement_date);
             return settlementDate.getMonth() === previousMonth && settlementDate.getFullYear() === previousYear;
@@ -225,7 +227,7 @@ export async function exportToPdf() {
                  [{ content: `No settlements made during ${dateRangeString}`, styles: {textColor: [150, 150, 150]} }, { content: `(0) MMK`, styles: { halign: 'right', textColor: [150, 150, 150] } }]
             );
         }
-        
+
         settlementBody.push(
              [{ content: 'Remaining Balance to Settle:', styles: { fontStyle: 'bold' } }, { content: `${amountToPay.toLocaleString()} MMK`, styles: { halign: 'right', fontStyle: 'bold' } }]
         );
@@ -246,7 +248,7 @@ export async function exportToPdf() {
             }
         });
     }
-    
+
     doc.save(`agent_report_${new Date().toISOString().slice(0,10)}.pdf`);
     exportConfirmModal.classList.remove('show');
 }
@@ -265,10 +267,10 @@ export async function exportPrivateReportToPdf() {
         showToast('Please select a valid date range for the private report.', 'error');
         return;
     }
-    
+
     const startDate = parseSheetDate(startDateStr);
     const endDate = parseSheetDate(endDateStr);
-    
+
     startDate.setHours(0, 0, 0, 0);
     endDate.setHours(23, 59, 59, 999);
 
@@ -400,7 +402,7 @@ export async function exportPrivateReportToPdf() {
             percentage: ((count / totalTickets) * 100).toFixed(2)
         }))
         .sort((a, b) => b.count - a.count);
-    
+
     const airlineBody = airlineData.map(a => [a.airline, a.count, `${a.percentage}%`]);
 
     doc.autoTable({
@@ -457,6 +459,7 @@ export async function exportPrivateReportToPdf() {
         month: months[i],
         revenue: 0,
         profit: 0,
+        commission: 0,
         extraFare: 0,
         tickets: 0
     }));
@@ -464,38 +467,42 @@ export async function exportPrivateReportToPdf() {
     ticketsThisYear.forEach(t => {
         const monthIndex = parseSheetDate(t.issued_date).getMonth();
         monthlyData[monthIndex].revenue += (t.net_amount || 0) + (t.date_change || 0);
-        monthlyData[monthIndex].profit += (t.commission || 0) + (t.extra_fare || 0);
+        monthlyData[monthIndex].commission += (t.commission || 0);
         monthlyData[monthIndex].extraFare += (t.extra_fare || 0);
+        monthlyData[monthIndex].profit += (t.commission || 0) + (t.extra_fare || 0);
         monthlyData[monthIndex].tickets++;
     });
 
     // --- Comparison Table ---
-    const comparisonHead = [['Month', 'Total Tickets', 'Total Revenue', 'Total Profit', 'Total Extra Fare']];
+    const comparisonHead = [['Month', 'Total Tickets', 'Total Revenue', 'Total Commission', 'Total Extra Fare', 'Total Profit']];
     const comparisonBody = monthlyData
         .filter(m => m.tickets > 0) // Only show months with data
         .map(m => [
             m.month,
             m.tickets,
             m.revenue.toLocaleString(),
-            m.profit.toLocaleString(),
-            m.extraFare.toLocaleString()
+            m.commission.toLocaleString(),
+            m.extraFare.toLocaleString(),
+            m.profit.toLocaleString()
         ]);
-    
+
     // Add totals row
     const totalRow = monthlyData.reduce((acc, m) => {
         acc.tickets += m.tickets;
         acc.revenue += m.revenue;
-        acc.profit += m.profit;
+        acc.commission += m.commission;
         acc.extraFare += m.extraFare;
+        acc.profit += m.profit;
         return acc;
-    }, { tickets: 0, revenue: 0, profit: 0, extraFare: 0 });
+    }, { tickets: 0, revenue: 0, commission: 0, extraFare: 0, profit: 0 });
 
     comparisonBody.push([
         { content: 'Total', styles: { fontStyle: 'bold' } },
         { content: totalRow.tickets, styles: { fontStyle: 'bold' } },
         { content: totalRow.revenue.toLocaleString(), styles: { fontStyle: 'bold' } },
-        { content: totalRow.profit.toLocaleString(), styles: { fontStyle: 'bold' } },
+        { content: totalRow.commission.toLocaleString(), styles: { fontStyle: 'bold' } },
         { content: totalRow.extraFare.toLocaleString(), styles: { fontStyle: 'bold' } },
+        { content: totalRow.profit.toLocaleString(), styles: { fontStyle: 'bold' } },
     ]);
 
     doc.autoTable({
@@ -504,13 +511,14 @@ export async function exportPrivateReportToPdf() {
         startY: 25,
         theme: 'grid',
         headStyles: { fillColor: [44, 62, 80] },
-        styles: { fontSize: 9 },
+        styles: { fontSize: 8 },
         columnStyles: {
             0: { fontStyle: 'bold' },
             1: { halign: 'right' },
             2: { halign: 'right' },
             3: { halign: 'right' },
             4: { halign: 'right' },
+            5: { halign: 'right' },
         }
     });
 
@@ -549,7 +557,7 @@ export async function exportPrivateReportToPdf() {
         const imgWidth = pdfWidth - margin * 2;
         const imgHeight = (imgProps.height * imgWidth) / imgProps.width;
         let chartY = doc.lastAutoTable.finalY + 10;
-        
+
         // Check if there is enough space for the chart
         if (chartY + imgHeight > doc.internal.pageSize.getHeight() - margin) {
             doc.addPage();

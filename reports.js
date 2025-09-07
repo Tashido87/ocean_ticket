@@ -297,14 +297,14 @@ export async function exportPrivateReportToPdf() {
     const totalRevenue = ticketsInMonth.reduce((sum, t) => sum + t.net_amount, 0);
     const totalCommission = ticketsInMonth.reduce((sum, t) => sum + t.commission, 0);
     const totalExtraFare = ticketsInMonth.reduce((sum, t) => sum + t.extra_fare, 0);
-    const totalProfit = totalCommission + totalExtraFare;
+    const summaryTotalProfit = totalCommission + totalExtraFare;
 
     const summaryBody = [
         ['Total Ticket Sales', `${totalTickets} tickets`],
         ['Total Revenue', `${totalRevenue.toLocaleString()} MMK`],
         ['Total Commission', `${totalCommission.toLocaleString()} MMK`],
         ['Total Extra Fare', `${totalExtraFare.toLocaleString()} MMK`],
-        ['Total Profit', `${totalProfit.toLocaleString()} MMK`],
+        ['Total Profit', `${summaryTotalProfit.toLocaleString()} MMK`],
     ];
     doc.autoTable({
         body: summaryBody,
@@ -318,7 +318,6 @@ export async function exportPrivateReportToPdf() {
 
     // --- Most Traveled Route ---
     const routeCounts = ticketsInMonth.reduce((acc, ticket) => {
-        // MODIFIED: Using a more visually appealing arrow.
         const route = `${(ticket.departure||'').split('(')[0].trim()} ➔ ${(ticket.destination||'').split('(')[0].trim()}`;
         acc[route] = (acc[route] || 0) + 1;
         return acc;
@@ -438,6 +437,127 @@ export async function exportPrivateReportToPdf() {
         theme: 'grid',
         headStyles: { fillColor: [243, 156, 18], textColor: [255, 255, 255] },
     });
+
+    // --- ADD NEW PAGE FOR MONTHLY COMPARISON ---
+    doc.addPage();
+    const currentYear = new Date().getFullYear();
+
+    doc.setFontSize(18);
+    doc.setFont('helvetica', 'bold');
+    doc.text(`Monthly Comparison (${currentYear})`, 105, 15, { align: 'center' });
+
+    // --- Data Aggregation for Comparison ---
+    const ticketsThisYear = state.allTickets.filter(t => {
+        const ticketDate = parseSheetDate(t.issued_date);
+        return ticketDate.getFullYear() === currentYear && !t.remarks?.toLowerCase().includes('full refund');
+    });
+
+    const months = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+    const monthlyData = Array(12).fill(null).map((_, i) => ({
+        month: months[i],
+        revenue: 0,
+        profit: 0,
+        extraFare: 0,
+        tickets: 0
+    }));
+
+    ticketsThisYear.forEach(t => {
+        const monthIndex = parseSheetDate(t.issued_date).getMonth();
+        monthlyData[monthIndex].revenue += (t.net_amount || 0) + (t.date_change || 0);
+        monthlyData[monthIndex].profit += (t.commission || 0) + (t.extra_fare || 0);
+        monthlyData[monthIndex].extraFare += (t.extra_fare || 0);
+        monthlyData[monthIndex].tickets++;
+    });
+
+    // --- Comparison Table ---
+    const comparisonHead = [['Month', 'Total Tickets', 'Total Revenue', 'Total Profit', 'Total Extra Fare']];
+    const comparisonBody = monthlyData
+        .filter(m => m.tickets > 0) // Only show months with data
+        .map(m => [
+            m.month,
+            m.tickets,
+            m.revenue.toLocaleString(),
+            m.profit.toLocaleString(),
+            m.extraFare.toLocaleString()
+        ]);
+    
+    // Add totals row
+    const totalRow = monthlyData.reduce((acc, m) => {
+        acc.tickets += m.tickets;
+        acc.revenue += m.revenue;
+        acc.profit += m.profit;
+        acc.extraFare += m.extraFare;
+        return acc;
+    }, { tickets: 0, revenue: 0, profit: 0, extraFare: 0 });
+
+    comparisonBody.push([
+        { content: 'Total', styles: { fontStyle: 'bold' } },
+        { content: totalRow.tickets, styles: { fontStyle: 'bold' } },
+        { content: totalRow.revenue.toLocaleString(), styles: { fontStyle: 'bold' } },
+        { content: totalRow.profit.toLocaleString(), styles: { fontStyle: 'bold' } },
+        { content: totalRow.extraFare.toLocaleString(), styles: { fontStyle: 'bold' } },
+    ]);
+
+    doc.autoTable({
+        head: comparisonHead,
+        body: comparisonBody,
+        startY: 25,
+        theme: 'grid',
+        headStyles: { fillColor: [44, 62, 80] },
+        styles: { fontSize: 9 },
+        columnStyles: {
+            0: { fontStyle: 'bold' },
+            1: { halign: 'right' },
+            2: { halign: 'right' },
+            3: { halign: 'right' },
+            4: { halign: 'right' },
+        }
+    });
+
+    // --- Comparison Graph ---
+    const chartCanvas = document.getElementById('comparisonChart');
+    if (chartCanvas && state.charts.comparisonChart) {
+        // Temporarily change chart colors for PDF export (white background)
+        const originalColor = state.charts.comparisonChart.options.plugins.legend.labels.color;
+        const legendOptions = state.charts.comparisonChart.options.plugins.legend;
+        const scaleOptions = state.charts.comparisonChart.options.scales;
+
+        if (legendOptions) legendOptions.labels.color = '#000';
+        if (scaleOptions) {
+            Object.values(scaleOptions).forEach(axis => {
+                if (axis.ticks) axis.ticks.color = '#000';
+                if (axis.title) axis.title.color = '#000';
+            });
+        }
+        state.charts.comparisonChart.update('none'); // Update without animation
+
+        const chartImage = chartCanvas.toDataURL('image/png', 1.0);
+
+        // Revert chart colors back to original
+        if (legendOptions) legendOptions.labels.color = originalColor;
+        if (scaleOptions) {
+             Object.values(scaleOptions).forEach(axis => {
+                if (axis.ticks) axis.ticks.color = originalColor;
+                if (axis.title) axis.title.color = originalColor;
+            });
+        }
+        state.charts.comparisonChart.update('none');
+
+        const imgProps = doc.getImageProperties(chartImage);
+        const pdfWidth = doc.internal.pageSize.getWidth();
+        const margin = 14;
+        const imgWidth = pdfWidth - margin * 2;
+        const imgHeight = (imgProps.height * imgWidth) / imgProps.width;
+        let chartY = doc.lastAutoTable.finalY + 10;
+        
+        // Check if there is enough space for the chart
+        if (chartY + imgHeight > doc.internal.pageSize.getHeight() - margin) {
+            doc.addPage();
+            chartY = margin;
+        }
+
+        doc.addImage(chartImage, 'PNG', margin, chartY, imgWidth, imgHeight);
+    }
 
     doc.save(`private_report_${new Date().toISOString().slice(0,10)}.pdf`);
 }

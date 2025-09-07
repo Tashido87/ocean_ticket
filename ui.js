@@ -9,6 +9,7 @@ import { parseSheetDate, formatDateToDMMMY, makeClickable, parseDeadline } from 
 import { renderClientsView } from './clients.js';
 import { clearManageResults } from './manage.js';
 import { displaySettlements, hideNewSettlementForm, updateSettlementDashboard } from './settlement.js';
+import { showToast } from './utils.js';
 
 
 /**
@@ -679,85 +680,181 @@ export function removeBookingPassengerForm() {
  * Initializes UI settings from local storage and sets up event listeners.
  */
 export function initializeUISettings() {
+    // --- Get all UI elements ---
     const themeToggle = document.getElementById('theme-toggle');
     const darkModeToggle = document.getElementById('dark-mode-toggle');
     const backgroundUploader = document.getElementById('background-uploader');
     const glassSettings = document.getElementById('glass-settings-container');
+    const backgroundResetBtn = document.getElementById('background-reset-btn');
+    const resetSettingsBtn = document.getElementById('reset-settings-btn');
 
-    // --- State Management ---
-    const updateUIState = (isMaterial) => {
-        glassSettings.style.display = isMaterial ? 'none' : 'block';
+    // Glass effect sliders
+    const opacitySlider = document.getElementById('opacity-slider');
+    const opacityValue = document.getElementById('opacity-value');
+    const blurSlider = document.getElementById('blur-slider');
+    const blurValue = document.getElementById('blur-value');
+    const overlaySlider = document.getElementById('overlay-slider');
+    const overlayValue = document.getElementById('overlay-value');
+    const glassSlider = document.getElementById('glass-slider');
+    const glassValue = document.getElementById('glass-value');
+    const glassTextToggle = document.getElementById('glass-text-toggle');
+
+    // Commission slider
+    const agentCutSlider = document.getElementById('agent-cut-slider');
+    const agentCutValue = document.getElementById('agent-cut-value');
+
+    // --- Define default settings ---
+    const defaultSettings = {
+        opacity: 0.05,
+        blur: 20,
+        overlay: 0.5,
+        glassBorder: 0.15,
+        darkText: false,
+        agentCut: 60
+    };
+
+    let currentSettings = { ...defaultSettings };
+
+    // --- Core Functions ---
+    const saveSettings = () => {
+        localStorage.setItem('uiCustomSettings', JSON.stringify(currentSettings));
+    };
+
+    const applySettings = (settings) => {
+        // Apply glass effect styles via CSS variables
+        document.documentElement.style.setProperty('--glass-bg', `rgba(255, 255, 255, ${settings.opacity})`);
+        document.documentElement.style.setProperty('--blur-amount', `${settings.blur}px`);
+        document.documentElement.style.setProperty('--overlay-opacity', settings.overlay);
+        document.documentElement.style.setProperty('--liquid-border', `1px solid rgba(255, 255, 255, ${settings.glassBorder})`);
+
+        // Apply dark text class for glass mode
+        document.body.classList.toggle('dark-text-theme', settings.darkText);
+
+        // Update agent cut in global state for calculations
+        state.commissionRates.cut = settings.agentCut / 100;
+
+        // Update UI controls to reflect the new values
+        opacitySlider.value = settings.opacity;
+        opacityValue.textContent = Number(settings.opacity).toFixed(2);
+        blurSlider.value = settings.blur;
+        blurValue.textContent = settings.blur;
+        overlaySlider.value = settings.overlay;
+        overlayValue.textContent = Number(settings.overlay).toFixed(2);
+        glassSlider.value = settings.glassBorder;
+        glassValue.textContent = Number(settings.glassBorder).toFixed(2);
+        glassTextToggle.checked = settings.darkText;
+        agentCutSlider.value = settings.agentCut;
+        agentCutValue.textContent = `${settings.agentCut}%`;
+    };
+
+    const loadSettings = () => {
+        const saved = JSON.parse(localStorage.getItem('uiCustomSettings'));
+        currentSettings = { ...defaultSettings, ...saved };
+        applySettings(currentSettings);
+    };
+
+    const renderBackground = () => {
+        const isMaterial = document.body.classList.contains('material-theme');
+        const savedBackground = localStorage.getItem('backgroundImage');
+
         if (isMaterial) {
             document.body.style.backgroundImage = 'none';
         } else {
-            const savedBackground = localStorage.getItem('backgroundImage');
             if (savedBackground) {
                 document.body.style.backgroundImage = `url(${savedBackground})`;
+            } else {
+                document.body.style.removeProperty('background-image');
             }
         }
     };
 
-    // --- Theme Management ---
-    const applyTheme = (isMaterial) => {
-        document.body.classList.toggle('material-theme', isMaterial);
-        updateUIState(isMaterial);
+    const updateUIState = (isMaterial) => {
+        glassSettings.style.display = isMaterial ? 'none' : 'block';
     };
 
-    const savedTheme = localStorage.getItem('theme');
-    if (savedTheme === 'material') {
-        themeToggle.checked = true;
-        applyTheme(true);
-    } else {
-        applyTheme(false);
-    }
+    const applyTheme = (isMaterial) => {
+        document.body.classList.add('theme-transitioning');
+        document.body.classList.toggle('material-theme', isMaterial);
+        updateUIState(isMaterial);
+        renderBackground();
+        setTimeout(() => {
+            document.body.classList.remove('theme-transitioning');
+        }, 100);
+    };
 
+    // --- Event Listeners ---
     themeToggle.addEventListener('change', (e) => {
         const isMaterial = e.target.checked;
         applyTheme(isMaterial);
         localStorage.setItem('theme', isMaterial ? 'material' : 'glass');
     });
 
-    // --- Dark Mode Management ---
-    const applyDarkMode = (isDark) => {
-        document.body.classList.toggle('dark-theme', isDark);
-    };
-
-    const savedDarkMode = localStorage.getItem('darkMode');
-    if (savedDarkMode === 'true') {
-        darkModeToggle.checked = true;
-        applyDarkMode(true);
-    }
-
     darkModeToggle.addEventListener('change', (e) => {
         const isDark = e.target.checked;
-        applyDarkMode(isDark);
+        document.body.classList.toggle('dark-theme', isDark);
         localStorage.setItem('darkMode', isDark);
     });
-
-    // --- Background Management ---
-    const applyBackground = (bg) => {
-        if (!document.body.classList.contains('material-theme')) {
-            document.body.style.backgroundImage = bg ? `url(${bg})` : 'none';
-        }
-    };
-
-    const savedBackground = localStorage.getItem('backgroundImage');
-    if (savedBackground) {
-        applyBackground(savedBackground);
-    }
 
     backgroundUploader.addEventListener('change', (e) => {
         const file = e.target.files[0];
         if (file) {
+            // Increase the size limit to 4.5MB, which is safer for a 5MB quota
+            if (file.size > 4.5 * 1024 * 1024) { 
+                showToast('Image is too large. Please choose a file smaller than 4.5MB.', 'error');
+                return;
+            }
             const reader = new FileReader();
             reader.onload = (event) => {
                 const bgData = event.target.result;
-                applyBackground(bgData);
-                localStorage.setItem('backgroundImage', bgData);
+                try {
+                    // Clear the old item first to make space.
+                    localStorage.removeItem('backgroundImage'); 
+                    localStorage.setItem('backgroundImage', bgData);
+                    renderBackground();
+                } catch (error) {
+                    if (error.name === 'QuotaExceededError') {
+                        showToast('Browser storage is full. This image is too large even after clearing the old one.', 'error');
+                    } else {
+                        showToast('An error occurred while saving the background.', 'error');
+                    }
+                }
             };
             reader.readAsDataURL(file);
         }
     });
+
+
+    backgroundResetBtn.addEventListener('click', () => {
+        localStorage.removeItem('backgroundImage');
+        renderBackground();
+    });
+
+    opacitySlider.addEventListener('input', (e) => { currentSettings.opacity = e.target.value; applySettings(currentSettings); saveSettings(); });
+    blurSlider.addEventListener('input', (e) => { currentSettings.blur = e.target.value; applySettings(currentSettings); saveSettings(); });
+    overlaySlider.addEventListener('input', (e) => { currentSettings.overlay = e.target.value; applySettings(currentSettings); saveSettings(); });
+    glassSlider.addEventListener('input', (e) => { currentSettings.glassBorder = e.target.value; applySettings(currentSettings); saveSettings(); });
+    glassTextToggle.addEventListener('change', (e) => { currentSettings.darkText = e.target.checked; applySettings(currentSettings); saveSettings(); });
+    agentCutSlider.addEventListener('input', (e) => { currentSettings.agentCut = e.target.value; applySettings(currentSettings); saveSettings(); });
+
+    resetSettingsBtn.addEventListener('click', () => {
+        currentSettings = { ...defaultSettings };
+        localStorage.removeItem('uiCustomSettings');
+        applySettings(currentSettings);
+    });
+
+    // --- Initial Load & Render ---
+    const savedTheme = localStorage.getItem('theme');
+    if (savedTheme === 'material') {
+        themeToggle.checked = true;
+    }
+    const savedDarkMode = localStorage.getItem('darkMode');
+    if (savedDarkMode === 'true') {
+        darkModeToggle.checked = true;
+        document.body.classList.add('dark-theme');
+    }
+
+    loadSettings();
+    applyTheme(themeToggle.checked);
 }
 
 

@@ -72,7 +72,7 @@ function setupEventListeners() {
     document.getElementById('authorize_button').addEventListener('click', handleAuthClick);
     document.getElementById('settings-btn').addEventListener('click', () => document.getElementById('settings-panel').classList.toggle('show'));
     document.getElementById('background-upload-btn').addEventListener('click', () => document.getElementById('background-uploader').click());
-   
+
 
     // Dashboard Search
     document.getElementById('searchName').addEventListener('input', () => debounce(performSearch, 300));
@@ -150,6 +150,9 @@ function setupEventListeners() {
             settingsPanel.classList.remove('show');
         }
     });
+
+    // Theme change listener for chart redraw
+    document.body.addEventListener('themeChanged', updateComparisonChart);
 }
 
 /**
@@ -203,6 +206,125 @@ export function updateDashboardData() {
 
     updateNotifications();
     updateSettlementDashboard();
+    updateComparisonChart();
+}
+
+/**
+ * Updates the yearly comparison chart on the dashboard.
+ */
+export function updateComparisonChart() {
+    const currentYear = new Date().getFullYear();
+    const ticketsThisYear = state.allTickets.filter(t => {
+        const ticketDate = parseSheetDate(t.issued_date);
+        return ticketDate.getFullYear() === currentYear && !t.remarks?.toLowerCase().includes('full refund');
+    });
+
+    const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    const monthlyData = Array(12).fill(null).map(() => ({
+        revenue: 0,
+        profit: 0,
+        tickets: 0
+    }));
+
+    ticketsThisYear.forEach(t => {
+        const month = parseSheetDate(t.issued_date).getMonth();
+        monthlyData[month].revenue += (t.net_amount || 0) + (t.date_change || 0);
+        monthlyData[month].profit += (t.commission || 0) + (t.extra_fare || 0);
+        monthlyData[month].tickets++;
+    });
+
+    const ctx = document.getElementById('comparisonChart').getContext('2d');
+
+    if (state.charts.comparisonChart) {
+        state.charts.comparisonChart.destroy();
+    }
+
+    // This logic determines the correct text color based on the current theme
+    const isMaterialLight = document.body.classList.contains('material-theme') && !document.body.classList.contains('dark-theme');
+    const textColor = isMaterialLight ? '#4A4A4A' : '#FFFFFF';
+
+
+    const chartConfig = {
+        type: 'bar',
+        data: {
+            labels: months,
+            datasets: [{
+                label: 'Total Revenue',
+                data: monthlyData.map(d => d.revenue),
+                backgroundColor: 'rgba(251, 146, 60, 0.7)',
+                borderColor: 'rgba(251, 146, 60, 1)',
+                borderWidth: 1,
+                yAxisID: 'y'
+            }, {
+                label: 'Total Profit',
+                data: monthlyData.map(d => d.profit),
+                backgroundColor: 'rgba(46, 204, 113, 0.7)',
+                borderColor: 'rgba(46, 204, 113, 1)',
+                borderWidth: 1,
+                yAxisID: 'y'
+            }, {
+                label: 'Total Tickets',
+                data: monthlyData.map(d => d.tickets),
+                backgroundColor: 'rgba(52, 152, 219, 0.7)',
+                borderColor: 'rgba(52, 152, 219, 1)',
+                borderWidth: 1,
+                type: 'line',
+                yAxisID: 'y1',
+                tension: 0.3
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            interaction: {
+                mode: 'index',
+                intersect: false,
+            },
+            scales: {
+                x: {
+                    ticks: { color: textColor }
+                },
+                y: {
+                    type: 'linear',
+                    display: true,
+                    position: 'left',
+                    title: {
+                        display: true,
+                        text: 'Amount (MMK)',
+                        color: textColor
+                    },
+                    ticks: {
+                        color: textColor
+                    }
+                },
+                y1: {
+                    type: 'linear',
+                    display: true,
+                    position: 'right',
+                    title: {
+                        display: true,
+                        text: 'Number of Tickets',
+                        color: textColor
+                    },
+                    grid: {
+                        drawOnChartArea: false, // only draw grid lines for the first Y axis
+                    },
+                    ticks: {
+                        color: textColor
+                    }
+                }
+            },
+            plugins: {
+                legend: {
+                    labels: {
+                        color: textColor
+                    }
+                }
+            }
+        }
+    };
+
+    state.charts.comparisonChart = new Chart(ctx, chartConfig);
 }
 
 

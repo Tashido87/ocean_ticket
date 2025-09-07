@@ -778,6 +778,7 @@ export function initializeUISettings() {
         renderBackground();
         setTimeout(() => {
             document.body.classList.remove('theme-transitioning');
+            document.body.dispatchEvent(new CustomEvent('themeChanged')); // Fire event
         }, 100);
     };
 
@@ -792,13 +793,14 @@ export function initializeUISettings() {
         const isDark = e.target.checked;
         document.body.classList.toggle('dark-theme', isDark);
         localStorage.setItem('darkMode', isDark);
+        document.body.dispatchEvent(new CustomEvent('themeChanged')); // Fire event
     });
 
     backgroundUploader.addEventListener('change', (e) => {
         const file = e.target.files[0];
         if (file) {
             // Increase the size limit to 4.5MB, which is safer for a 5MB quota
-            if (file.size > 4.5 * 1024 * 1024) { 
+            if (file.size > 4.5 * 1024 * 1024) {
                 showToast('Image is too large. Please choose a file smaller than 4.5MB.', 'error');
                 return;
             }
@@ -807,7 +809,7 @@ export function initializeUISettings() {
                 const bgData = event.target.result;
                 try {
                     // Clear the old item first to make space.
-                    localStorage.removeItem('backgroundImage'); 
+                    localStorage.removeItem('backgroundImage');
                     localStorage.setItem('backgroundImage', bgData);
                     renderBackground();
                 } catch (error) {

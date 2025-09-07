@@ -173,9 +173,9 @@ export function renderClientsView(page) {
         if (pg === state.clientPage) b.classList.add('active');
         return b;
     };
-    paginationContainer.append(btn('&laquo;', state.clientPage - 1, state.clientPage > 1));
+    paginationContainer.append(btn('&laquo;', 1, state.clientPage > 1));
     for (let i = 1; i <= pageCount; i++) paginationContainer.append(btn(i, i));
-    paginationContainer.append(btn('&raquo;', state.clientPage + 1, state.clientPage < pageCount));
+    paginationContainer.append(btn('&raquo;', pageCount, state.clientPage < pageCount));
 }
 
 /**

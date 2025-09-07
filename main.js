@@ -115,7 +115,7 @@ function setupEventListeners() {
         populateFlightLocations();
         updateToggleLabels();
     });
-    document.getElementById('addPassengerBtn').addEventListener('click', addPassengerForm);
+    document.getElementById('addPassengerBtn').addEventListener('click', () => addPassengerForm());
     document.getElementById('removePassengerBtn').addEventListener('click', removePassengerForm);
 
 

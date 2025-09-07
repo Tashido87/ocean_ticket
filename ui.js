@@ -577,11 +577,11 @@ function setupGenericPagination(data, containerId, renderPageFn, currentPage) {
         return btn;
     };
 
-    paginationContainer.append(createBtn('&laquo;', currentPage - 1, currentPage > 1));
+    paginationContainer.append(createBtn('&laquo;', 1, currentPage > 1));
     for (let i = 1; i <= pageCount; i++) {
         paginationContainer.append(createBtn(i, i));
     }
-    paginationContainer.append(createBtn('&raquo;', currentPage + 1, currentPage < pageCount));
+    paginationContainer.append(createBtn('&raquo;', pageCount, currentPage < pageCount));
 }
 
 /**

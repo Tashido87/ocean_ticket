@@ -105,9 +105,9 @@ export function displayHistory(page, historyToShow = state.history) {
         return btn;
     };
 
-    paginationContainer.append(createBtn('&laquo;', state.historyPage - 1, state.historyPage > 1));
+    paginationContainer.append(createBtn('&laquo;', 1, state.historyPage > 1));
     for (let i = 1; i <= pageCount; i++) {
         paginationContainer.append(createBtn(i, i));
     }
-    paginationContainer.append(createBtn('&raquo;', state.historyPage + 1, state.historyPage < pageCount));
+    paginationContainer.append(createBtn('&raquo;', pageCount, state.historyPage < pageCount));
 }

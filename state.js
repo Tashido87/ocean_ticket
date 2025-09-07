@@ -12,7 +12,9 @@ export const state = {
     allSettlements: [],
     featuredClients: [], // For starred clients
     history: [],
-    charts: {},
+    charts: {
+        comparisonChart: null
+    },
     isSubmitting: false,
     rowsPerPage: 10,
     currentPage: 1,

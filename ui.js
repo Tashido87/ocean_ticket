@@ -517,7 +517,7 @@ export function addPassengerForm(name = '', idNo = '', gender = 'MR') {
                 <label>Commission</label>
                 <input type="number" class="passenger-commission" placeholder="0">
             </div>
-            <div class="form-group full-width">
+            <div class="form-group">
                 <label>Remarks</label>
                 <input type="text" class="passenger-remarks" placeholder="Optional notes">
             </div>

@@ -71,6 +71,16 @@ body {
     transition: background-image 0.5s ease-in-out, background-color 0.5s ease-in-out;
 }
 
+body.modal-open {
+    overflow: hidden;
+}
+
+body.modal-open .header,
+body.modal-open .main-content,
+body.modal-open .nav {
+    display: none;
+}
+
 body::before {
     content: '';
     position: fixed;
@@ -995,7 +1005,6 @@ body.dark-text-theme:not(.material-theme) .btn-primary {
     left: 0;
     width: 100%;
     height: 100%;
-    background: rgba(0, 0, 0, 0.7);
     backdrop-filter: blur(10px);
     -webkit-backdrop-filter: blur(10px);
     z-index: 1500;
@@ -1097,6 +1106,10 @@ body.dark-text-theme:not(.material-theme) .btn-primary {
 
 .details-section {
     margin-bottom: 1.5rem;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 15px;
+    padding: 1rem;
+    border: 1px solid rgba(255, 255, 255, 0.1);
 }
 
 .details-section-title {

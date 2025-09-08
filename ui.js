@@ -580,27 +580,11 @@ function setupGenericPagination(data, containerId, renderPageFn, currentPage) {
     };
 
     paginationContainer.append(createBtn('&laquo;', 1, currentPage > 1));
-
-    const maxPagesToShow = 10;
-    const currentBlock = Math.floor((currentPage - 1) / maxPagesToShow);
-    const startPage = currentBlock * maxPagesToShow + 1;
-    const endPage = Math.min(startPage + maxPagesToShow - 1, pageCount);
-
-    if (startPage > 1) {
-        paginationContainer.append(createBtn('...', startPage - 1));
-    }
-
-    for (let i = startPage; i <= endPage; i++) {
+    for (let i = 1; i <= pageCount; i++) {
         paginationContainer.append(createBtn(i, i));
     }
-
-    if (endPage < pageCount) {
-        paginationContainer.append(createBtn('...', endPage + 1));
-    }
-
     paginationContainer.append(createBtn('&raquo;', pageCount, currentPage < pageCount));
 }
-
 
 /**
  * Sets up pagination for the main ticket search results.

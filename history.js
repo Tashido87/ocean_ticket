@@ -15,6 +15,9 @@ import {
 import {
     showToast
 } from './utils.js';
+import {
+    setupGenericPagination
+} from './ui.js';
 
 /**
  * Loads the modification history from the Google Sheet.
@@ -67,13 +70,11 @@ export async function saveHistory(ticket, details) {
  */
 export function displayHistory(page, historyToShow = state.history) {
     const container = document.getElementById('modificationHistoryBody');
-    const paginationContainer = document.getElementById('modificationHistoryPagination');
     const historySection = document.getElementById('modificationHistoryContainer');
 
-    if (!container || !paginationContainer || !historySection) return;
+    if (!container || !historySection) return;
 
     container.innerHTML = '';
-    paginationContainer.innerHTML = '';
     state.historyPage = page;
 
     if (historyToShow.length === 0) {
@@ -88,26 +89,5 @@ export function displayHistory(page, historyToShow = state.history) {
         row.innerHTML = `<td>${entry.date}</td><td>${entry.name}</td><td>${entry.pnr}</td><td>${entry.details}</td>`;
     });
 
-    const pageCount = Math.ceil(historyToShow.length / state.rowsPerPage);
-    if (pageCount <= 1) return;
-
-    const createBtn = (txt, pg, enabled = true) => {
-        const btn = document.createElement('button');
-        btn.className = 'pagination-btn';
-        btn.innerHTML = txt;
-        btn.disabled = !enabled;
-        if (enabled) {
-            btn.onclick = () => displayHistory(pg, historyToShow);
-        }
-        if (pg === state.historyPage) {
-            btn.classList.add('active');
-        }
-        return btn;
-    };
-
-    paginationContainer.append(createBtn('&laquo;', 1, state.historyPage > 1));
-    for (let i = 1; i <= pageCount; i++) {
-        paginationContainer.append(createBtn(i, i));
-    }
-    paginationContainer.append(createBtn('&raquo;', pageCount, state.historyPage < pageCount));
+    setupGenericPagination(historyToShow, 'modificationHistoryPagination', (p) => displayHistory(p, historyToShow), page);
 }

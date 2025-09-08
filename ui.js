@@ -65,6 +65,7 @@ export function openModal(content, sizeClass = '') {
         modalContent.classList.add(sizeClass);
     }
     modal.classList.add('show');
+    document.body.classList.add('modal-open');
 }
 
 /**
@@ -74,6 +75,7 @@ export function closeModal() {
     const modal = document.getElementById('modal');
     modal.classList.remove('show');
     document.getElementById('modalBody').innerHTML = '';
+    document.body.classList.remove('modal-open');
 }
 
 /**

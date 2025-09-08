@@ -73,7 +73,8 @@ export function renderClientsView(page) {
                 <div class="clients-header">
                     <h2><i class="fa-solid fa-users"></i> Client Directory</h2>
                     <div class="client-controls">
-                        <div class="client-search-box" style="display: flex; gap: 0.5rem;">
+                        <div class="client-search-box" style="display: flex; gap: 0.5rem; align-items: center;">
+                            <button id="featuredFilterBtn" class="icon-btn" title="Show Featured Only"><i class="fa-regular fa-star"></i></button>
                             <input type="text" id="clientSearchInput" placeholder="Search by name, phone, or social media...">
                             <button id="clientClearBtn" class="btn btn-secondary"><i class="fa-solid fa-eraser"></i></button>
                         </div>
@@ -102,22 +103,37 @@ export function renderClientsView(page) {
             state.clientSearchQuery = '';
             renderClientsView(1);
         });
+        document.getElementById('featuredFilterBtn').addEventListener('click', () => {
+            state.onlyShowFeatured = !state.onlyShowFeatured;
+            renderClientsView(1);
+        });
     }
 
     const tbody = document.getElementById('clientListTableBody');
     const paginationContainer = document.getElementById('clientListPagination');
+    const featuredFilterBtn = document.getElementById('featuredFilterBtn');
 
+    featuredFilterBtn.classList.toggle('active', state.onlyShowFeatured);
     document.getElementById('clientSearchInput').value = searchQuery;
     tbody.innerHTML = '';
     paginationContainer.innerHTML = '';
 
     const query = searchQuery.toLowerCase();
-    const filteredClients = state.allClients.filter(c =>
-        c.name.toLowerCase().includes(query) ||
-        c.phone.toLowerCase().includes(query) ||
-        (c.account_name && c.account_name.toLowerCase().includes(query)) ||
-        (c.account_type && c.account_type.toLowerCase().includes(query))
-    );
+    let filteredClients = state.allClients;
+
+    if (state.onlyShowFeatured) {
+        filteredClients = filteredClients.filter(c => state.featuredClients.includes(c.name));
+    }
+
+    if (searchQuery) {
+        filteredClients = filteredClients.filter(c =>
+            c.name.toLowerCase().includes(query) ||
+            c.phone.toLowerCase().includes(query) ||
+            (c.account_name && c.account_name.toLowerCase().includes(query)) ||
+            (c.account_type && c.account_type.toLowerCase().includes(query))
+        );
+    }
+
 
     filteredClients.sort((a, b) => {
         const aIsFeatured = state.featuredClients.includes(a.name);
@@ -129,7 +145,12 @@ export function renderClientsView(page) {
 
     if (filteredClients.length === 0) {
         const colSpan = 7;
-        const message = searchQuery ? `Your search for "${searchQuery}" did not match any clients.` : `There are no clients in the system yet.`;
+        let message = `There are no clients in the system yet.`;
+        if (state.onlyShowFeatured) {
+            message = 'You have not marked any clients as featured.';
+        } else if (searchQuery) {
+            message = `Your search for "${searchQuery}" did not match any clients.`;
+        }
         const icon = searchQuery ? `fa-user-slash` : `fa-users`;
         tbody.innerHTML = `<tr><td colspan="${colSpan}"><div class="empty-state" style="padding: 2rem 1rem;"><i class="fa-solid ${icon}"></i><h4>No Clients Found</h4><p>${message}</p></div></td></tr>`;
         return;

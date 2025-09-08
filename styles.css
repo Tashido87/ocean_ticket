@@ -1578,6 +1578,14 @@ td .icon-btn-table {
     color: #ffc107; /* Gold color */
 }
 
+#featuredFilterBtn {
+    color: #8b949e;
+}
+
+#featuredFilterBtn.active {
+    color: #ffc107;
+}
+
 
 /* --- NOTIFICATIONS PANEL --- */
 .notification-panel {

@@ -16,6 +16,37 @@ import { togglePrivateReportButton } from './reports.js';
 // The import from 'manage.js' is now handled dynamically below.
 
 /**
+ * Checks if any search filters are currently active on the dashboard.
+ * @returns {boolean} True if any search filter has a value.
+ */
+function isSearchActive() {
+    const name = document.getElementById('searchName')?.value;
+    const bookRef = document.getElementById('searchBooking')?.value;
+    const startDateVal = document.getElementById('searchStartDate')?.value;
+    const endDateVal = document.getElementById('searchEndDate')?.value;
+    const travelDateVal = document.getElementById('searchTravelDate')?.value;
+    const departure = document.getElementById('searchDeparture')?.value;
+    const destination = document.getElementById('searchDestination')?.value;
+    const airline = document.getElementById('searchAirline')?.value;
+    const notPaidOnly = document.getElementById('searchNotPaidToggle')?.checked;
+
+    return !!(name || bookRef || startDateVal || endDateVal || travelDateVal || departure || destination || airline || notPaidOnly);
+}
+
+/**
+ * Refreshes the ticket view. If search filters are active, it reapplies them.
+ * Otherwise, it displays the initial list of recent tickets.
+ */
+function refreshTicketView() {
+    if (isSearchActive()) {
+        performSearch();
+    } else {
+        displayInitialTickets();
+    }
+}
+
+
+/**
  * Loads ticket data from the Google Sheet.
  */
 export async function loadTicketData() {
@@ -30,7 +61,7 @@ export async function loadTicketData() {
             state.allTickets = parseTicketData(response.values);
             populateSearchAirlines();
             updateUnpaidCount();
-            displayInitialTickets();
+            refreshTicketView(); // Use the new refresh logic
         } else {
             renderEmptyState('resultsBodyContainer', 'fa-ticket', 'No Tickets Found', 'There are no tickets in the system yet. Start by selling a new ticket.');
         }

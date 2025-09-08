@@ -24,6 +24,7 @@ export const state = {
     settlementPage: 1,
     searchTimeout: null,
     clientSearchQuery: '', // Stores the last client search
+    onlyShowFeatured: false, // ADD THIS LINE
     cache: {}, // In-memory cache
     bookingToUpdate: null,
     commissionRates: { // Default commission rates

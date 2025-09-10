@@ -94,7 +94,10 @@ function setupEventListeners() {
     // Reports
     document.getElementById('exportPdfBtn').addEventListener('click', () => document.getElementById('exportConfirmModal').classList.add('show'));
     document.getElementById('confirmExportBtn').addEventListener('click', exportToPdf);
-    document.getElementById('exportPrivateReportBtn').addEventListener('click', exportPrivateReportToPdf);
+    document.getElementById('exportPrivateReportBtn').addEventListener('click', async () => {
+        await exportPrivateReportToPdf();
+        updateComparisonChart();
+    });
     document.getElementById('searchStartDate').addEventListener('change', togglePrivateReportButton);
     document.getElementById('searchEndDate').addEventListener('change', togglePrivateReportButton);
     document.querySelectorAll('input[name="exportType"]').forEach(radio => {

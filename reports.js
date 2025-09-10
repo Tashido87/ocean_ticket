@@ -525,6 +525,13 @@ export async function exportPrivateReportToPdf() {
     // --- Comparison Graph ---
     const chartCanvas = document.getElementById('comparisonChart');
     if (chartCanvas && state.charts.comparisonChart) {
+        const chartContainer = chartCanvas.parentElement;
+        const originalHeight = chartContainer.style.height;
+
+        // Temporarily increase the height of the chart's container for a more detailed PDF export
+        chartContainer.style.height = '600px'; 
+        state.charts.comparisonChart.resize(); // Force the chart to redraw at the new size
+
         // Temporarily change chart colors for PDF export (white background)
         const originalColor = state.charts.comparisonChart.options.plugins.legend.labels.color;
         const legendOptions = state.charts.comparisonChart.options.plugins.legend;
@@ -540,6 +547,10 @@ export async function exportPrivateReportToPdf() {
         state.charts.comparisonChart.update('none'); // Update without animation
 
         const chartImage = chartCanvas.toDataURL('image/png', 1.0);
+
+        // Revert chart container to its original state and resize the chart back
+        chartContainer.style.height = originalHeight || '';
+        state.charts.comparisonChart.resize();
 
         // Revert chart colors back to original
         if (legendOptions) legendOptions.labels.color = originalColor;

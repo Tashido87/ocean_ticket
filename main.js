@@ -190,11 +190,12 @@ export function updateDashboardData() {
 
     const ticketsInPeriod = state.allTickets.filter(t => {
         const ticketDate = parseSheetDate(t.issued_date);
-        return ticketDate.getMonth() === selectedMonth && ticketDate.getFullYear() === selectedYear;
+        const lowerRemarks = t.remarks?.toLowerCase() || '';
+        return ticketDate.getMonth() === selectedMonth && ticketDate.getFullYear() === selectedYear && !lowerRemarks.includes('cancel') && !lowerRemarks.includes('refund');
     });
 
     document.getElementById('total-tickets-value').textContent = ticketsInPeriod.length;
-    const revenueTickets = ticketsInPeriod.filter(t => !t.remarks?.toLowerCase().includes('full refund'));
+    const revenueTickets = ticketsInPeriod; // Already filtered
     const totalRevenue = revenueTickets.reduce((sum, t) => sum + (t.net_amount || 0) + (t.date_change || 0), 0);
     const revenueBox = document.getElementById('monthly-revenue-box');
     revenueBox.querySelector('.main-value').textContent = totalRevenue.toLocaleString();
@@ -211,6 +212,7 @@ export function updateDashboardData() {
     updateSettlementDashboard();
     updateComparisonChart();
 }
+
 
 /**
  * Updates the yearly comparison chart on the dashboard.

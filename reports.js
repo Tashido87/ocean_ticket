@@ -35,7 +35,10 @@ export async function exportToPdf() {
     let dateRangeString = '';
 
     if (exportType === 'filtered') {
-        ticketsToExport = state.filteredTickets;
+        ticketsToExport = state.filteredTickets.filter(t => {
+            const lowerRemarks = t.remarks?.toLowerCase() || '';
+            return !lowerRemarks.includes('cancel') && !lowerRemarks.includes('refund');
+        });
     } else {
         const startDateStr = document.getElementById('exportStartDate').value;
         const endDateStr = document.getElementById('exportEndDate').value;
@@ -53,7 +56,8 @@ export async function exportToPdf() {
 
         ticketsToExport = state.allTickets.filter(t => {
             const issuedDate = parseSheetDate(t.issued_date);
-            return issuedDate >= startDate && issuedDate <= endDate;
+            const lowerRemarks = t.remarks?.toLowerCase() || '';
+            return issuedDate >= startDate && issuedDate <= endDate && !lowerRemarks.includes('cancel') && !lowerRemarks.includes('refund');
         });
     }
 

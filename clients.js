@@ -29,6 +29,7 @@ export function buildClientList() {
     const clients = {};
     state.allTickets.forEach(ticket => {
         const clientKey = `${ticket.name}|${ticket.phone}|${ticket.account_name}`;
+        const lowerRemarks = ticket.remarks?.toLowerCase() || '';
         if (!clients[clientKey]) {
             clients[clientKey] = {
                 name: ticket.name,
@@ -43,8 +44,10 @@ export function buildClientList() {
                 last_travel: new Date(0)
             };
         }
-        clients[clientKey].ticket_count++;
-        clients[clientKey].total_spent += (ticket.net_amount || 0) + (ticket.extra_fare || 0) + (ticket.date_change || 0);
+        if (!lowerRemarks.includes('cancel') && !lowerRemarks.includes('refund')) {
+            clients[clientKey].ticket_count++;
+            clients[clientKey].total_spent += (ticket.net_amount || 0) + (ticket.extra_fare || 0) + (ticket.date_change || 0);
+        }
         const travelDate = parseSheetDate(ticket.departing_on);
         if (travelDate > clients[clientKey].last_travel) {
             clients[clientKey].last_travel = travelDate;
@@ -231,8 +234,12 @@ function viewClientHistory(clientName) {
     }
 
     const firstTicket = clientTickets[0];
-    const totalSpent = clientTickets.reduce((sum, t) => sum + (t.net_amount || 0) + (t.extra_fare || 0) + (t.date_change || 0), 0);
-    const totalProfit = clientTickets.reduce((sum, t) => sum + (t.commission || 0) + (t.extra_fare || 0), 0);
+    const activeClientTickets = clientTickets.filter(t => {
+        const lowerRemarks = t.remarks?.toLowerCase() || '';
+        return !lowerRemarks.includes('cancel') && !lowerRemarks.includes('refund');
+    });
+    const totalSpent = activeClientTickets.reduce((sum, t) => sum + (t.net_amount || 0) + (t.extra_fare || 0) + (t.date_change || 0), 0);
+    const totalProfit = activeClientTickets.reduce((sum, t) => sum + (t.commission || 0) + (t.extra_fare || 0), 0);
 
     let historyHtml = '<div class="table-container"><table id="clientHistoryTable"><thead><tr><th>Issued</th><th>PNR</th><th>Route</th><th>Travel Date</th><th>Airline</th><th>Net Amount</th></tr></thead><tbody>';
     clientTickets.forEach(t => {
@@ -262,7 +269,7 @@ function viewClientHistory(clientName) {
             </div>
         </div>
         <div class="client-history-stats">
-            <div class="stat-card"><div class="label">Total Tickets</div><div class="value">${clientTickets.length}</div></div>
+            <div class="stat-card"><div class="label">Total Tickets</div><div class="value">${activeClientTickets.length}</div></div>
             <div class="stat-card"><div class="label">Total Spent</div><div class="value">${totalSpent.toLocaleString()} MMK</div></div>
             <div class="stat-card"><div class="label">Total Profit</div><div class="value">${totalProfit.toLocaleString()} MMK</div></div>
         </div>

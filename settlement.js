@@ -192,27 +192,39 @@ export function updateSettlementDashboard() {
     const currentMonth = now.getMonth();
     const currentYear = now.getFullYear();
 
-    // Previous Month's Due Calculation
+    // Get the last moment of the previous month to use as a cutoff
     const firstDayOfCurrentMonth = new Date(currentYear, currentMonth, 1);
     const lastDayOfPreviousMonth = new Date(firstDayOfCurrentMonth.getTime() - 1);
-    const previousMonth = lastDayOfPreviousMonth.getMonth();
-    const previousYear = lastDayOfPreviousMonth.getFullYear();
 
-    const ticketsLastMonth = state.allTickets.filter(t => {
+    // Filter ALL tickets and settlements that occurred up to the end of last month
+    const ticketsBeforeThisMonth = state.allTickets.filter(t => {
         const ticketDate = parseSheetDate(t.issued_date);
         const lowerRemarks = t.remarks?.toLowerCase() || '';
-        return ticketDate.getMonth() === previousMonth && ticketDate.getFullYear() === previousYear && !lowerRemarks.includes('full refund');
+        return ticketDate <= lastDayOfPreviousMonth && !lowerRemarks.includes('full refund');
     });
 
-    const revenueLastMonth = ticketsLastMonth.reduce((sum, t) => sum + (t.net_amount || 0) + (t.date_change || 0), 0);
-    const commissionLastMonth = ticketsLastMonth.reduce((sum, t) => sum + (t.commission || 0), 0);
-
-    const settlementsLastMonth = state.allSettlements.filter(s => {
+    const settlementsBeforeThisMonth = state.allSettlements.filter(s => {
         const settlementDate = parseSheetDate(s.settlement_date);
-        return settlementDate.getMonth() === previousMonth && settlementDate.getFullYear() === previousYear;
+        return settlementDate <= lastDayOfPreviousMonth;
     });
-    const totalSettlementsLastMonth = settlementsLastMonth.reduce((sum, s) => sum + (s.amount_paid || 0), 0);
-    const previousEndOfMonthDue = revenueLastMonth - (commissionLastMonth + totalSettlementsLastMonth);
+
+    // Calculate the total historical revenue, commission, and settlements
+    const historicalRevenue = ticketsBeforeThisMonth.reduce((sum, t) => sum + (t.net_amount || 0) + (t.date_change || 0), 0);
+    const historicalCommission = ticketsBeforeThisMonth.reduce((sum, t) => sum + (t.commission || 0), 0);
+    const historicalSettlements = settlementsBeforeThisMonth.reduce((sum, s) => sum + (s.amount_paid || 0), 0);
+
+    // The correct carry-over balance is the sum of all past revenue minus all past deductions
+    let previousEndOfMonthDue = historicalRevenue - (historicalCommission + historicalSettlements);
+
+    // --- START: NEW MODIFICATION ---
+    // This rule resets the balance to zero for October 2025 to create a clean slate,
+    // ignoring any prior discrepancies. Months after October will carry over normally.
+    if (currentYear === 2025 && currentMonth === 9) { // 9 represents October (0-indexed)
+        previousEndOfMonthDue = 0;
+    }
+    // The second rule (only carrying over non-zero balances) is implicitly handled.
+    // If previousEndOfMonthDue is 0, adding it to the new month's revenue has no effect.
+    // --- END: NEW MODIFICATION ---
 
     // Current Month's Figures
     const ticketsThisMonth = state.allTickets.filter(t => {

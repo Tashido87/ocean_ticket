@@ -188,45 +188,71 @@ export async function handleNewSettlementSubmit(e) {
  * Calculates and updates the figures on the settlement dashboard.
  */
 export function updateSettlementDashboard() {
-    const now = new Date();
-    const currentMonth = now.getMonth();
-    const currentYear = now.getFullYear();
+    const now = new Date(); // e.g., Nov 12, 2025
+    const currentMonth = now.getMonth(); // 10 (for November)
+    const currentYear = now.getFullYear(); // 2025
+    
+    // We use UTC to prevent timezone issues in comparison.
+    const firstDayOfCurrentMonth = new Date(Date.UTC(currentYear, currentMonth, 1)); // Nov 1, 2025
 
-    // Get the last moment of the previous month to use as a cutoff
-    const firstDayOfCurrentMonth = new Date(currentYear, currentMonth, 1);
-    const lastDayOfPreviousMonth = new Date(firstDayOfCurrentMonth.getTime() - 1);
+    // --- Previous Balance Calculation (Corrected Logic with Reset Date) ---
+    // User requested a hard reset. As of Nov 1, 2025, the balance is 0.
+    const RESET_DATE = new Date(Date.UTC(2025, 10, 1)); // 10 is for November in JS
 
-    // Filter ALL tickets and settlements that occurred up to the end of last month
-    const ticketsBeforeThisMonth = state.allTickets.filter(t => {
-        const ticketDate = parseSheetDate(t.issued_date);
-        const lowerRemarks = t.remarks?.toLowerCase() || '';
-        return ticketDate <= lastDayOfPreviousMonth && !lowerRemarks.includes('full refund');
-    });
+    let previousEndOfMonthDue = 0;
 
-    const settlementsBeforeThisMonth = state.allSettlements.filter(s => {
-        const settlementDate = parseSheetDate(s.settlement_date);
-        return settlementDate <= lastDayOfPreviousMonth;
-    });
+    if (firstDayOfCurrentMonth < RESET_DATE) {
+        // --- OLD FLAWED LOGIC (for months before the reset, e.g., Oct 2025) ---
+        const firstDayOfMonth = new Date(currentYear, currentMonth, 1);
+        const lastDayOfPreviousMonth = new Date(firstDayOfMonth.getTime() - 1);
+        const previousMonth = lastDayOfPreviousMonth.getMonth();
+        const previousYear = lastDayOfPreviousMonth.getFullYear();
 
-    // Calculate the total historical revenue, commission, and settlements
-    const historicalRevenue = ticketsBeforeThisMonth.reduce((sum, t) => sum + (t.net_amount || 0) + (t.date_change || 0), 0);
-    const historicalCommission = ticketsBeforeThisMonth.reduce((sum, t) => sum + (t.commission || 0), 0);
-    const historicalSettlements = settlementsBeforeThisMonth.reduce((sum, s) => sum + (s.amount_paid || 0), 0);
+        const ticketsLastMonth = state.allTickets.filter(t => {
+            const ticketDate = parseSheetDate(t.issued_date);
+            const lowerRemarks = t.remarks?.toLowerCase() || '';
+            return ticketDate.getMonth() === previousMonth && ticketDate.getFullYear() === previousYear && !lowerRemarks.includes('full refund');
+        });
 
-    // The correct carry-over balance is the sum of all past revenue minus all past deductions
-    let previousEndOfMonthDue = historicalRevenue - (historicalCommission + historicalSettlements);
+        const revenueLastMonth = ticketsLastMonth.reduce((sum, t) => sum + (t.net_amount || 0) + (t.date_change || 0), 0);
+        const commissionLastMonth = ticketsLastMonth.reduce((sum, t) => sum + (t.commission || 0), 0);
 
-    // --- START: NEW MODIFICATION ---
-    // This rule resets the balance to zero for October 2025 to create a clean slate,
-    // ignoring any prior discrepancies. Months after October will carry over normally.
-    if (currentYear === 2025 && currentMonth === 9) { // 9 represents October (0-indexed)
-        previousEndOfMonthDue = 0;
+        const settlementsLastMonth = state.allSettlements.filter(s => {
+            const settlementDate = parseSheetDate(s.settlement_date);
+            return settlementDate.getMonth() === previousMonth && settlementDate.getFullYear() === previousYear;
+        });
+        const totalSettlementsLastMonth = settlementsLastMonth.reduce((sum, s) => sum + (s.amount_paid || 0), 0);
+        previousEndOfMonthDue = revenueLastMonth - (commissionLastMonth + totalSettlementsLastMonth);
+        // --- END OF OLD FLAWED LOGIC ---
+
+    } else {
+        // --- NEW CORRECT LOGIC (For Nov 1, 2025 and after) ---
+        // This calculates the true running balance *since the last reset*.
+        
+        // We calculate all transactions from the RESET_DATE up to the start of the current month.
+        // e.g., If current month is Dec, this finds balance from Nov 1 to Nov 30.
+        const filterStartDate = RESET_DATE;
+        
+        const ticketsBefore = state.allTickets.filter(t => {
+            const ticketDate = parseSheetDate(t.issued_date);
+            const lowerRemarks = t.remarks?.toLowerCase() || '';
+            return ticketDate >= filterStartDate && ticketDate < firstDayOfCurrentMonth && !lowerRemarks.includes('full refund');
+        });
+        const revenueBefore = ticketsBefore.reduce((sum, t) => sum + (t.net_amount || 0) + (t.date_change || 0), 0);
+        const commissionBefore = ticketsBefore.reduce((sum, t) => sum + (t.commission || 0), 0);
+
+        const settlementsBefore = state.allSettlements.filter(s => {
+            const settlementDate = parseSheetDate(s.settlement_date);
+            return settlementDate >= filterStartDate && settlementDate < firstDayOfCurrentMonth;
+        });
+        const totalSettlementsBefore = settlementsBefore.reduce((sum, s) => sum + (s.amount_paid || 0), 0);
+        
+        // This is the true balance carried over since the last reset.
+        // For November, ticketsBefore/settlementsBefore will be empty, so this will be 0.
+        previousEndOfMonthDue = revenueBefore - (commissionBefore + totalSettlementsBefore);
     }
-    // The second rule (only carrying over non-zero balances) is implicitly handled.
-    // If previousEndOfMonthDue is 0, adding it to the new month's revenue has no effect.
-    // --- END: NEW MODIFICATION ---
 
-    // Current Month's Figures
+    // --- Current Month's Figures ---
     const ticketsThisMonth = state.allTickets.filter(t => {
         const ticketDate = parseSheetDate(t.issued_date);
         const lowerRemarks = t.remarks?.toLowerCase() || '';
@@ -243,11 +269,13 @@ export function updateSettlementDashboard() {
     });
     const totalSettlementsThisMonth = settlementsThisMonth.reduce((sum, s) => sum + (s.amount_paid || 0), 0);
 
-    // Update Dashboard Cards
+    // --- Update Dashboard Cards ---
+    // This is the total amount currently owed (Balance from before + This month's revenue - This month's settlements)
     const totalOutstandingRevenue = (revenueThisMonth + previousEndOfMonthDue) - totalSettlementsThisMonth;
     const netAmountBox = document.getElementById('settlement-net-amount-box');
     netAmountBox.innerHTML = `<div class="info-card-content"><h3>Total Outstanding Revenue</h3><div class="main-value">${totalOutstandingRevenue.toLocaleString()}</div><span class="sub-value">MMK</span><i class="icon fa-solid fa-file-invoice-dollar"></i></div>`;
 
+    // This is what would be due if the month ended today (Total Outstanding - This month's commission)
     const endOfMonthSettlement = totalOutstandingRevenue - commissionThisMonth;
     const monthlyDueBox = document.getElementById('settlement-monthly-due-box');
     monthlyDueBox.innerHTML = `<div class="info-card-content"><h3>End-of-Month Settlement Due</h3><div class="main-value">${endOfMonthSettlement.toLocaleString()}</div><span class="sub-value">MMK</span><i class="icon fa-solid fa-cash-register"></i></div>`;

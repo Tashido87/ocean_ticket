@@ -35,10 +35,7 @@ export async function exportToPdf() {
     let dateRangeString = '';
 
     if (exportType === 'filtered') {
-        ticketsToExport = state.filteredTickets.filter(t => {
-            const lowerRemarks = t.remarks?.toLowerCase() || '';
-            return !lowerRemarks.includes('cancel') && !lowerRemarks.includes('refund');
-        });
+        ticketsToExport = state.filteredTickets;
     } else {
         const startDateStr = document.getElementById('exportStartDate').value;
         const endDateStr = document.getElementById('exportEndDate').value;
@@ -56,8 +53,7 @@ export async function exportToPdf() {
 
         ticketsToExport = state.allTickets.filter(t => {
             const issuedDate = parseSheetDate(t.issued_date);
-            const lowerRemarks = t.remarks?.toLowerCase() || '';
-            return issuedDate >= startDate && issuedDate <= endDate && !lowerRemarks.includes('cancel') && !lowerRemarks.includes('refund');
+            return issuedDate >= startDate && issuedDate <= endDate;
         });
     }
 
@@ -179,26 +175,68 @@ export async function exportToPdf() {
     let grandTotal = totalNetAmount + totalDateChange;
 
     if (exportType === 'range') {
-        // --- Previous Month's Due Calculation ---
-        const firstDayOfCurrentMonth = new Date(startDate.getFullYear(), startDate.getMonth(), 1);
-        const lastDayOfPreviousMonth = new Date(firstDayOfCurrentMonth.getTime() - 1);
-        const previousMonth = lastDayOfPreviousMonth.getMonth();
-        const previousYear = lastDayOfPreviousMonth.getFullYear();
+        
+        // --- Previous Balance Calculation (Corrected Logic with Reset Date) ---
+        
+        // User requested a hard reset. As of Nov 1, 2025, the balance is 0.
+        // We use UTC to prevent timezone issues in comparison.
+        const RESET_DATE = new Date(Date.UTC(2025, 10, 1)); // 10 is for November in JS
+        
+        // 'startDate' is the first day of the reporting period (e.g., Nov 1).
+        // We set its time to 0 to compare dates cleanly.
+        const reportStartDate = new Date(Date.UTC(startDate.getFullYear(), startDate.getMonth(), startDate.getDate()));
+        
+        let previousEndOfMonthDue = 0;
 
-        const ticketsLastMonth = state.allTickets.filter(t => {
-            const ticketDate = parseSheetDate(t.issued_date);
-            return ticketDate.getMonth() === previousMonth && ticketDate.getFullYear() === previousYear && !t.remarks?.toLowerCase().includes('full refund');
-        });
+        if (reportStartDate < RESET_DATE) {
+            // --- OLD FLAWED LOGIC (to match old reports like October's) ---
+            // This calculates carry-over by ONLY looking at the immediately preceding month.
+            const firstDayOfCurrentMonth = new Date(startDate.getFullYear(), startDate.getMonth(), 1);
+            const lastDayOfPreviousMonth = new Date(firstDayOfCurrentMonth.getTime() - 1);
+            const previousMonth = lastDayOfPreviousMonth.getMonth();
+            const previousYear = lastDayOfPreviousMonth.getFullYear();
 
-        const revenueLastMonth = ticketsLastMonth.reduce((sum, t) => sum + (t.net_amount || 0) + (t.date_change || 0), 0);
-        const commissionLastMonth = ticketsLastMonth.reduce((sum, t) => sum + (t.commission || 0), 0);
+            const ticketsLastMonth = state.allTickets.filter(t => {
+                const ticketDate = parseSheetDate(t.issued_date);
+                return ticketDate.getMonth() === previousMonth && ticketDate.getFullYear() === previousYear && !t.remarks?.toLowerCase().includes('full refund');
+            });
 
-        const settlementsLastMonth = state.allSettlements.filter(s => {
-            const settlementDate = parseSheetDate(s.settlement_date);
-            return settlementDate.getMonth() === previousMonth && settlementDate.getFullYear() === previousYear;
-        });
-        const totalSettlementsLastMonth = settlementsLastMonth.reduce((sum, s) => sum + (s.amount_paid || 0), 0);
-        const previousEndOfMonthDue = revenueLastMonth - (commissionLastMonth + totalSettlementsLastMonth);
+            const revenueLastMonth = ticketsLastMonth.reduce((sum, t) => sum + (t.net_amount || 0) + (t.date_change || 0), 0);
+            const commissionLastMonth = ticketsLastMonth.reduce((sum, t) => sum + (t.commission || 0), 0);
+
+            const settlementsLastMonth = state.allSettlements.filter(s => {
+                const settlementDate = parseSheetDate(s.settlement_date);
+                return settlementDate.getMonth() === previousMonth && settlementDate.getFullYear() === previousYear;
+            });
+            const totalSettlementsLastMonth = settlementsLastMonth.reduce((sum, s) => sum + (s.amount_paid || 0), 0);
+            previousEndOfMonthDue = revenueLastMonth - (commissionLastMonth + totalSettlementsLastMonth);
+            // --- END OF OLD FLAWED LOGIC ---
+
+        } else {
+            // --- NEW CORRECT LOGIC (For Nov 1, 2025 and after) ---
+            // This calculates the true running balance *since the last reset*.
+            
+            // We calculate all transactions from the RESET_DATE up to the start of the current report.
+            // e.g., If report is for Dec (startDate = Dec 1), this finds balance from Nov 1 to Nov 30.
+            const filterStartDate = RESET_DATE; // Start counting from Nov 1
+            
+            const ticketsBefore = state.allTickets.filter(t => {
+                const ticketDate = parseSheetDate(t.issued_date);
+                return ticketDate >= filterStartDate && ticketDate < startDate && !t.remarks?.toLowerCase().includes('full refund');
+            });
+            const revenueBefore = ticketsBefore.reduce((sum, t) => sum + (t.net_amount || 0) + (t.date_change || 0), 0);
+            const commissionBefore = ticketsBefore.reduce((sum, t) => sum + (t.commission || 0), 0);
+
+            const settlementsBefore = state.allSettlements.filter(s => {
+                const settlementDate = parseSheetDate(s.settlement_date);
+                return settlementDate >= filterStartDate && settlementDate < startDate;
+            });
+            const totalSettlementsBefore = settlementsBefore.reduce((sum, s) => sum + (s.amount_paid || 0), 0);
+            
+            // This is the true balance carried over since the last reset.
+            // For Nov 1 report, ticketsBefore/settlementsBefore will be empty, so this will be 0.
+            previousEndOfMonthDue = revenueBefore - (commissionBefore + totalSettlementsBefore);
+        }
 
         // Add previous due to the grand total for this period
         grandTotal += previousEndOfMonthDue;
@@ -529,13 +567,6 @@ export async function exportPrivateReportToPdf() {
     // --- Comparison Graph ---
     const chartCanvas = document.getElementById('comparisonChart');
     if (chartCanvas && state.charts.comparisonChart) {
-        const chartContainer = chartCanvas.parentElement;
-        const originalHeight = chartContainer.style.height;
-
-        // Temporarily increase the height of the chart's container for a more detailed PDF export
-        chartContainer.style.height = '600px'; 
-        state.charts.comparisonChart.resize(); // Force the chart to redraw at the new size
-
         // Temporarily change chart colors for PDF export (white background)
         const originalColor = state.charts.comparisonChart.options.plugins.legend.labels.color;
         const legendOptions = state.charts.comparisonChart.options.plugins.legend;
@@ -551,10 +582,6 @@ export async function exportPrivateReportToPdf() {
         state.charts.comparisonChart.update('none'); // Update without animation
 
         const chartImage = chartCanvas.toDataURL('image/png', 1.0);
-
-        // Revert chart container to its original state and resize the chart back
-        chartContainer.style.height = originalHeight || '';
-        state.charts.comparisonChart.resize();
 
         // Revert chart colors back to original
         if (legendOptions) legendOptions.labels.color = originalColor;

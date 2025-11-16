@@ -197,9 +197,33 @@ export function renderClientsView(page) {
         if (pg === state.clientPage) b.classList.add('active');
         return b;
     };
+    
+    // --- MODIFIED PAGINATION LOGIC START ---
+    const maxPagesToShow = 5;
+    let startPage = Math.max(1, state.clientPage - Math.floor(maxPagesToShow / 2));
+    let endPage = Math.min(pageCount, startPage + maxPagesToShow - 1);
+    
+    // Adjust start page if we are near the end
+    if (endPage - startPage + 1 < maxPagesToShow) {
+        startPage = Math.max(1, endPage - maxPagesToShow + 1);
+    }
+    
     paginationContainer.append(btn('&laquo;', 1, state.clientPage > 1));
-    for (let i = 1; i <= pageCount; i++) paginationContainer.append(btn(i, i));
+    
+    if (startPage > 1) {
+        paginationContainer.append(btn('...', startPage - 1));
+    }
+
+    for (let i = startPage; i <= endPage; i++) {
+        paginationContainer.append(btn(i, i));
+    }
+    
+    if (endPage < pageCount) {
+         paginationContainer.append(btn('...', endPage + 1));
+    }
+    
     paginationContainer.append(btn('&raquo;', pageCount, state.clientPage < pageCount));
+    // --- MODIFIED PAGINATION LOGIC END ---
 }
 
 /**

@@ -10,7 +10,8 @@ import {
 } from './state.js';
 import {
     batchUpdateSheet,
-    updateSheet
+    updateSheet,
+    appendToSheet
 } from './api.js';
 import {
     showToast,
@@ -28,7 +29,6 @@ import {
     saveHistory,
     displayHistory
 } from './history.js';
-// Static imports that created the circular dependency have been removed.
 
 /**
  * Finds tickets by PNR and displays them in the manage view.
@@ -167,6 +167,8 @@ function openManageModal(rowIndex) {
 
 /**
  * Handles the ticket update form submission.
+ * NOW UPDATED: Creates a NEW row for Date Change Fees/Extra Fares so they appear in current month's reports.
+ *
  */
 async function handleUpdateTicket(e) {
     e.preventDefault();
@@ -182,19 +184,28 @@ async function handleUpdateTicket(e) {
     const newBaseFare = parseFloat(document.getElementById('update_base_fare').value);
     const newNetAmount = parseFloat(document.getElementById('update_net_amount').value);
     const newCommission = parseFloat(document.getElementById('update_commission').value);
+
+    // Financial Add-ons
     const dateChangeFees = parseFloat(document.getElementById('date_change_fees').value) || 0;
     const extraFare = parseFloat(document.getElementById('update_extra_fare').value) || 0;
+
     const newPaidStatus = document.getElementById('update_paid')?.checked;
     const newPaymentMethod = document.getElementById('update_payment_method')?.value.toUpperCase();
     const newPaidDate = document.getElementById('update_paid_date')?.value;
+
+    // --- LOGIC CHANGE: SEPARATE NEW FEES ---
+    const hasNewFees = dateChangeFees > 0 || extraFare > 0;
 
     // Build history log
     if (newTravelDateVal && parseSheetDate(newTravelDateVal).getTime() !== parseSheetDate(originalTicket.departing_on).getTime()) historyDetails.push(`Travel Date: ${originalTicket.departing_on} to ${newTravelDateVal}`);
     if (!isNaN(newBaseFare) && newBaseFare !== originalTicket.base_fare) historyDetails.push(`Base Fare: ${originalTicket.base_fare} to ${newBaseFare}`);
     if (!isNaN(newNetAmount) && newNetAmount !== originalTicket.net_amount) historyDetails.push(`Net Amount: ${originalTicket.net_amount} to ${newNetAmount}`);
     if (!isNaN(newCommission) && newCommission !== originalTicket.commission) historyDetails.push(`Commission: ${originalTicket.commission} to ${newCommission}`);
-    if (dateChangeFees > 0) historyDetails.push(`Date Change Fees Added: ${dateChangeFees}`);
-    if (extraFare > 0) historyDetails.push(`Extra Fare Added: ${extraFare}`);
+
+    // Note: We log these, but we will handle them as new rows below
+    if (dateChangeFees > 0) historyDetails.push(`Date Change Fees Added (New Entry): ${dateChangeFees}`);
+    if (extraFare > 0) historyDetails.push(`Extra Fare Added (New Entry): ${extraFare}`);
+
     if (newPaidStatus && !originalTicket.paid) historyDetails.push(`Status: Unpaid to Paid`);
     if (newPaymentMethod && newPaymentMethod !== originalTicket.payment_method) historyDetails.push(`Payment Method: ${originalTicket.payment_method} to ${newPaymentMethod}`);
     if (newPaidDate && newPaidDate !== originalTicket.paid_date) historyDetails.push(`Paid Date: ${originalTicket.paid_date} to ${newPaidDate}`);
@@ -204,43 +215,85 @@ async function handleUpdateTicket(e) {
         return;
     }
 
-    const dataForBatchUpdate = ticketsToUpdate.map(ticket => {
-        // Construct the full row of data with updated values
-        const values = [
-            ticket.issued_date, ticket.name, ticket.id_no, ticket.phone,
-            ticket.account_name, ticket.account_type, ticket.account_link,
-            ticket.departure, ticket.destination,
-            newTravelDateVal ? formatDateForSheet(newTravelDateVal) : ticket.departing_on,
-            ticket.airline,
-            !isNaN(newBaseFare) ? newBaseFare : ticket.base_fare,
-            ticket.booking_reference,
-            !isNaN(newNetAmount) ? newNetAmount : ticket.net_amount,
-            newPaidStatus !== undefined ? newPaidStatus : ticket.paid,
-            newPaymentMethod || ticket.payment_method,
-            newPaidDate ? formatDateForSheet(newPaidDate) : ticket.paid_date,
-            !isNaN(newCommission) ? newCommission : ticket.commission,
-            ticket.remarks,
-            (ticket.extra_fare || 0) + extraFare,
-            (ticket.date_change || 0) + dateChangeFees,
-            ticket.gender
-        ];
-        return {
-            range: `${CONFIG.SHEET_NAME}!A${ticket.rowIndex}:V${ticket.rowIndex}`,
-            values: [values]
-        };
-    });
-
     try {
         showToast('Updating tickets...', 'info');
+
+        // 1. UPDATE ORIGINAL TICKET (Update Date, Status, Base Fare - BUT NOT adding the fees to the old row)
+        const dataForBatchUpdate = ticketsToUpdate.map(ticket => {
+            const values = [
+                ticket.issued_date, // Keep original issue date
+                ticket.name,
+                ticket.id_no,
+                ticket.phone,
+                ticket.account_name,
+                ticket.account_type,
+                ticket.account_link,
+                ticket.departure,
+                ticket.destination,
+                newTravelDateVal ? formatDateForSheet(newTravelDateVal) : ticket.departing_on, // Update Travel Date
+                ticket.airline,
+                !isNaN(newBaseFare) ? newBaseFare : ticket.base_fare,
+                ticket.booking_reference,
+                !isNaN(newNetAmount) ? newNetAmount : ticket.net_amount,
+                newPaidStatus !== undefined ? newPaidStatus : ticket.paid,
+                newPaymentMethod || ticket.payment_method,
+                newPaidDate ? formatDateForSheet(newPaidDate) : ticket.paid_date,
+                !isNaN(newCommission) ? newCommission : ticket.commission,
+                ticket.remarks,
+                ticket.extra_fare, // Keep existing extra fare, do NOT add new one here
+                ticket.date_change, // Keep existing date change, do NOT add new one here
+                ticket.gender
+            ];
+            return {
+                range: `${CONFIG.SHEET_NAME}!A${ticket.rowIndex}:V${ticket.rowIndex}`,
+                values: [values]
+            };
+        });
+
         await batchUpdateSheet(dataForBatchUpdate);
+
+        // 2. CREATE NEW ROW FOR FEES (If any)
+        if (hasNewFees) {
+            const today = formatDateForSheet(new Date());
+            
+            const feeRow = [
+                today, // Issued Date = TODAY (So it appears in this month's report)
+                `${originalTicket.name} (Fees)`, // Name
+                originalTicket.id_no,
+                originalTicket.phone,
+                originalTicket.account_name,
+                originalTicket.account_type,
+                originalTicket.account_link,
+                originalTicket.departure,
+                originalTicket.destination,
+                newTravelDateVal ? formatDateForSheet(newTravelDateVal) : originalTicket.departing_on,
+                originalTicket.airline,
+                0, // Base Fare 0
+                originalTicket.booking_reference, // Same PNR
+                0, // Net Amount 0 (We use date_change/extra columns for the money)
+                newPaidStatus !== undefined ? newPaidStatus : originalTicket.paid, // Inherit paid status
+                newPaymentMethod || originalTicket.payment_method,
+                today, // Paid Date = Today
+                0, // Commission 0
+                "Fee Entry", // Remarks
+                extraFare, // The New Extra Fare
+                dateChangeFees, // The New Date Change Fee
+                originalTicket.gender
+            ];
+
+            await appendToSheet(`${CONFIG.SHEET_NAME}!A:V`, [feeRow]);
+        }
+
         await saveHistory(originalTicket, `MODIFIED: ${historyDetails.join('; ')}`);
+
+        // Refresh Data
         state.cache['ticketData'] = null;
         state.cache['historyData'] = null;
-        showToast('Tickets updated successfully!', 'success');
+        showToast('Tickets updated and fees recorded successfully!', 'success');
         closeModal();
         clearManageResults();
 
-        // MODIFIED: Use dynamic imports for reloading data to break circular dependency
+        // Reload modules via dynamic import to avoid circular dependencies
         const { loadTicketData } = await import('./tickets.js');
         const { updateDashboardData } = await import('./main.js');
         const { loadHistory } = await import('./history.js');
@@ -248,7 +301,8 @@ async function handleUpdateTicket(e) {
         updateDashboardData();
 
     } catch (error) {
-        // Error toast is handled by api.js
+        console.error(error);
+        showToast("Error updating ticket: " + (error.message || error), "error");
     }
 }
 

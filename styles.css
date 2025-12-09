@@ -2413,3 +2413,16 @@ body.material-theme:not(.dark-theme) .datepicker-view .days .day.selected:nth-ch
         -webkit-backdrop-filter: blur(var(--blur-amount));
     }
 }
+
+/* --- HIDE NUMBER INPUT SPINNERS --- */
+/* Chrome, Safari, Edge, Opera */
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+/* Firefox */
+input[type="number"] {
+  -moz-appearance: textfield;
+}

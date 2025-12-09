@@ -71,10 +71,14 @@ export function renderClientsView(page) {
 
     // Build the view's inner HTML if it's not already there
     if (!container.querySelector('.clients-container')) {
+        // MODIFICATION: Added span id="clientTotalCount" to the header
         container.innerHTML = `
             <div class="clients-container">
                 <div class="clients-header">
-                    <h2><i class="fa-solid fa-users"></i> Client Directory</h2>
+                    <h2>
+                        <i class="fa-solid fa-users"></i> Client Directory 
+                        <span id="clientTotalCount" class="notification-count" style="font-size: 0.9rem; vertical-align: middle; margin-left: 0.5rem; background-color: var(--primary-accent); color: var(--bg-color);">0</span>
+                    </h2>
                     <div class="client-controls">
                         <div class="client-search-box" style="display: flex; gap: 0.5rem; align-items: center;">
                             <button id="featuredFilterBtn" class="icon-btn" title="Show Featured Only"><i class="fa-regular fa-star"></i></button>
@@ -137,6 +141,11 @@ export function renderClientsView(page) {
         );
     }
 
+    // MODIFICATION: Update the total count badge
+    const countBadge = document.getElementById('clientTotalCount');
+    if (countBadge) {
+        countBadge.textContent = filteredClients.length;
+    }
 
     filteredClients.sort((a, b) => {
         const aIsFeatured = state.featuredClients.includes(a.name);
@@ -177,7 +186,7 @@ export function renderClientsView(page) {
                 <button class="icon-btn icon-btn-table" title="New Booking"><i class="fa-solid fa-calendar-plus"></i></button>
                 <button class="icon-btn icon-btn-table" title="Sell New Ticket"><i class="fa-solid fa-ticket"></i></button>
             </td>
-        `;
+        `
         // Add event listeners
         row.querySelector('.star-icon').addEventListener('click', (e) => toggleFeaturedClient(e, client.name));
         row.querySelector('[title="Detail"]').addEventListener('click', () => viewClientHistory(client.name));
@@ -198,7 +207,7 @@ export function renderClientsView(page) {
         return b;
     };
     
-    // --- MODIFIED PAGINATION LOGIC START ---
+    // --- PAGINATION LOGIC ---
     const maxPagesToShow = 5;
     let startPage = Math.max(1, state.clientPage - Math.floor(maxPagesToShow / 2));
     let endPage = Math.min(pageCount, startPage + maxPagesToShow - 1);
@@ -223,7 +232,6 @@ export function renderClientsView(page) {
     }
     
     paginationContainer.append(btn('&raquo;', pageCount, state.clientPage < pageCount));
-    // --- MODIFIED PAGINATION LOGIC END ---
 }
 
 /**

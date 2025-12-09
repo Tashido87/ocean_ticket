@@ -95,13 +95,14 @@ function parseTicketData(values) {
 }
 
 /**
- * Displays the initial list of the 50 most recent tickets.
+ * Displays the initial list of tickets.
+ * MODIFICATION: Removed the .slice(0, 50) limit to allow navigating through all tickets.
  */
 export function displayInitialTickets() {
     const sorted = [...state.allTickets].sort((a, b) => parseSheetDate(b.issued_date) - parseSheetDate(a.issued_date) || b.rowIndex - a.rowIndex);
-    const initialTickets = sorted.slice(0, 50);
-    state.filteredTickets = initialTickets;
-    displayTickets(initialTickets, 1);
+    // Removed slice to show all tickets via pagination
+    state.filteredTickets = sorted;
+    displayTickets(sorted, 1);
 }
 
 /**

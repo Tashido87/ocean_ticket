@@ -551,7 +551,7 @@ export function removePassengerForm() {
 }
 
 /**
- * Sets up pagination controls for a given dataset.
+ * Sets up pagination controls for a given dataset using a sliding window style.
  * @param {Array<any>} data The full dataset to paginate.
  * @param {string} containerId The ID of the pagination container element.
  * @param {Function} renderPageFn The function to call to render a specific page.
@@ -581,10 +581,14 @@ export function setupGenericPagination(data, containerId, renderPageFn, currentP
 
     paginationContainer.append(createBtn('&laquo;', 1, currentPage > 1));
 
-    const maxPagesToShow = 10;
-    const currentBlock = Math.floor((currentPage - 1) / maxPagesToShow);
-    const startPage = currentBlock * maxPagesToShow + 1;
-    const endPage = Math.min(startPage + maxPagesToShow - 1, pageCount);
+    // --- SLIDING WINDOW LOGIC (Like Client Directory) ---
+    const maxPagesToShow = 5;
+    let startPage = Math.max(1, currentPage - Math.floor(maxPagesToShow / 2));
+    let endPage = Math.min(pageCount, startPage + maxPagesToShow - 1);
+
+    if (endPage - startPage + 1 < maxPagesToShow) {
+        startPage = Math.max(1, endPage - maxPagesToShow + 1);
+    }
 
     if (startPage > 1) {
         paginationContainer.append(createBtn('...', startPage - 1));
@@ -597,6 +601,7 @@ export function setupGenericPagination(data, containerId, renderPageFn, currentP
     if (endPage < pageCount) {
         paginationContainer.append(createBtn('...', endPage + 1));
     }
+    // --------------------------------
 
     paginationContainer.append(createBtn('&raquo;', pageCount, currentPage < pageCount));
 }
